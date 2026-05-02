@@ -20,8 +20,21 @@ Interop with other SDKs (`shadownet-go`, `shadownet-ts`) is verified at the wire
 
 - **Package manager**: [`uv`](https://docs.astral.sh/uv/)
 - **Python**: 3.12+
-- **Style/lint**: TBD (likely `ruff`)
-- **Tests**: `pytest`
+- **Style/lint**: `ruff`
+- **Tests**: `pytest` (+ `pytest-asyncio`)
+- **License**: MIT
+
+## Install / Develop
+
+```bash
+uv sync --all-extras           # install runtime + dev + extras
+uv run pytest                  # run the test suite
+uv run pytest -m network       # opt-in: tests that hit the network
+uv run ruff check .            # lint
+uv run ruff format .           # format
+```
+
+Engineering conventions and contribution rules live in [`CLAUDE.md`](./CLAUDE.md).
 
 ## Planned layout
 
