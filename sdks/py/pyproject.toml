@@ -98,6 +98,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "N"]
+# RFC-0007 dictates the MCP tool argument names verbatim (camelCase), so we
+# can't snake_case them here without diverging from the wire spec.
+"src/shadownet/mcp/register.py" = ["N803", "A002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shadownet"]
