@@ -44,6 +44,7 @@ const (
 // SubjectType is "person" or "organization".
 type SubjectType string
 
+// SubjectType values defined by RFC-0003.
 const (
 	SubjectPerson       SubjectType = "person"
 	SubjectOrganization SubjectType = "organization"

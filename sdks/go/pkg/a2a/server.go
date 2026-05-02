@@ -99,7 +99,7 @@ func (s *Server) now() time.Time {
 	return time.Now().UTC()
 }
 
-// Handler returns an http.Handler with the A2A routes attached.
+// HTTPHandler returns an http.Handler with the A2A routes attached.
 func (s *Server) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)

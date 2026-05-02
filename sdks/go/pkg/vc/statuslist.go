@@ -89,7 +89,7 @@ func DecodeStatusList(encoded string) (*StatusList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vc: gunzip: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 	bits, err := io.ReadAll(gr)
 	if err != nil {
 		return nil, fmt.Errorf("vc: read gunzip: %w", err)

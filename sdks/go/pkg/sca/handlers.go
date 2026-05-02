@@ -191,7 +191,7 @@ func (i *Issuer) serveProofStart(w http.ResponseWriter, r *http.Request, auth *S
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, resp)
 }
 
 func (i *Issuer) serveProofStatus(w http.ResponseWriter, r *http.Request, auth *SubjectAuth) {
@@ -205,7 +205,7 @@ func (i *Issuer) serveProofStatus(w http.ResponseWriter, r *http.Request, auth *
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, resp)
 }
 
 func (i *Issuer) serveIssuance(w http.ResponseWriter, r *http.Request, auth *SubjectAuth) {
@@ -219,7 +219,7 @@ func (i *Issuer) serveIssuance(w http.ResponseWriter, r *http.Request, auth *Sub
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, resp)
 }
 
 func (i *Issuer) serveFreshness(w http.ResponseWriter, r *http.Request, auth *SubjectAuth) {
@@ -233,7 +233,7 @@ func (i *Issuer) serveFreshness(w http.ResponseWriter, r *http.Request, auth *Su
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, resp)
 }
 
 func (i *Issuer) serveStatusList(w http.ResponseWriter, r *http.Request) {
@@ -266,9 +266,8 @@ func decodeJSON(r *http.Request, dst any) error {
 	return nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+func writeJSON(w http.ResponseWriter, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }
 

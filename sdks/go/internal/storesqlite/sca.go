@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	// Pure-Go SQLite driver registered with database/sql; the package only
+	// runs init() and exposes nothing we call directly.
 	_ "modernc.org/sqlite"
 
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
@@ -134,7 +136,7 @@ WHERE id = ? AND state='pending'`, at.Unix(), at.Add(sca.ReadyTTL).Unix(), id)
 	if err != nil {
 		return fmt.Errorf("storesqlite: mark ready: %w", err)
 	}
-	return rowsAffectedOrErr(res, sca.ErrSessionState, sca.ErrSessionNotFound, ctx, s.db, "sessions", id)
+	return rowsAffectedOrErr(ctx, s.db, res, sca.ErrSessionState, sca.ErrSessionNotFound, "sessions", id)
 }
 
 // Consume implements sca.SessionStore.
@@ -143,7 +145,7 @@ func (s *SCASessionStore) Consume(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("storesqlite: consume: %w", err)
 	}
-	return rowsAffectedOrErr(res, sca.ErrSessionState, sca.ErrSessionNotFound, ctx, s.db, "sessions", id)
+	return rowsAffectedOrErr(ctx, s.db, res, sca.ErrSessionState, sca.ErrSessionNotFound, "sessions", id)
 }
 
 // Fail implements sca.SessionStore.
@@ -317,7 +319,7 @@ func nullableUnix(t time.Time) sql.NullInt64 {
 
 // rowsAffectedOrErr maps an UPDATE's RowsAffected into a state-mismatch
 // vs not-found error, by re-checking whether the row exists.
-func rowsAffectedOrErr(res sql.Result, stateErr, notFoundErr error, ctx context.Context, db *sql.DB, table, id string) error {
+func rowsAffectedOrErr(ctx context.Context, db *sql.DB, res sql.Result, stateErr, notFoundErr error, table, id string) error {
 	n, err := res.RowsAffected()
 	if err != nil {
 		return err

@@ -118,10 +118,7 @@ func run() error {
 		}()
 	}
 
-	resolver, err := buildResolver(cfg.DID)
-	if err != nil {
-		return err
-	}
+	resolver := buildResolver(cfg.DID)
 
 	issuer := &sca.Issuer{
 		DID:        cfg.DID,
@@ -246,11 +243,11 @@ func readyCheck(db *sql.DB) func(context.Context) error {
 // buildResolver returns a DID resolver. If the SCA's DID is did:web, we
 // configure a WebResolver; for did:key we return the local resolver and
 // dispatcher only.
-func buildResolver(scaDID string) (did.Resolver, error) {
+func buildResolver(scaDID string) did.Resolver {
 	if strings.HasPrefix(scaDID, "did:web:") {
-		return did.NewResolver(did.NewWebResolver()), nil
+		return did.NewResolver(did.NewWebResolver())
 	}
-	return did.NewResolver(nil), nil
+	return did.NewResolver(nil)
 }
 
 func buildTLS(cfg fileConfig, listen string) (*tls.Config, error) {
