@@ -1,0 +1,109 @@
+# OpenAPI specification for the Shadow Name Service (SNS), RFC-0005.
+# Mirrors the endpoints implemented by `pkg/sns` and served by `cmd/sns-server`.
+openapi: 3.1.0
+info:
+  title: Shadownet SNS
+  version: "0.1"
+  description: |
+    Shadow Name Service — resolves Shadownames to DID + endpoint records.
+    Specified by RFC-0005 in the shadownet-specs repo.
+  license:
+    name: MIT
+servers:
+  - url: https://sns.shadownet.example
+    description: Reference deployment placeholder
+components:
+  securitySchemes:
+    subjectAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Subject-auth JWT (purpose=sns-update)"
+  schemas:
+    Error:
+      type: object
+      required: [error, "shadownet:v"]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        "shadownet:v": { const: "0.1" }
+    PublicKeyJWK:
+      type: object
+      required: [kty, crv, x]
+      properties:
+        kty: { const: OKP }
+        crv: { const: Ed25519 }
+        x:   { type: string }
+        kid: { type: string }
+    UpdateRequest:
+      type: object
+      required: ["shadownet:v", did, endpoint, publicKey, subjectType]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        did: { type: string, pattern: "^did:" }
+        endpoint: { type: string, format: uri }
+        publicKey: { $ref: "#/components/schemas/PublicKeyJWK" }
+        subjectType: { enum: [person, organization] }
+        ttl: { type: integer, minimum: 60, maximum: 86400 }
+        rotationStatement: { type: string, description: "compact JWS — KeyRotationStatement signed by the prior key (required when key changes)" }
+paths:
+  /.well-known/did.json:
+    get:
+      summary: SNS provider DID document
+      responses:
+        "200":
+          description: ok
+          content:
+            application/did+json:
+              schema: { type: object }
+  /.well-known/sns/v1/resolve:
+    get:
+      summary: Resolve a Shadowname
+      parameters:
+        - in: query
+          name: name
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/jwt:
+              schema: { type: string }
+        "400": { description: provider mismatch / invalid name, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: no such shadowname,                content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "410": { description: shadowname tombstoned,             content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: rate limited,                       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /v1/records/{local}:
+    put:
+      summary: Register or update a record (subject-authenticated)
+      security:
+        - subjectAuth: []
+      parameters:
+        - in: path
+          name: local
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRequest" }
+      responses:
+        "200": { description: ok }
+        "400": { description: bad request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "410": { description: tombstoned,   content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      summary: Tombstone a record
+      security:
+        - subjectAuth: []
+      parameters:
+        - in: path
+          name: local
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: deleted }
+        "401": { description: unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: not the owner, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: no such record, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }

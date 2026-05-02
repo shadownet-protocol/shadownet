@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shadownet.example/schemas/v0/messages/envelope.schema.json",
+  "title": "Shadownet A2A Message Envelope",
+  "description": "Schema for the `data` of a part with type `shadownet/v1+envelope`. See RFC-0006. Mirrored from ../shadownet-specs/schemas/messages/envelope.schema.json — kept in sync via tools/check-schemas.sh.",
+  "type": "object",
+  "required": ["shadownet:v", "intentId", "interaction", "payload"],
+  "properties": {
+    "shadownet:v": { "const": "0.1" },
+    "intentId":    { "type": "string", "format": "uri" },
+    "sessionId":   { "type": "string", "format": "uri" },
+    "interaction": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI naming an Interaction Profile. Opaque to RFC-0006; defined by separate Interaction Profile RFCs."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Interaction-specific. Schema is set by the Interaction Profile named in `interaction`."
+    }
+  },
+  "additionalProperties": false
+}
