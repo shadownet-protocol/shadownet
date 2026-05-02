@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Build the reference SNS server. Pure Go (no CGo).
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+        -o /out/sns-server ./cmd/sns-server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/sns-server /usr/local/bin/sns-server
+USER nonroot:nonroot
+EXPOSE 8443
+ENTRYPOINT ["/usr/local/bin/sns-server"]
+CMD ["--config", "/etc/shadownet/sns-server.yaml"]
