@@ -193,7 +193,12 @@ func (s *Server) serveJSONRPC(w http.ResponseWriter, r *http.Request) {
 
 	caller, err := s.handshake(r, sess)
 	if err != nil {
-		writeShadownetError(w, err)
+		var aerr *Error
+		if errors.As(err, &aerr) {
+			writeShadownetError(w, aerr)
+			return
+		}
+		writeRPCError(w, req.ID, jsonrpcInvalidRequest, err.Error())
 		return
 	}
 
@@ -229,9 +234,9 @@ func (s *Server) handshake(r *http.Request, sess *SessionToken) (InboundCaller, 
 
 		pres, verr := s.Verifier.VerifyPresentation(r.Context(), header, s.DID, requiredNonce)
 		if verr != nil {
-			vcErr, _ := vc.AsError(verr)
+			var vcErr *vc.Error
 			code := CodePresentationInvalid
-			if vcErr != nil {
+			if errors.As(verr, &vcErr) {
 				switch vcErr.Code {
 				case vc.ReasonLevelInsufficient:
 					code = CodeLevelInsufficient
