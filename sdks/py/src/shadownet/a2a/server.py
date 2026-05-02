@@ -14,6 +14,7 @@ from shadownet.a2a.session import verify_session_token
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from shadownet.did.resolver import Resolver
     from shadownet.sca.predicate import RequiredLevelPredicate
     from shadownet.trust import TrustStore
     from shadownet.vc.presentation import VerifiedPresentation
@@ -51,7 +52,7 @@ async def verify_handshake(
     headers: Mapping[str, str],
     *,
     expected_audience: str,
-    resolver,
+    resolver: Resolver,
     trust_store: TrustStore | None = None,
     status_list_client: StatusListClient | None = None,
     required_predicate: RequiredLevelPredicate | None = None,

@@ -59,7 +59,7 @@ def verify_jwt(
             audience=audience,
             issuer=issuer,
             leeway=leeway,
-            options=options,
+            options=options,  # type: ignore[arg-type]  # PyJWT typed Options TypedDict; runtime accepts dict
         )
     except _pyjwt.PyJWTError as exc:
         raise JWTError(str(exc)) from exc

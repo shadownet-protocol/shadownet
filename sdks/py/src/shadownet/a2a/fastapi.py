@@ -22,6 +22,8 @@ from shadownet.a2a.errors import A2AError, PresentationRequiredError
 from shadownet.a2a.server import HandshakeContext, verify_handshake
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from shadownet.did.resolver import Resolver
     from shadownet.sca.predicate import RequiredLevelPredicate
     from shadownet.trust import TrustStore
@@ -40,7 +42,7 @@ def require_handshake(
     required_predicate: RequiredLevelPredicate | None = None,
     cached_presentations: dict[str, VerifiedPresentation] | None = None,
     freshness_window_seconds: int = 24 * 3600,
-):
+) -> Callable[[Request], Awaitable[HandshakeContext]]:
     """FastAPI dependency that validates the Shadownet handshake on the request.
 
     On success the dependency returns a :class:`HandshakeContext`. On failure
@@ -50,6 +52,9 @@ def require_handshake(
 
     Configure once at app/router scope; treat the returned dependency as opaque.
     """
+    # PresentationRequiredError already includes its nonce in the body via
+    # to_response(); the catch is purely about translating to HTTPException.
+    _ = PresentationRequiredError
 
     async def _dep(request: Request) -> HandshakeContext:
         try:
@@ -65,9 +70,6 @@ def require_handshake(
             )
         except A2AError as exc:
             status, body = exc.to_response()
-            if isinstance(exc, PresentationRequiredError):
-                # nonce already added by to_response()
-                pass
             raise HTTPException(status_code=status, detail=body) from exc
 
     return _dep

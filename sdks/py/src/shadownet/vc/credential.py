@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from shadownet.crypto.jwt import JWTError, decode_unverified_claims, sign_jwt, verify_jwt
 from shadownet.vc.errors import CredentialInvalid
@@ -83,7 +83,7 @@ class SubjectCredential(BaseModel):
 
     @field_validator("vc")
     @classmethod
-    def _subject_id_matches_sub(cls, value: _VCBody, info) -> _VCBody:
+    def _subject_id_matches_sub(cls, value: _VCBody, info: ValidationInfo) -> _VCBody:
         sub = info.data.get("sub")
         if sub is not None and value.credential_subject.id != sub:
             raise ValueError("vc.credentialSubject.id must equal sub")

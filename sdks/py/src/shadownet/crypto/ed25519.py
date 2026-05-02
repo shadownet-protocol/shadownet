@@ -57,7 +57,7 @@ class Ed25519KeyPair:
         return cls(public_bytes, None)
 
     @classmethod
-    def from_jwk(cls, jwk: dict) -> Self:
+    def from_jwk(cls, jwk: dict[str, str]) -> Self:
         if jwk.get("kty") != "OKP" or jwk.get("crv") != "Ed25519":
             raise SignatureError("JWK is not an Ed25519 OKP key")
         x = jwk.get("x")

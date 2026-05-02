@@ -70,7 +70,7 @@ def build_csr(
         iat=iat,
         exp=iat + ttl_seconds,
         aud=sca_did,
-        request=CSRRequest(level=level, subjectType=subject_type),
+        request=CSRRequest(level=level, subject_type=subject_type),
     )
     return sign_jwt(csr.to_claims(), holder_key)
 

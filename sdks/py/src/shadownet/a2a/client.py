@@ -7,6 +7,8 @@ from shadownet.a2a.session import mint_session_token
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    import httpx
+
     from shadownet.crypto.ed25519 import Ed25519KeyPair
 
 # RFC-0006 §Handshake — outbound side.
@@ -44,14 +46,19 @@ def build_handshake_headers(
     follow-up requests within the verifier's freshness window. Callers are
     responsible for caching the VP and deciding when to re-mint.
     """
-    token_kwargs: dict[str, object] = {
-        "holder_key": holder_key,
-        "holder_did": holder_did,
-        "audience_did": audience_did,
-    }
     if session_token_ttl_seconds is not None:
-        token_kwargs["ttl_seconds"] = session_token_ttl_seconds
-    session = mint_session_token(**token_kwargs)  # type: ignore[arg-type]
+        session = mint_session_token(
+            holder_key=holder_key,
+            holder_did=holder_did,
+            audience_did=audience_did,
+            ttl_seconds=session_token_ttl_seconds,
+        )
+    else:
+        session = mint_session_token(
+            holder_key=holder_key,
+            holder_did=holder_did,
+            audience_did=audience_did,
+        )
     headers = {"Authorization": f"Bearer {session}"}
     if presentation_jwt is not None:
         headers["X-Shadownet-Presentation"] = presentation_jwt
@@ -63,18 +70,21 @@ def make_handshake_event_hook(
     holder_key: Ed25519KeyPair,
     holder_did: str,
     presentation_provider: Callable[[str], Awaitable[str | None]],
-    audience_for: Callable[[str], str],
-):
+    audience_for: Callable[[str], str | None],
+) -> Callable[[httpx.Request], Awaitable[None]]:
     """Build an httpx ``request`` event hook that adds the handshake headers.
 
-    ``audience_for(url) -> callee_did`` tells the hook which DID is the audience
-    for a given outbound URL — usually derived from the SNS lookup the caller
-    already did. ``presentation_provider(callee_did) -> vp_jwt | None`` returns
-    a cached VP (or ``None`` if the caller wants to attach one only on the
-    first call within a session).
+    ``audience_for(url) -> callee_did | None`` tells the hook which DID is the
+    audience for a given outbound URL — usually derived from the SNS lookup the
+    caller already did. Returning ``None`` from ``audience_for`` skips the
+    handshake (useful for non-Shadownet outbound traffic that shares the client).
+
+    ``presentation_provider(callee_did) -> vp_jwt | None`` returns a cached VP
+    (or ``None`` if the caller wants to attach one only on the first call
+    within a session).
     """
 
-    async def _hook(request) -> None:  # type: ignore[no-untyped-def]
+    async def _hook(request: httpx.Request) -> None:
         callee_did = audience_for(str(request.url))
         if callee_did is None:
             return

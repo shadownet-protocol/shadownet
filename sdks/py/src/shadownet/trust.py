@@ -38,7 +38,7 @@ class TrustStore(BaseModel):
     def from_pairs(cls, pairs: list[tuple[str, list[str]]]) -> TrustStore:
         return cls(
             entries=tuple(
-                TrustEntry(issuer=issuer, acceptedLevels=tuple(levels)) for issuer, levels in pairs
+                TrustEntry(issuer=issuer, accepted_levels=tuple(levels)) for issuer, levels in pairs
             )
         )
 

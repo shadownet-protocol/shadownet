@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from shadownet.logging import get_logger
 from shadownet.mcp.tools import (
@@ -85,10 +85,12 @@ def register_shadownet_tools(
         grants: list[str] | None = None,
     ) -> AddContactOutput:
         return await sidecar.social_add_contact(
-            AddContactInput(
-                shadowname=shadowname,
-                displayName=displayName,
-                grants=grants or [],
+            AddContactInput.model_validate(
+                {
+                    "shadowname": shadowname,
+                    "displayName": displayName,
+                    "grants": grants or [],
+                }
             )
         )
 
@@ -96,15 +98,17 @@ def register_shadownet_tools(
     async def _send(
         contactId: str,
         interaction: str,
-        payload: dict,
+        payload: dict[str, Any],
         intentId: str | None = None,
     ) -> SendOutput:
         return await sidecar.social_send(
-            SendInput(
-                contactId=contactId,
-                interaction=interaction,
-                intentId=intentId,
-                payload=payload,
+            SendInput.model_validate(
+                {
+                    "contactId": contactId,
+                    "interaction": interaction,
+                    "intentId": intentId,
+                    "payload": payload,
+                }
             )
         )
 
@@ -116,22 +120,26 @@ def register_shadownet_tools(
         limit: int | None = None,
     ) -> InboxOutput:
         return await sidecar.social_inbox(
-            InboxInput(
-                since=since,
-                interaction=interaction,
-                contactId=contactId,
-                limit=limit,
+            InboxInput.model_validate(
+                {
+                    "since": since,
+                    "interaction": interaction,
+                    "contactId": contactId,
+                    "limit": limit,
+                }
             )
         )
 
     @server.tool(name="social_respond", description="Respond within an existing intent.")
-    async def _respond(intentId: str, payload: dict) -> RespondOutput:
-        return await sidecar.social_respond(RespondInput(intentId=intentId, payload=payload))
+    async def _respond(intentId: str, payload: dict[str, Any]) -> RespondOutput:
+        return await sidecar.social_respond(
+            RespondInput.model_validate({"intentId": intentId, "payload": payload})
+        )
 
     @server.tool(name="social_grant", description="Grant or revoke a per-contact permission.")
     async def _grant(contactId: str, grant: str, allowed: bool) -> GrantOutput:
         return await sidecar.social_grant(
-            GrantInput(contactId=contactId, grant=grant, allowed=allowed)
+            GrantInput.model_validate({"contactId": contactId, "grant": grant, "allowed": allowed})
         )
 
     @server.tool(name="social_identity", description="Return the Sidecar's own identity.")
@@ -160,7 +168,9 @@ def register_shadownet_tools(
             description="Explicitly trigger a credential presentation to a peer.",
         )
         async def _present(contactId: str, nonce: str | None = None) -> PresentOutput:
-            return await sidecar.social_present(PresentInput(contactId=contactId, nonce=nonce))
+            return await sidecar.social_present(
+                PresentInput.model_validate({"contactId": contactId, "nonce": nonce})
+            )
 
     if "audit" in optional:
 
