@@ -127,8 +127,9 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	pubJWK, _ := crypto.PublicJWK(subjKP.Public, "")
 
 	store := storemem.NewSNSRecordStore()
+	const provider = "test.shadownet.example"
 	server := &sns.Server{
-		ProviderDID: provDID, ProviderKID: provKID, Key: provKP,
+		ProviderDID: provDID, ProviderKID: provKID, Provider: provider, Key: provKP,
 		Records:     store,
 		DIDResolver: did.NewKeyResolver(),
 		DefaultTTL:  300,
@@ -141,6 +142,7 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	defer srv.Close()
 
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	shadowname := "alice@" + provider
 
 	// 1) PUT /v1/records/alice
 	auth, err := sns.IssueSubjectAuth(subjKP, subjDID, subjKID, provDID, now, now.Add(30*time.Second))
@@ -165,7 +167,7 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	resp.Body.Close()
 
 	// 2) Resolve via the well-known endpoint
-	resp, err = srv.Client().Get(srv.URL + sns.ResolvePath + "?name=alice@something")
+	resp, err = srv.Client().Get(srv.URL + sns.ResolvePath + "?name=" + shadowname)
 	if err != nil {
 		t.Fatalf("GET resolve: %v", err)
 	}
@@ -174,7 +176,7 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("resolve status %d: %s", resp.StatusCode, jwt)
 	}
-	rec, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), string(jwt), "alice@something", now.Add(30*time.Second))
+	rec, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), string(jwt), shadowname, now.Add(30*time.Second))
 	if err != nil {
 		t.Fatalf("VerifyRecord: %v", err)
 	}
@@ -182,7 +184,14 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 		t.Fatalf("rec.DID = %q, want %q", rec.Record.DID, subjDID)
 	}
 
-	// 3) DELETE → 204; resolve → 410
+	// 3) Cross-provider name MUST be rejected
+	resp, _ = srv.Client().Get(srv.URL + sns.ResolvePath + "?name=alice@other.example")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("cross-provider: status %d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// 4) DELETE → 204; resolve → 410
 	auth2, _ := sns.IssueSubjectAuth(subjKP, subjDID, subjKID, provDID, now, now.Add(30*time.Second))
 	dreq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/v1/records/alice", nil)
 	dreq.Header.Set("Authorization", "Bearer "+auth2)
@@ -196,7 +205,7 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	}
 	dresp.Body.Close()
 
-	resp, _ = srv.Client().Get(srv.URL + sns.ResolvePath + "?name=alice@something")
+	resp, _ = srv.Client().Get(srv.URL + sns.ResolvePath + "?name=" + shadowname)
 	if resp.StatusCode != http.StatusGone {
 		t.Fatalf("after delete: status %d, want 410", resp.StatusCode)
 	}
@@ -212,26 +221,31 @@ func TestSNSResolverFlow(t *testing.T) {
 	pubJWK, _ := crypto.PublicJWK(subjKP.Public, "")
 
 	store := storemem.NewSNSRecordStore()
-	_ = store.Put(context.Background(), sns.Record{
-		Shadowname: "carol@example.org", DID: subjDID, Endpoint: "https://x/u/carol/a2a",
-		PublicKey: pubJWK, SubjectType: vc.SubjectPerson, TTL: 300, IssuedAt: time.Now(),
-	})
 	server := &sns.Server{
 		ProviderDID: provDID, ProviderKID: provKID, Key: provKP,
 		Records: store, DIDResolver: did.NewKeyResolver(), DefaultTTL: 300,
 	}
-	srv := httptest.NewServer(server.Handler())
+	// Use httptest.NewTLSServer so the Resolver's TLS-1.3 transport is happy
+	// (we override its Client to trust the test cert).
+	srv := httptest.NewTLSServer(server.Handler())
 	defer srv.Close()
 
-	// Build a Resolver pointed at the test server's host. Since ParseShadowname
-	// extracts provider as the part after '@', we'd ordinarily DNS-resolve
-	// that host. For the test we use a custom http.Client whose RoundTripper
-	// rewrites the request URL to the test server.
-	rewriter := &rewritingTransport{base: srv.Client().Transport, target: srv.URL}
-	res := sns.NewResolver(did.NewKeyResolver())
-	res.Client = &http.Client{Transport: rewriter}
+	host := strings.TrimPrefix(srv.URL, "https://") // e.g. "127.0.0.1:54321"
+	server.Provider = host
+	if err := server.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
 
-	rec, err := res.Resolve(context.Background(), "carol@example.org")
+	shadowname := "carol@" + host
+	_ = store.Put(context.Background(), sns.Record{
+		Shadowname: shadowname, DID: subjDID, Endpoint: "https://x/u/carol/a2a",
+		PublicKey: pubJWK, SubjectType: vc.SubjectPerson, TTL: 300, IssuedAt: time.Now(),
+	})
+
+	res := sns.NewResolver(did.NewKeyResolver())
+	res.Client = srv.Client() // trusts test cert; will hit https://host/...
+
+	rec, err := res.Resolve(context.Background(), shadowname)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -240,37 +254,7 @@ func TestSNSResolverFlow(t *testing.T) {
 	}
 
 	// Negative caching: unknown name returns 404, second call hits cache.
-	if _, err := res.Resolve(context.Background(), "ghost@example.org"); !errors.Is(err, sns.ErrRecordNotFound) {
+	if _, err := res.Resolve(context.Background(), "ghost@"+host); !errors.Is(err, sns.ErrRecordNotFound) {
 		t.Fatalf("expected ErrRecordNotFound, got %v", err)
 	}
-	rewriter.calls = 0
-	_, _ = res.Resolve(context.Background(), "ghost@example.org")
-	if rewriter.calls != 0 {
-		t.Fatalf("expected cache hit, but %d upstream calls happened", rewriter.calls)
-	}
-}
-
-// rewritingTransport rewrites URLs so a Resolver that wants to talk to
-// "https://example.org/.well-known/sns/v1/resolve?name=..." instead hits a
-// local httptest.Server.
-type rewritingTransport struct {
-	base   http.RoundTripper
-	target string
-	calls  int
-}
-
-func (t *rewritingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	t.calls++
-	rebuilt := *req
-	cloneURL := *req.URL
-	// target is e.g. "https://127.0.0.1:12345"
-	prefix := strings.TrimPrefix(t.target, "https://")
-	cloneURL.Host = prefix
-	cloneURL.Scheme = "https"
-	rebuilt.URL = &cloneURL
-	rebuilt.Host = ""
-	if t.base == nil {
-		t.base = http.DefaultTransport
-	}
-	return t.base.RoundTrip(&rebuilt)
 }

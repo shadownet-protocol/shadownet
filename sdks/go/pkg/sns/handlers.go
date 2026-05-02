@@ -3,7 +3,6 @@
 package sns
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +27,10 @@ const MaxSubjectAuthLifetime = 60 * time.Second
 type Server struct {
 	ProviderDID string
 	ProviderKID string
+	// Provider is the host portion that appears in shadownames this server
+	// authoritatively serves (e.g. "shadownet.example"). For did:web-based
+	// SNS deployments this is typically the did:web body. Required.
+	Provider    string
 	Key         crypto.KeyPair
 	Records     RecordStore
 	DIDResolver did.Resolver
@@ -42,6 +45,8 @@ func (s *Server) Validate() error {
 		return errors.New("sns: Server.ProviderDID required")
 	case s.ProviderKID == "":
 		return errors.New("sns: Server.ProviderKID required")
+	case s.Provider == "":
+		return errors.New("sns: Server.Provider required")
 	case s.Records == nil:
 		return errors.New("sns: Server.Records required")
 	case s.DIDResolver == nil:
@@ -112,6 +117,10 @@ func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
 	canon, err := ParseShadowname(name)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !strings.EqualFold(canon.Provider, s.Provider) {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("provider %q does not match this SNS server (%q)", canon.Provider, s.Provider))
 		return
 	}
 	rec, err := s.Records.Get(r.Context(), canon.Local)
@@ -224,7 +233,7 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	canon := Shadowname{Local: local, Provider: providerFromDID(s.ProviderDID)}
+	canon := Shadowname{Local: local, Provider: s.Provider}
 	record := Record{
 		Shadowname:  canon.String(),
 		DID:         req.DID,
@@ -352,34 +361,8 @@ func IssueSubjectAuth(kp crypto.KeyPair, subject, subjectKeyID, audience string,
 	}, crypto.SignerOptions{KeyID: subjectKeyID, Type: "JWT"})
 }
 
-// providerFromDID extracts the host portion of a did:web for use as the
-// shadowname provider segment. For did:key DIDs (used in tests) returns the
-// DID itself — operators won't run did:key SNS in production.
-func providerFromDID(d string) string {
-	if !strings.HasPrefix(d, "did:web:") {
-		return d
-	}
-	body := strings.TrimPrefix(d, "did:web:")
-	// First colon-separated segment is the domain (with %3A for port).
-	if i := strings.IndexByte(body, ':'); i >= 0 {
-		body = body[:i]
-	}
-	if dec, err := unescapeColon(body); err == nil {
-		return dec
-	}
-	return body
-}
-
-func unescapeColon(s string) (string, error) {
-	return strings.ReplaceAll(s, "%3A", ":"), nil
-}
-
 func writeErr(w http.ResponseWriter, status int, detail string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": http.StatusText(status), "detail": detail, "shadownet:v": Version})
 }
-
-// noContext is unused but reserved for handlers that need to operate without
-// an *http.Request context.
-var _ = context.Background
