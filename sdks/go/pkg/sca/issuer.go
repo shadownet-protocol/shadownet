@@ -32,6 +32,10 @@ type Issuer struct {
 	Methods    map[string]ProofMethod // keyed by ProofMethod.Name()
 	Policy     Policy
 	Now        func() time.Time
+
+	// ReadyCheck is invoked by /readyz. nil = always ready.
+	// Implementations typically ping their backing store.
+	ReadyCheck func(context.Context) error
 }
 
 // Validate confirms an Issuer has all dependencies wired.

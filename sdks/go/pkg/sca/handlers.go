@@ -101,6 +101,33 @@ func (i *Issuer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /issuance", i.authenticated(i.serveIssuance))
 	mux.Handle("POST /freshness", i.authenticated(i.serveFreshness))
 	mux.Handle("GET /status/{listID}", http.HandlerFunc(i.serveStatusList))
+
+	// Operational probes: /healthz aliases /livez for tools that only know
+	// one path. /readyz invokes ReadyCheck (e.g. a DB ping) and reports 503
+	// when the dependency is unreachable.
+	mux.Handle("GET /healthz", http.HandlerFunc(serveLive))
+	mux.Handle("GET /livez", http.HandlerFunc(serveLive))
+	mux.Handle("GET /readyz", http.HandlerFunc(i.serveReady))
+}
+
+func serveLive(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write([]byte(`{"status":"ok","shadownet:v":"0.1"}`))
+}
+
+func (i *Issuer) serveReady(w http.ResponseWriter, r *http.Request) {
+	if i.ReadyCheck != nil {
+		if err := i.ReadyCheck(r.Context()); err != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "not-ready", "detail": err.Error(), "shadownet:v": "0.1",
+			})
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write([]byte(`{"status":"ready","shadownet:v":"0.1"}`))
 }
 
 // authHandler is an http handler that requires a valid subject-auth JWT.

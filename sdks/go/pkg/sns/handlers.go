@@ -3,6 +3,7 @@
 package sns
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,10 @@ type Server struct {
 	DIDResolver did.Resolver
 	DefaultTTL  int
 	Now         func() time.Time
+
+	// ReadyCheck is invoked by /readyz. nil = always ready.
+	// Implementations typically ping their backing store.
+	ReadyCheck func(context.Context) error
 }
 
 // Validate confirms a Server has all dependencies wired.
@@ -84,6 +89,30 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET "+ResolvePath, http.HandlerFunc(s.serveResolve))
 	mux.Handle("PUT /v1/records/{local}", http.HandlerFunc(s.serveUpdate))
 	mux.Handle("DELETE /v1/records/{local}", http.HandlerFunc(s.serveDelete))
+
+	mux.Handle("GET /healthz", http.HandlerFunc(serveLive))
+	mux.Handle("GET /livez", http.HandlerFunc(serveLive))
+	mux.Handle("GET /readyz", http.HandlerFunc(s.serveReady))
+}
+
+func serveLive(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write([]byte(`{"status":"ok","shadownet:v":"0.1"}`))
+}
+
+func (s *Server) serveReady(w http.ResponseWriter, r *http.Request) {
+	if s.ReadyCheck != nil {
+		if err := s.ReadyCheck(r.Context()); err != nil {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": "not-ready", "detail": err.Error(), "shadownet:v": "0.1",
+			})
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write([]byte(`{"status":"ready","shadownet:v":"0.1"}`))
 }
 
 func (s *Server) serveDIDDocument(w http.ResponseWriter, _ *http.Request) {
