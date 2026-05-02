@@ -49,7 +49,19 @@ The fixture set is the protocol's empirical contract. New normative behavior in 
 - **Python**: 3.12+
 - **Test runner**: `pytest`
 - **HTTP client**: `httpx` (async)
-- **JWT/JOSE**: shared with `shadownet-py`
+- **JWT / DID / VC primitives**: imported from [`shadownet-py`](../shadownet-py/)
+  (the SDK is a runtime dependency; the safety against an SDK bug masking a
+  wire bug is the cross-SDK fixture regen — see [`CLAUDE.md`](./CLAUDE.md)
+  §Fixture discipline).
+
+While `shadownet-py` is pre-release, it is consumed as an editable path
+dependency declared in `pyproject.toml` (`[tool.uv.sources]`). The path
+swap to a pinned PyPI version is mechanical and lands when the SDK
+publishes its first release.
+
+To run the **fixture regeneration** CLI you also need a Go toolchain
+(Go 1.25+) and a checkout of [`shadownet-go`](../shadownet-go/). Running
+the conformance suite itself never needs Go.
 
 ## Distribution
 
