@@ -67,13 +67,18 @@ class DIDDocument(BaseModel):
     )
 
     def find_key(self, key_id: str | None = None) -> Ed25519KeyPair:
-        """Return the keypair for ``key_id`` (full DID URL or fragment), or the first one."""
+        """Return the keypair for ``key_id``, or the first verification method if not specified.
+
+        ``key_id`` may be a full DID URL (``did:web:x#key-1``), a bare fragment
+        (``key-1`` or ``#key-1``), or ``None``. A fragment-less DID is treated as
+        "no specific key" and resolves to the document's first verification method.
+        """
         if not self.verification_method:
             raise ValueError(f"DID document {self.id} has no verification methods")
-        if key_id is None:
+        if key_id is None or "#" not in key_id:
             return self.verification_method[0].to_keypair()
-        target = key_id if "#" in key_id else f"{self.id}#{key_id.lstrip('#')}"
+        fragment = key_id.split("#", 1)[1]
         for vm in self.verification_method:
-            if vm.id == target or vm.id.endswith(target.split("#", 1)[-1]):
+            if vm.id == key_id or vm.id.split("#", 1)[-1] == fragment:
                 return vm.to_keypair()
         raise ValueError(f"verification method {key_id!r} not found in {self.id}")
