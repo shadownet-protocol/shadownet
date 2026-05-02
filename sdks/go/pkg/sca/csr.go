@@ -33,7 +33,7 @@ type CSR struct {
 // VerifyCSR parses and verifies a CSR JWT against its declared issuer DID.
 // The returned CSR is ready for the Issuer to compare against the bound
 // proof session.
-func VerifyCSR(ctx context.Context, r did.Resolver, compact string, expectedAud string, now time.Time) (*CSR, error) {
+func VerifyCSR(ctx context.Context, r did.Resolver, compact, expectedAud string, now time.Time) (*CSR, error) {
 	hdr, err := crypto.PeekHeader(compact)
 	if err != nil {
 		return nil, New(http.StatusBadRequest, CodeCSRInvalid, "parse CSR header").wrap(err)

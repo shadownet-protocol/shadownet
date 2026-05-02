@@ -19,9 +19,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	cmd := args[1]
 	rest := args[2:]
-	var (
-		err error
-	)
+	var err error
 	switch cmd {
 	case "keygen":
 		err = Keygen(rest, stdout, stderr)

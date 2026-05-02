@@ -70,7 +70,7 @@ func mustGenerate(t *testing.T) crypto.KeyPair {
 	return kp
 }
 
-func (f *vpFixture) issueCred(t *testing.T, level string, jti string, lifetime time.Duration) string {
+func (f *vpFixture) issueCred(t *testing.T, level, jti string, lifetime time.Duration) string {
 	t.Helper()
 	jwt, err := IssueCredential(f.issuerKP, Credential{
 		Issuer: f.issuer, Subject: f.holder, JTI: jti,
