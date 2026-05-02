@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -73,7 +74,7 @@ func run() error {
 		return errors.New("--config is required")
 	}
 
-	logger := newLogger(*logLevel)
+	logger := newLogger(*logLevel, config.EnvString("SHADOWNET_LOG_FORMAT", ""))
 	slog.SetDefault(logger)
 
 	var cfg fileConfig
@@ -105,9 +106,16 @@ func run() error {
 		return errors.New("policy.statusListBase required")
 	}
 
-	sessions, issuance, revocation, err := openStores(cfg.Storage.Driver, cfg.Storage.DSN)
+	sessions, issuance, revocation, db, err := openStores(cfg.Storage.Driver, cfg.Storage.DSN)
 	if err != nil {
 		return err
+	}
+	if db != nil {
+		defer func() {
+			if cerr := db.Close(); cerr != nil {
+				logger.Warn("storage close", slog.String("err", cerr.Error()))
+			}
+		}()
 	}
 
 	resolver, err := buildResolver(cfg.DID)
@@ -126,7 +134,8 @@ func run() error {
 		Methods: map[string]sca.ProofMethod{
 			InstantApproval: InstantApprovalProofMethod{},
 		},
-		Policy: policy,
+		Policy:     policy,
+		ReadyCheck: readyCheck(db),
 	}
 	if err := issuer.Validate(); err != nil {
 		return err
@@ -204,17 +213,33 @@ func applyEnvOverrides(cfg *fileConfig) {
 	cfg.Storage.DSN = config.EnvString("SHADOWNET_STORAGE_DSN", cfg.Storage.DSN)
 }
 
-func openStores(driver, dsn string) (sca.SessionStore, sca.IssuanceStore, sca.RevocationStore, error) {
+// openStores returns the SCA store trio plus an optional *sql.DB to close on
+// shutdown (nil for the in-memory driver).
+func openStores(driver, dsn string) (sca.SessionStore, sca.IssuanceStore, sca.RevocationStore, *sql.DB, error) {
 	switch driver {
 	case "memory":
 		return storemem.NewSCASessionStore(),
 			storemem.NewSCAIssuanceStore(),
 			storemem.NewSCARevocationStore(sca.DefaultListID),
+			nil,
 			nil
 	case "sqlite":
 		return openSQLiteStores(dsn)
 	default:
-		return nil, nil, nil, fmt.Errorf("unknown storage driver %q", driver)
+		return nil, nil, nil, nil, fmt.Errorf("unknown storage driver %q", driver)
+	}
+}
+
+// readyCheck returns a /readyz hook that pings db, or nil when there is no DB
+// (e.g. memory driver — there's nothing external to check).
+func readyCheck(db *sql.DB) func(context.Context) error {
+	if db == nil {
+		return nil
+	}
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		return db.PingContext(ctx)
 	}
 }
 
@@ -303,15 +328,27 @@ func warnIfNotLoopback(logger *slog.Logger, addr string) {
 	}
 }
 
-func newLogger(level string) *slog.Logger {
+// newLogger builds the root slog.Logger.
+//
+// format is one of "json", "text", or "" (auto: text on a TTY, json otherwise).
+// SHADOWNET_LOG_FORMAT in the environment overrides; container images are
+// expected to ship in JSON mode for log aggregators.
+func newLogger(level, format string) *slog.Logger {
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(level)); err != nil {
 		lvl = slog.LevelInfo
 	}
-	if isTTY(os.Stderr) {
-		return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	useJSON := !isTTY(os.Stderr)
+	switch format {
+	case "json":
+		useJSON = true
+	case "text":
+		useJSON = false
 	}
-	return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	if useJSON {
+		return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	}
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
 }
 
 func isTTY(f *os.File) bool {

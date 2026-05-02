@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
 	"github.com/shadownet-protocol/shadownet-go/internal/httpx"
@@ -62,7 +64,7 @@ func run() error {
 		return errors.New("--config is required")
 	}
 
-	logger := newLogger(*logLevel)
+	logger := newLogger(*logLevel, config.EnvString("SHADOWNET_LOG_FORMAT", ""))
 	slog.SetDefault(logger)
 
 	var cfg fileConfig
@@ -96,9 +98,16 @@ func run() error {
 
 	resolver := buildResolver(cfg.DID)
 
-	store, err := openStore(cfg.Storage.Driver, cfg.Storage.DSN)
+	store, db, err := openStore(cfg.Storage.Driver, cfg.Storage.DSN)
 	if err != nil {
 		return err
+	}
+	if db != nil {
+		defer func() {
+			if cerr := db.Close(); cerr != nil {
+				logger.Warn("storage close", slog.String("err", cerr.Error()))
+			}
+		}()
 	}
 
 	server := &sns.Server{
@@ -109,6 +118,7 @@ func run() error {
 		Records:     store,
 		DIDResolver: resolver,
 		DefaultTTL:  cfg.DefaultTTL,
+		ReadyCheck:  readyCheck(db),
 	}
 	if err := server.Validate(); err != nil {
 		return err
@@ -136,21 +146,36 @@ func run() error {
 	return httpx.ListenAndServe(ctx, srv)
 }
 
-func openStore(driver, dsn string) (sns.RecordStore, error) {
+// openStore returns the record store plus an optional *sql.DB to close on
+// shutdown (nil for the in-memory driver).
+func openStore(driver, dsn string) (sns.RecordStore, *sql.DB, error) {
 	switch driver {
 	case "memory":
-		return storemem.NewSNSRecordStore(), nil
+		return storemem.NewSNSRecordStore(), nil, nil
 	case "sqlite":
 		if dsn == "" {
-			return nil, errors.New("storage.dsn required when driver = sqlite")
+			return nil, nil, errors.New("storage.dsn required when driver = sqlite")
 		}
 		db, err := storesqlite.OpenSNS(dsn)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return storesqlite.NewSNSRecordStore(db), nil
+		return storesqlite.NewSNSRecordStore(db), db, nil
 	default:
-		return nil, fmt.Errorf("unknown storage driver %q", driver)
+		return nil, nil, fmt.Errorf("unknown storage driver %q", driver)
+	}
+}
+
+// readyCheck returns a /readyz hook that pings db, or nil for the memory
+// driver where there is nothing external to verify.
+func readyCheck(db *sql.DB) func(context.Context) error {
+	if db == nil {
+		return nil
+	}
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		return db.PingContext(ctx)
 	}
 }
 
@@ -189,15 +214,24 @@ func warnIfNotLoopback(logger *slog.Logger, addr string) {
 	}
 }
 
-func newLogger(level string) *slog.Logger {
+// newLogger builds the root slog.Logger. format ∈ {"json","text",""};
+// SHADOWNET_LOG_FORMAT overrides the auto-by-TTY default.
+func newLogger(level, format string) *slog.Logger {
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(level)); err != nil {
 		lvl = slog.LevelInfo
 	}
-	if isTTY(os.Stderr) {
-		return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	useJSON := !isTTY(os.Stderr)
+	switch format {
+	case "json":
+		useJSON = true
+	case "text":
+		useJSON = false
 	}
-	return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	if useJSON {
+		return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+	}
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
 }
 
 func isTTY(f *os.File) bool {
