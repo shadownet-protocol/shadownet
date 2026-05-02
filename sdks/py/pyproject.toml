@@ -93,6 +93,7 @@ ignore = [
     "E501",   # line length handled by formatter
     "S101",   # asserts ok in tests
     "PT011",  # pytest.raises broad-match
+    "N818",   # error class names mirror spec wire codes (Revoked, LevelInsufficient, …)
 ]
 
 [tool.ruff.lint.per-file-ignores]
