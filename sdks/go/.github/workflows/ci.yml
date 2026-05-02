@@ -66,9 +66,13 @@ jobs:
           install-go: false
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v8 of the action defaults to golangci-lint v2.x; older actions ship
+        # v1 binaries that were built with Go 1.24 and can't read modules
+        # targeting Go 1.25. Pin the lint version explicitly so a future
+        # `latest` flip can't surprise us.
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.12.1
 
       - name: SPDX header check
         run: ./tools/spdx-check.sh

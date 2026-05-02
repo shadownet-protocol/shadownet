@@ -1,13 +1,14 @@
-# Lint configuration for shadownet-go.
+# Lint configuration for shadownet-go (golangci-lint v2 schema).
 # Conventions live in CLAUDE.md; this file enforces them.
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - gofumpt
     - gosec
     - govet
     - ineffassign
@@ -15,44 +16,64 @@ linters:
     - staticcheck
     - unparam
     - unused
-
-linters-settings:
-  gofumpt:
-    extra-rules: true
-  revive:
+  settings:
+    errcheck:
+      # Idiomatic Go writes/closes whose error returns are conventionally
+      # discarded; checking them adds noise without catching real bugs.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+    gosec:
+      excludes:
+        - G104 # errcheck handles unhandled errors
+        - G101 # const URIs containing the word "Credential" (RFC vocabulary), not secrets
+        - G115 # uint64<->int64 in SQLite-backed status-list indices; sizes are bounded < 2^31
+        - G304 # config.Load and crypto.LoadKeyFile read paths from operator-supplied config; that is the contract
+        - G705 # io.WriteString(w, jwt) where jwt comes from our own signing func is not a taint sink
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+          disabled: true
+        - name: var-declaration
+        - name: var-naming
+  exclusions:
     rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: exported
-      - name: increment-decrement
-      - name: indent-error-flow
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: redefines-builtin-id
-      - name: superfluous-else
-      - name: time-naming
-      - name: unexported-return
-      - name: unreachable-code
-      - name: unused-parameter
-        disabled: true
-      - name: var-declaration
-      - name: var-naming
-  gosec:
-    excludes:
-      - G104 # errcheck handles unhandled errors
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - revive
+          - unparam
+
+# v2 separates formatters from linters; gofumpt lives here.
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-        - unparam
   max-issues-per-linter: 0
   max-same-issues: 0
