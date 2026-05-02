@@ -1,0 +1,58 @@
+# Lint configuration for shadownet-go.
+# Conventions live in CLAUDE.md; this file enforces them.
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gofumpt
+    - gosec
+    - govet
+    - ineffassign
+    - revive
+    - staticcheck
+    - unparam
+    - unused
+
+linters-settings:
+  gofumpt:
+    extra-rules: true
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: superfluous-else
+      - name: time-naming
+      - name: unexported-return
+      - name: unreachable-code
+      - name: unused-parameter
+        disabled: true
+      - name: var-declaration
+      - name: var-naming
+  gosec:
+    excludes:
+      - G104 # errcheck handles unhandled errors
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - unparam
+  max-issues-per-linter: 0
+  max-same-issues: 0

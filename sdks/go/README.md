@@ -19,20 +19,25 @@ It is not "the" Shadownet implementation. It is one of several language SDKs (al
 
 ```
 pkg/                   public, importable
-  crypto/              Ed25519, JWT/JWS
+  crypto/              Ed25519, JWS sign/verify
   did/                 did:key, did:web
   vc/                  VC-JWT issuance + verification + BitstringStatusList
   a2a/                 A2A client + server helpers
-  sca/                 SCA library (issuance flow, trust store, predicate eval)
-  sns/                 SNS library (record signing, resolution)
+  sca/                 SCA library (issuance flow, ProofMethod + Store interfaces, predicate eval)
+  sns/                 SNS library (record signing, resolution, Store interface)
 cmd/
   sca-server/          reference SCA HTTP server
   sns-server/          reference SNS HTTP server
   shadownet/           CLI
 internal/
-  store/               pluggable storage (sqlite, postgres)
-api/                   OpenAPI specs derived from the RFCs
+  storesqlite/         SQLite-backed Store impls used by the reference servers
+  storemem/            in-memory Store impls for tests and dev
+api/                   OpenAPI / JSON Schema mirrors of the RFC endpoints
 ```
+
+Storage interfaces live in `pkg/sca` and `pkg/sns`; the reference servers ship in-memory and SQLite (`modernc.org/sqlite`, CGo-free) implementations. Operators that need other backends provide their own `Store` implementations in their deployment repo.
+
+Proof-method implementations are likewise out of `pkg/`: `pkg/sca` defines the `ProofMethod` interface, and `cmd/sca-server` ships a single `InstantApprovalProofMethod` for local development. SMTP, Stripe Identity, biometric kiosks, and similar live in operator deployments.
 
 The directory tree is not committed yet — added incrementally as work lands.
 
@@ -44,4 +49,4 @@ The directory tree is not committed yet — added incrementally as work lands.
 
 ## License
 
-TBD.
+MIT. See [`LICENSE`](./LICENSE).
