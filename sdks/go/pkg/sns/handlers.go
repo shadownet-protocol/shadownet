@@ -1,0 +1,385 @@
+// SPDX-License-Identifier: MIT
+
+package sns
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+)
+
+// MaxRequestBytes caps an inbound JSON body.
+const MaxRequestBytes = 64 * 1024
+
+// MaxSubjectAuthLifetime caps the (exp - iat) of the subject-auth JWT used
+// for record updates. Mirrors RFC-0004 §Common (60s) for consistency.
+const MaxSubjectAuthLifetime = 60 * time.Second
+
+// Server is the SNS provider's request handler.
+type Server struct {
+	ProviderDID string
+	ProviderKID string
+	Key         crypto.KeyPair
+	Records     RecordStore
+	DIDResolver did.Resolver
+	DefaultTTL  int
+	Now         func() time.Time
+}
+
+// Validate confirms a Server has all dependencies wired.
+func (s *Server) Validate() error {
+	switch {
+	case s.ProviderDID == "":
+		return errors.New("sns: Server.ProviderDID required")
+	case s.ProviderKID == "":
+		return errors.New("sns: Server.ProviderKID required")
+	case s.Records == nil:
+		return errors.New("sns: Server.Records required")
+	case s.DIDResolver == nil:
+		return errors.New("sns: Server.DIDResolver required")
+	}
+	if d, _ := did.SplitDIDURL(s.ProviderKID); d != s.ProviderDID {
+		return fmt.Errorf("sns: ProviderKID %q does not match ProviderDID %q", s.ProviderKID, s.ProviderDID)
+	}
+	if s.DefaultTTL == 0 {
+		s.DefaultTTL = 300
+	}
+	if s.DefaultTTL < MinTTL || s.DefaultTTL > MaxTTL {
+		return fmt.Errorf("sns: DefaultTTL %d out of [%d,%d]", s.DefaultTTL, MinTTL, MaxTTL)
+	}
+	return nil
+}
+
+func (s *Server) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now().UTC()
+}
+
+// Handler returns an http.Handler with SNS routes registered.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	s.RegisterRoutes(mux)
+	return mux
+}
+
+// RegisterRoutes attaches the SNS endpoints to mux.
+func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+	mux.Handle("GET /.well-known/did.json", http.HandlerFunc(s.serveDIDDocument))
+	mux.Handle("GET "+ResolvePath, http.HandlerFunc(s.serveResolve))
+	mux.Handle("PUT /v1/records/{local}", http.HandlerFunc(s.serveUpdate))
+	mux.Handle("DELETE /v1/records/{local}", http.HandlerFunc(s.serveDelete))
+}
+
+func (s *Server) serveDIDDocument(w http.ResponseWriter, _ *http.Request) {
+	jwk, err := crypto.PublicJWK(s.Key.Public, s.ProviderKID)
+	if err != nil {
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	doc := map[string]any{
+		"id": s.ProviderDID,
+		"verificationMethod": []map[string]any{{
+			"id":           s.ProviderKID,
+			"type":         "JsonWebKey2020",
+			"controller":   s.ProviderDID,
+			"publicKeyJwk": jwk,
+		}},
+		"authentication":  []string{s.ProviderKID},
+		"assertionMethod": []string{s.ProviderKID},
+	}
+	w.Header().Set("Content-Type", "application/did+json")
+	w.Header().Set("Cache-Control", "max-age=3600")
+	_ = json.NewEncoder(w).Encode(doc)
+}
+
+func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing name")
+		return
+	}
+	canon, err := ParseShadowname(name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rec, err := s.Records.Get(r.Context(), canon.Local)
+	switch {
+	case errors.Is(err, ErrRecordNotFound):
+		writeErr(w, http.StatusNotFound, "no such shadowname")
+		return
+	case errors.Is(err, ErrRecordTombstoned):
+		writeErr(w, http.StatusGone, "shadowname tombstoned")
+		return
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, "internal")
+		return
+	}
+	if rec.Shadowname == "" {
+		rec.Shadowname = canon.String()
+	}
+	now := s.now()
+	jwt, err := IssueRecord(s.Key, s.ProviderDID, s.ProviderKID, rec, now)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "issue record: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/jwt")
+	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", rec.TTL))
+	_, _ = io.WriteString(w, jwt)
+}
+
+// UpdateRequest is the body of PUT /v1/records/{local}.
+//
+// RFC-0005 leaves the precise wire shape of the update endpoint to the
+// implementation; this is the shape `cmd/sns-server` uses. It is signed
+// implicitly by the Authorization Bearer JWT (which signs the request).
+type UpdateRequest struct {
+	Version           string         `json:"shadownet:v"`
+	DID               string         `json:"did"`
+	Endpoint          string         `json:"endpoint"`
+	PublicKey         crypto.JWK     `json:"publicKey"`
+	SubjectType       vc.SubjectType `json:"subjectType"`
+	TTL               int            `json:"ttl,omitempty"`
+	RotationStatement string         `json:"rotationStatement,omitempty"`
+}
+
+func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
+	local := strings.ToLower(r.PathValue("local"))
+	if local == "" {
+		writeErr(w, http.StatusBadRequest, "missing local")
+		return
+	}
+	auth, err := s.verifySubjectAuth(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	defer r.Body.Close()
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxRequestBytes))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "read body")
+		return
+	}
+	var req UpdateRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "decode body: "+err.Error())
+		return
+	}
+	if req.DID != auth.subject {
+		writeErr(w, http.StatusBadRequest, "body.did does not match Authorization JWT subject")
+		return
+	}
+	if req.Endpoint == "" || req.PublicKey.X == "" {
+		writeErr(w, http.StatusBadRequest, "did, endpoint, publicKey required")
+		return
+	}
+	ttl := req.TTL
+	if ttl == 0 {
+		ttl = s.DefaultTTL
+	}
+	if ttl < MinTTL || ttl > MaxTTL {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("ttl %d out of [%d,%d]", ttl, MinTTL, MaxTTL))
+		return
+	}
+
+	// If a record already exists, the update must come from the same DID OR
+	// from a new DID that proves rotation from the existing one.
+	prior, priorErr := s.Records.Get(r.Context(), local)
+	switch {
+	case errors.Is(priorErr, ErrRecordNotFound):
+		// fresh registration; no rotation required
+	case errors.Is(priorErr, ErrRecordTombstoned):
+		writeErr(w, http.StatusGone, "shadowname tombstoned")
+		return
+	case priorErr != nil:
+		writeErr(w, http.StatusInternalServerError, "lookup: "+priorErr.Error())
+		return
+	default:
+		if prior.DID != req.DID {
+			if req.RotationStatement == "" {
+				writeErr(w, http.StatusBadRequest, "key rotation requires rotationStatement")
+				return
+			}
+			stmt, err := did.VerifyKeyRotation(r.Context(), s.DIDResolver, req.RotationStatement)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, "rotation statement invalid: "+err.Error())
+				return
+			}
+			if stmt.Issuer != prior.DID || stmt.Subject != req.DID {
+				writeErr(w, http.StatusBadRequest, "rotation statement does not chain prior DID to new DID")
+				return
+			}
+		}
+	}
+
+	canon := Shadowname{Local: local, Provider: providerFromDID(s.ProviderDID)}
+	record := Record{
+		Shadowname:  canon.String(),
+		DID:         req.DID,
+		Endpoint:    req.Endpoint,
+		PublicKey:   req.PublicKey,
+		SubjectType: req.SubjectType,
+		TTL:         ttl,
+		IssuedAt:    s.now(),
+	}
+	if err := s.Records.Put(r.Context(), record); err != nil {
+		writeErr(w, http.StatusInternalServerError, "store: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{"shadownet:v": Version, "shadowname": canon.String()})
+}
+
+func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request) {
+	local := strings.ToLower(r.PathValue("local"))
+	auth, err := s.verifySubjectAuth(r)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	prior, perr := s.Records.Get(r.Context(), local)
+	if errors.Is(perr, ErrRecordNotFound) {
+		writeErr(w, http.StatusNotFound, "no such record")
+		return
+	}
+	if perr != nil && !errors.Is(perr, ErrRecordTombstoned) {
+		writeErr(w, http.StatusInternalServerError, "lookup: "+perr.Error())
+		return
+	}
+	if !errors.Is(perr, ErrRecordTombstoned) && prior.DID != auth.subject {
+		writeErr(w, http.StatusForbidden, "Authorization DID is not the record owner")
+		return
+	}
+	if err := s.Records.Delete(r.Context(), local); err != nil {
+		writeErr(w, http.StatusInternalServerError, "delete: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type subjectAuthClaims struct {
+	subject string
+}
+
+func (s *Server) verifySubjectAuth(r *http.Request) (*subjectAuthClaims, error) {
+	const prefix = "Bearer "
+	hv := r.Header.Get("Authorization")
+	if !strings.HasPrefix(hv, prefix) {
+		return nil, errors.New("missing or non-bearer Authorization")
+	}
+	compact := strings.TrimSpace(hv[len(prefix):])
+	hdr, err := crypto.PeekHeader(compact)
+	if err != nil {
+		return nil, fmt.Errorf("parse auth: %w", err)
+	}
+	if hdr.Kid == "" {
+		return nil, errors.New("auth missing kid")
+	}
+	pub, err := did.LookupKey(r.Context(), s.DIDResolver, hdr.Kid)
+	if err != nil {
+		return nil, fmt.Errorf("resolve auth key: %w", err)
+	}
+	var w struct {
+		Iss     string `json:"iss"`
+		Aud     string `json:"aud"`
+		Iat     int64  `json:"iat"`
+		Exp     int64  `json:"exp"`
+		Purpose string `json:"purpose"`
+		Version string `json:"shadownet:v"`
+	}
+	if _, err := crypto.VerifyJWT(pub, compact, &w); err != nil {
+		return nil, fmt.Errorf("verify auth: %w", err)
+	}
+	if w.Iss == "" || w.Aud == "" {
+		return nil, errors.New("auth missing iss/aud")
+	}
+	if w.Aud != s.ProviderDID {
+		return nil, fmt.Errorf("auth aud %q does not match SNS DID %q", w.Aud, s.ProviderDID)
+	}
+	if d, _ := did.SplitDIDURL(hdr.Kid); d != w.Iss {
+		return nil, errors.New("auth kid DID does not match iss")
+	}
+	if w.Iat == 0 || w.Exp == 0 || w.Exp <= w.Iat {
+		return nil, errors.New("auth iat/exp invalid")
+	}
+	if time.Duration(w.Exp-w.Iat)*time.Second > MaxSubjectAuthLifetime {
+		return nil, errors.New("auth lifetime > 60s")
+	}
+	if !s.now().IsZero() && s.now().Unix() >= w.Exp {
+		return nil, errors.New("auth expired")
+	}
+	if w.Purpose != "sns-update" {
+		return nil, fmt.Errorf("auth purpose %q != sns-update", w.Purpose)
+	}
+	return &subjectAuthClaims{subject: w.Iss}, nil
+}
+
+// IssueSubjectAuth helps clients (CLI, agent SDK consumers) build the
+// Authorization JWT for SNS update/delete requests.
+func IssueSubjectAuth(kp crypto.KeyPair, subject, subjectKeyID, audience string, iat, exp time.Time) (string, error) {
+	if subject == "" || subjectKeyID == "" || audience == "" {
+		return "", errors.New("sns: subject, subjectKeyID, audience required")
+	}
+	if !exp.After(iat) {
+		return "", errors.New("sns: exp must be after iat")
+	}
+	if exp.Sub(iat) > MaxSubjectAuthLifetime {
+		return "", fmt.Errorf("sns: subject-auth lifetime %v exceeds %v", exp.Sub(iat), MaxSubjectAuthLifetime)
+	}
+	return crypto.SignJWT(kp.Private, struct {
+		Iss     string `json:"iss"`
+		Aud     string `json:"aud"`
+		Iat     int64  `json:"iat"`
+		Exp     int64  `json:"exp"`
+		Purpose string `json:"purpose"`
+		Version string `json:"shadownet:v"`
+	}{
+		Iss: subject, Aud: audience, Iat: iat.Unix(), Exp: exp.Unix(),
+		Purpose: "sns-update", Version: Version,
+	}, crypto.SignerOptions{KeyID: subjectKeyID, Type: "JWT"})
+}
+
+// providerFromDID extracts the host portion of a did:web for use as the
+// shadowname provider segment. For did:key DIDs (used in tests) returns the
+// DID itself — operators won't run did:key SNS in production.
+func providerFromDID(d string) string {
+	if !strings.HasPrefix(d, "did:web:") {
+		return d
+	}
+	body := strings.TrimPrefix(d, "did:web:")
+	// First colon-separated segment is the domain (with %3A for port).
+	if i := strings.IndexByte(body, ':'); i >= 0 {
+		body = body[:i]
+	}
+	if dec, err := unescapeColon(body); err == nil {
+		return dec
+	}
+	return body
+}
+
+func unescapeColon(s string) (string, error) {
+	return strings.ReplaceAll(s, "%3A", ":"), nil
+}
+
+func writeErr(w http.ResponseWriter, status int, detail string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": http.StatusText(status), "detail": detail, "shadownet:v": Version})
+}
+
+// noContext is unused but reserved for handlers that need to operate without
+// an *http.Request context.
+var _ = context.Background
