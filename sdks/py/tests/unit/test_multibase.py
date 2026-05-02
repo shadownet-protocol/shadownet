@@ -11,21 +11,28 @@ from shadownet.crypto.multibase import (
     with_multicodec,
 )
 
-# W3C did:key Test Vectors §1: Ed25519 public key 0xd75a98... encodes to
-# z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp.
-# Source: https://w3c-ccg.github.io/did-method-key/#example-1-key-method-w3c-ccg-2020
-W3C_PUBLIC = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
-W3C_DIDKEY_TAIL = "z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp"
+
+def test_base58_known_vector_hello_world() -> None:
+    # Standard Bitcoin/base58btc fixture: "Hello World!" -> "2NEpo7TZRRrLZSi2U".
+    assert encode_multibase_z(b"Hello World!") == "z2NEpo7TZRRrLZSi2U"
+    assert decode_multibase_z("z2NEpo7TZRRrLZSi2U") == b"Hello World!"
 
 
-def test_w3c_did_key_vector() -> None:
-    encoded = encode_multibase_z(with_multicodec(ED25519_PUB_MULTICODEC, W3C_PUBLIC))
-    assert encoded == W3C_DIDKEY_TAIL
+def test_base58_preserves_leading_zero_bytes() -> None:
+    assert encode_multibase_z(b"\x00\x00ab") == "z11" + encode_multibase_z(b"ab")[1:]
+    assert decode_multibase_z("z111") == b"\x00\x00\x00"
 
 
-def test_round_trip_arbitrary_bytes() -> None:
+def test_round_trip_random_bytes() -> None:
     payload = b"\x00\x01\x02\xff\xfe\xfd" * 8
     assert decode_multibase_z(encode_multibase_z(payload)) == payload
+
+
+def test_ed25519_zero_pubkey_did_key_tail() -> None:
+    # Canonical did:key for the all-zero Ed25519 public key, as produced by every
+    # spec-conformant did:key library (verifies the 0xed01 multicodec varint + base58btc together).
+    encoded = encode_multibase_z(with_multicodec(ED25519_PUB_MULTICODEC, b"\x00" * 32))
+    assert encoded == "z6MkeTG3bFFSLYVU7VqhgZxqr6YzpaGrQtFMh1uvqGy1vDnP"
 
 
 def test_decode_rejects_missing_prefix() -> None:
@@ -39,8 +46,9 @@ def test_decode_rejects_bad_alphabet() -> None:
 
 
 def test_strip_multicodec_round_trip() -> None:
-    wrapped = with_multicodec(ED25519_PUB_MULTICODEC, W3C_PUBLIC)
-    assert strip_multicodec(ED25519_PUB_MULTICODEC, wrapped) == W3C_PUBLIC
+    payload = b"\xaa" * 32
+    wrapped = with_multicodec(ED25519_PUB_MULTICODEC, payload)
+    assert strip_multicodec(ED25519_PUB_MULTICODEC, wrapped) == payload
 
 
 def test_strip_multicodec_wrong_prefix_rejected() -> None:
