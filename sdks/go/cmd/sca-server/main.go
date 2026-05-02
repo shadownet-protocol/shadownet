@@ -146,6 +146,9 @@ func run() error {
 	if tlsCfg == nil {
 		warnIfNotLoopback(logger, cfg.Listen)
 	}
+	if err := warnIfInstantApprovalUnsafe(logger, cfg); err != nil {
+		return err
+	}
 
 	logger.Info("starting sca-server",
 		slog.String("did", cfg.DID),
@@ -238,6 +241,52 @@ func buildTLS(cfg fileConfig, listen string) (*tls.Config, error) {
 	}
 	_ = listen
 	return httpx.TLSConfig(cert), nil
+}
+
+// warnIfInstantApprovalUnsafe enforces RFC-0004's intent that production SCAs
+// must not auto-issue: cmd/sca-server is allowed to use InstantApproval for
+// local development only. The check is two-tier:
+//
+//   - If a level uses instant-approval AND the listener is non-loopback AND
+//     SHADOWNET_ALLOW_INSTANT_APPROVAL is not set to "1", refuse to start.
+//   - Otherwise log a loud warning so operators see it on every boot.
+//
+// Operators who genuinely want a public dev-grade SCA opt in via the env var.
+func warnIfInstantApprovalUnsafe(logger *slog.Logger, cfg fileConfig) error {
+	uses := false
+	for _, l := range cfg.Policy.Levels {
+		if l.Method == InstantApproval {
+			uses = true
+			break
+		}
+	}
+	if !uses {
+		return nil
+	}
+	loopback := isLoopbackListener(cfg.Listen)
+	allow := config.EnvString("SHADOWNET_ALLOW_INSTANT_APPROVAL", "") == "1"
+	if !loopback && !allow {
+		return fmt.Errorf("InstantApprovalProofMethod is configured for level(s), but listen %q is not loopback. "+
+			"This auto-approves every CSR and MUST NOT be exposed to the internet. "+
+			"Set SHADOWNET_ALLOW_INSTANT_APPROVAL=1 if you understand the risk (e.g. a private network test deploy).", cfg.Listen)
+	}
+	logger.Warn("InstantApprovalProofMethod is enabled — every /proof/start opens a session that is immediately ready. " +
+		"Use this configuration for local development only.")
+	return nil
+}
+
+func isLoopbackListener(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
 }
 
 func warnIfNotLoopback(logger *slog.Logger, addr string) {
