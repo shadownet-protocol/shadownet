@@ -291,9 +291,9 @@ func warnIfInstantApprovalUnsafe(logger *slog.Logger, cfg fileConfig) error {
 	loopback := isLoopbackListener(cfg.Listen)
 	allow := config.EnvString("SHADOWNET_ALLOW_INSTANT_APPROVAL", "") == "1"
 	if !loopback && !allow {
-		return fmt.Errorf("InstantApprovalProofMethod is configured for level(s), but listen %q is not loopback. "+
-			"This auto-approves every CSR and MUST NOT be exposed to the internet. "+
-			"Set SHADOWNET_ALLOW_INSTANT_APPROVAL=1 if you understand the risk (e.g. a private network test deploy).", cfg.Listen)
+		return fmt.Errorf("instant-approval is configured but listen %q is not loopback; "+
+			"this auto-approves every CSR and must not be exposed beyond a trusted network. "+
+			"Set SHADOWNET_ALLOW_INSTANT_APPROVAL=1 to opt in for a private test deploy", cfg.Listen)
 	}
 	logger.Warn("InstantApprovalProofMethod is enabled — every /proof/start opens a session that is immediately ready. " +
 		"Use this configuration for local development only.")
