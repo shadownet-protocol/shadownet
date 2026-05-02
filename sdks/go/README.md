@@ -4,7 +4,11 @@ Go SDK and reference server binaries for the [Shadownet](../shadownet-specs/) pr
 
 ## Status
 
-Early. No code yet. Implements the v0.1 RFCs at [`shadownet-specs/rfcs`](../shadownet-specs/rfcs/).
+v0.1 protocol implementation: SDK, reference SCA/SNS servers, and CLI. Implements the v0.1 RFCs at [`shadownet-specs/rfcs`](../shadownet-specs/rfcs/).
+
+## Requirements
+
+- **Go 1.25+** to build from source or to import any `pkg/*` package as a library. The floor is set by `golang.org/x/sys` v0.42.0, transitively pulled in by `modernc.org/sqlite` (the pure-Go SQLite driver the reference servers use). Pre-built binaries from GitHub Releases have no Go runtime dependency.
 
 ## What this repo is
 
@@ -39,7 +43,16 @@ Storage interfaces live in `pkg/sca` and `pkg/sns`; the reference servers ship i
 
 Proof-method implementations are likewise out of `pkg/`: `pkg/sca` defines the `ProofMethod` interface, and `cmd/sca-server` ships a single `InstantApprovalProofMethod` for local development. SMTP, Stripe Identity, biometric kiosks, and similar live in operator deployments.
 
-The directory tree is not committed yet — added incrementally as work lands.
+> **`InstantApprovalProofMethod` is for local development only.** Every `/proof/start` it sees opens a session that is immediately ready, so any `/issuance` request gets a credential. `cmd/sca-server` refuses to start when this method is configured against a non-loopback listener unless `SHADOWNET_ALLOW_INSTANT_APPROVAL=1` is set explicitly. Production deployments write their own `ProofMethod`.
+
+## Distribution
+
+Tagged releases (`v0.1.x` while the spec is at v0.1) publish:
+
+- **Go module** — auto-indexed at [pkg.go.dev/github.com/shadownet-protocol/shadownet-go](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go) on tag.
+- **Container images** — `ghcr.io/shadownet-protocol/sca-server:<tag>` and `ghcr.io/shadownet-protocol/sns-server:<tag>` (linux/amd64 + linux/arm64); `:latest` tracks the highest released non-pre-release tag.
+- **CLI binaries** — `shadownet_<tag>_<os>_<arch>.tar.gz` plus `SHA256SUMS` attached to the GitHub Release (linux + macOS, amd64 + arm64).
+- **OpenAPI specs** — `api/{sca,sns}/openapi.yaml` and `api/messages/envelope.schema.json` ship with the source; the canonical mirror at `schemas.shadownet.example` lands once the domain is allocated.
 
 ## Specifications
 
