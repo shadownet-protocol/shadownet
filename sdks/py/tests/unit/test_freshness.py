@@ -45,7 +45,7 @@ async def test_freshness_proof_round_trip(issuer) -> None:
     proof_jwt = mint_freshness_proof(
         issuer_key=issuer_kp,
         issuer_did=issuer_did,
-        issuer_kid=issuer_did + "#key-1",
+        issuer_kid=issuer_did,
         credential_jti=cred.jti,
     )
     verified = await verify_freshness(proof_jwt, cred, resolver=Resolver(), now=int(time.time()))
