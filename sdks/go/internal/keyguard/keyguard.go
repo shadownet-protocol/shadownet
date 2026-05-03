@@ -83,7 +83,7 @@ func AssertNotFixture(pub ed25519.PublicKey, role string) error {
 			"reader of that repo forge artifacts that appear to come from this "+
 			"deployment. Generate a fresh key with `shadownet keygen` and point "+
 			"signing.keyfile at it. To override (e.g. for the conformance suite's "+
-			"self-test against this binary), set %s=1.",
+			"self-test against this binary), set %s=1",
 		role, AllowEnv,
 	)
 }
