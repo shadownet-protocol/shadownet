@@ -11,6 +11,10 @@ import (
 	"github.com/shadownet-protocol/shadownet-go/internal/cli"
 )
 
+// version is stamped at build time by the release pipeline via
+// `-ldflags "-X main.version=$tag"`. Local builds keep the "dev" sentinel.
+var version = "dev"
+
 func main() {
-	os.Exit(cli.Run(os.Args, os.Stdout, os.Stderr))
+	os.Exit(cli.Run(os.Args, os.Stdout, os.Stderr, version))
 }

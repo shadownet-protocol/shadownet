@@ -8,14 +8,27 @@ import (
 	"os"
 )
 
-// Run dispatches argv to a subcommand. argv[0] is the program name.
-func Run(args []string, stdout, stderr io.Writer) int {
+// ProtocolVersion is the Shadownet wire-protocol version this build implements.
+// Distinct from the build version (passed in via Run): the protocol version
+// changes only when the spec major bumps; the build version moves with every
+// tagged release.
+const ProtocolVersion = "0.1"
+
+// Run dispatches argv to a subcommand. argv[0] is the program name; build is
+// the build version stamped at link time (see cmd/shadownet/main.go).
+func Run(args []string, stdout, stderr io.Writer, build string) int {
 	if len(args) < 2 || args[1] == "-h" || args[1] == "--help" {
 		printUsage(stdout)
 		if len(args) >= 2 && (args[1] == "-h" || args[1] == "--help") {
 			return 0
 		}
 		return 2
+	}
+	// `shadownet --version` and `shadownet -v` mirror the `version` subcommand
+	// for users who reach for the conventional flag form.
+	if args[1] == "--version" || args[1] == "-v" || args[1] == "version" {
+		fmt.Fprintf(stdout, "shadownet %s (protocol v%s)\n", build, ProtocolVersion)
+		return 0
 	}
 	cmd := args[1]
 	rest := args[2:]
@@ -31,10 +44,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = Handshake(rest, stdout, stderr)
 	case "doctor":
 		err = Doctor(rest, stdout, stderr)
-	case "version":
-		fmt.Fprintln(stdout, "shadownet (Shadownet Go SDK & CLI)")
-		fmt.Fprintln(stdout, "protocol: v0.1")
-		return 0
 	default:
 		fmt.Fprintf(stderr, "shadownet: unknown subcommand %q\n", cmd)
 		printUsage(stderr)
@@ -52,6 +61,7 @@ func printUsage(w io.Writer) {
 
 Usage:
   shadownet <command> [flags]
+  shadownet --version
 
 Commands:
   keygen         generate an Ed25519 keypair (did:key)

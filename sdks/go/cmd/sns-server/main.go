@@ -46,6 +46,10 @@ type fileConfig struct {
 	DefaultTTL int `yaml:"defaultTtl"`
 }
 
+// version is stamped at build time by the release pipeline via
+// `-ldflags "-X main.version=$tag"`. Local builds keep the "dev" sentinel.
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "sns-server: "+err.Error())
@@ -57,8 +61,13 @@ func run() error {
 	fs := flag.NewFlagSet("sns-server", flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to YAML config file")
 	logLevel := fs.String("log-level", config.EnvString("SHADOWNET_LOG_LEVEL", "info"), "log level: debug|info|warn|error")
+	showVersion := fs.Bool("version", false, "print version and exit")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
+	}
+	if *showVersion {
+		fmt.Printf("sns-server %s\n", version)
+		return nil
 	}
 	if *configPath == "" {
 		return errors.New("--config is required")
@@ -136,6 +145,7 @@ func run() error {
 	}
 
 	logger.Info("starting sns-server",
+		slog.String("version", version),
 		slog.String("did", cfg.DID), slog.String("provider", cfg.Provider),
 		slog.String("listen", cfg.Listen), slog.Bool("tls", tlsCfg != nil),
 		slog.String("storage", cfg.Storage.Driver),
