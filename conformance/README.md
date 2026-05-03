@@ -98,25 +98,40 @@ Canonical fixtures live in `fixtures/` — deterministic Ed25519 keypairs (from 
 
 The fixture set is the protocol's empirical contract. New normative behavior in a future RFC lands a fixture before it lands in code.
 
+> ⚠️ **Test fixtures are public material, not production secrets.** Every
+> private key in `fixtures/keys/` is derived from an obvious-pattern seed
+> in `fixtures/seeds.toml` (`0x010101…`, `0x020202…`, …). Anyone with this
+> repo can re-derive every "private" key. That is intentional — the whole
+> point of canonical fixtures is byte-for-byte reproducibility.
+>
+> Operators of production deployments **MUST**:
+>
+> - Generate fresh keys via `shadownet keygen` (or any CSPRNG-backed Ed25519
+>   generator). Never copy a fixture key into a production deployment.
+> - Never list a fixture public key in a production trust store.
+>
+> The reference servers in `shadownet-go` enforce the first rule at startup:
+> `sca-server` and `sns-server` refuse to boot if their signing key matches
+> any fixture public key, unless `SHADOWNET_ALLOW_FIXTURE_KEYS=1` is set
+> (used by this suite's CI self-test, never in production).
+
 ## Tooling
 
 - **Package manager**: [`uv`](https://docs.astral.sh/uv/)
 - **Python**: 3.12+
 - **Test runner**: `pytest`
 - **HTTP client**: `httpx` (async)
-- **JWT / DID / VC primitives**: imported from [`shadownet-py`](../shadownet-py/)
-  (the SDK is a runtime dependency; the safety against an SDK bug masking a
-  wire bug is the cross-SDK fixture regen — see [`CLAUDE.md`](./CLAUDE.md)
-  §Fixture discipline).
-
-While `shadownet-py` is pre-release, it is consumed as an editable path
-dependency declared in `pyproject.toml` (`[tool.uv.sources]`). The path
-swap to a pinned PyPI version is mechanical and lands when the SDK
-publishes its first release.
+- **JWT / DID / VC primitives**: imported from
+  [`shadownet`](https://pypi.org/project/shadownet/) on PyPI (the SDK is a
+  runtime dependency; the safety against an SDK bug masking a wire bug is
+  the cross-SDK fixture regen — see [`CLAUDE.md`](./CLAUDE.md) §Fixture
+  discipline).
 
 To run the **fixture regeneration** CLI you also need a Go toolchain
-(Go 1.25+) and a checkout of [`shadownet-go`](../shadownet-go/). Running
-the conformance suite itself never needs Go.
+(Go 1.25+); the regen tool builds a small Go emitter that imports
+[`shadownet-go`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go)
+from the public Go module proxy. Running the conformance suite itself
+never needs Go.
 
 ## Distribution
 
