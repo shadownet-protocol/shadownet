@@ -32,7 +32,7 @@ from shadownet.vc.credential import issue_credential, new_credential
 from shadownet.vc.freshness import mint_freshness_proof
 from shadownet.vc.presentation import mint_presentation
 
-SCA_DID = "did:web:sca.shadownet.example"  # represented by an Ed25519 key in-process
+SCA_DID = "did:web:sca.sh4dow.org"  # represented by an Ed25519 key in-process
 INTERACTION = "urn:shadownet:int:scheduling.v0-draft"
 
 

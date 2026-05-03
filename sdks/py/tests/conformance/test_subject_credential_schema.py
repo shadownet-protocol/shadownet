@@ -23,7 +23,7 @@ def _load_schema(specs_path) -> dict:
 def test_minimal_credential_validates_against_schema(specs_path) -> None:
     schema = _load_schema(specs_path)
     cred = new_credential(
-        issuer="did:web:sca.shadownet.example",
+        issuer="did:web:sca.sh4dow.org",
         subject="did:key:z6MkSubjectPubkey123",
         level="urn:shadownet:level:L1",
         subject_type="person",
@@ -37,7 +37,7 @@ def test_minimal_credential_validates_against_schema(specs_path) -> None:
 def test_credential_with_status_validates_against_schema(specs_path) -> None:
     schema = _load_schema(specs_path)
     cred = new_credential(
-        issuer="did:web:sca.shadownet.example",
+        issuer="did:web:sca.sh4dow.org",
         subject="did:key:z6MkSubjectPubkey123",
         level="urn:shadownet:level:L2",
         subject_type="person",
@@ -45,7 +45,7 @@ def test_credential_with_status_validates_against_schema(specs_path) -> None:
         jti=f"urn:uuid:{uuid.uuid4()}",
         status=CredentialStatus(
             statusListIndex="12345",
-            statusListCredential="https://sca.shadownet.example/status/2026-q3",
+            statusListCredential="https://sca.sh4dow.org/status/2026-q3",
         ),
     )
     payload = cred.model_dump(by_alias=True, exclude_none=True)
@@ -55,7 +55,7 @@ def test_credential_with_status_validates_against_schema(specs_path) -> None:
 def test_spec_example_payload_parses_into_model(specs_path) -> None:
     """The illustrative payload from RFC-0003 §JWT shape parses without loss."""
     raw = {
-        "iss": "did:web:sca.shadownet.example",
+        "iss": "did:web:sca.sh4dow.org",
         "sub": "did:key:z6MkSubjectPubkey123",
         "iat": 1756684800,
         "exp": 1759276800,
@@ -64,7 +64,7 @@ def test_spec_example_payload_parses_into_model(specs_path) -> None:
         "vc": {
             "@context": [
                 "https://www.w3.org/ns/credentials/v2",
-                "https://shadownet.example/contexts/v1",
+                "https://sh4dow.org/contexts/v1",
             ],
             "type": ["VerifiableCredential", "ShadownetSubjectCredential"],
             "credentialSubject": {
@@ -75,7 +75,7 @@ def test_spec_example_payload_parses_into_model(specs_path) -> None:
             "credentialStatus": {
                 "type": "BitstringStatusListEntry",
                 "statusListIndex": "12345",
-                "statusListCredential": "https://sca.shadownet.example/status/2026-q3",
+                "statusListCredential": "https://sca.sh4dow.org/status/2026-q3",
             },
         },
     }

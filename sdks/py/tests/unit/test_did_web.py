@@ -40,8 +40,8 @@ def _document_payload(did: str) -> bytes:
     [
         ("did:web:example.com", "https://example.com/.well-known/did.json"),
         (
-            "did:web:sca.shadownet.example",
-            "https://sca.shadownet.example/.well-known/did.json",
+            "did:web:sca.sh4dow.org",
+            "https://sca.sh4dow.org/.well-known/did.json",
         ),
         ("did:web:example.com:user:alice", "https://example.com/user/alice/did.json"),
     ],

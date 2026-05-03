@@ -16,7 +16,16 @@ if TYPE_CHECKING:
 # RFC-0003 — Subject Credential, vc+jwt, EdDSA. Schema:
 # shadownet-specs/schemas/credentials/subject-credential.schema.json
 
+# Canonical-domain JSON-LD context URL. The Shadownet protocol is anchored at
+# sh4dow.org. This constant MUST match the URL the spec lists in its example
+# credential payload AND what every other SDK (Go, TS) emits, since interop is
+# by string match.
+SHADOWNET_VC_CONTEXT = "https://sh4dow.org/contexts/v1"
+W3C_VC_V2_CONTEXT = "https://www.w3.org/ns/credentials/v2"
+
 __all__ = [
+    "SHADOWNET_VC_CONTEXT",
+    "W3C_VC_V2_CONTEXT",
     "CredentialStatus",
     "CredentialSubject",
     "SubjectCredential",
@@ -193,8 +202,8 @@ def new_credential(
             "shadownet:v": "0.1",
             "vc": {
                 "@context": [
-                    "https://www.w3.org/ns/credentials/v2",
-                    "https://shadownet.example/contexts/v1",
+                    W3C_VC_V2_CONTEXT,
+                    SHADOWNET_VC_CONTEXT,
                 ],
                 "type": ["VerifiableCredential", "ShadownetSubjectCredential"],
                 "credentialSubject": {

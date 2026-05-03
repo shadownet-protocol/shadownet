@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+import httpx
+
 from shadownet.logging import get_logger
 from shadownet.sns.errors import (
     ShadownameInvalid,
@@ -14,8 +16,6 @@ from shadownet.sns.record import SNSRecord, parse_shadowname, verify_record
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import httpx
 
     from shadownet.did.resolver import Resolver
 
@@ -71,7 +71,7 @@ class SNSClient:
                 params=params,
                 headers={"Accept": "application/jwt"},
             )
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             raise SNSError(f"failed to fetch {url}: {exc}") from exc
 
         if response.status_code == 404:
