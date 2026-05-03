@@ -54,9 +54,14 @@ The version mirrors the protocol version this suite tests. See
 - **GitHub Action.** `action/action.yml` + Docker image
   (`action/Dockerfile` → `ghcr.io/shadownet-protocol/conformance`).
 - **CI workflows.** `ci.yml` (lint + mypy + pytest + fixture
-  drift-check), `release.yml` (PyPI Trusted Publishing + image push),
-  `self-test.yml` (boots `shadownet-go` reference SCA + SNS, runs the
-  suite end-to-end on every PR).
-- Path dep on `shadownet-py` for crypto / DID / VC / SCA / SNS / A2A /
-  webhook primitives. Swap to a pinned PyPI version is mechanical.
+  drift-check), `release.yml` (gate → multi-arch image push to ghcr.io →
+  cut GitHub Release), `self-test.yml` (installs published `shadownet-go`
+  binaries via the Go module proxy and runs the suite end-to-end on
+  every PR).
+- Runtime dep on `shadownet>=0.1.1` from PyPI for crypto / DID / VC /
+  SCA / SNS / A2A / webhook primitives.
+- **Distribution: Docker image + GitHub Action + `uvx`.** PyPI is
+  intentionally not used at v0.1 — consumers run the Docker image
+  directly, via the GitHub Action that wraps it, or via
+  `uvx --from git+https://github.com/shadownet-protocol/shadownet-conformance@v0.1.0`.
 - Development conventions in [`CLAUDE.md`](./CLAUDE.md).

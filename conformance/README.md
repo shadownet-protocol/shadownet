@@ -135,11 +135,17 @@ never needs Go.
 
 ## Distribution
 
-| Output | Where |
+| Audience | How they consume it |
 | --- | --- |
-| Python package | PyPI as `shadownet-conformance` |
-| Docker image | `ghcr.io/shadownet-protocol/conformance` |
-| GitHub Action | Marketplace as `shadownet-protocol/conformance-action` |
+| Implementer CI (any language) | `uses: shadownet-protocol/conformance-action@v0.1` (Docker action) |
+| Local debugging | `docker run --rm --network host ghcr.io/shadownet-protocol/conformance:latest --target ...` |
+| Python-native local run | `uvx --from git+https://github.com/shadownet-protocol/shadownet-conformance@v0.1.0 shadownet-conformance --target ...` |
+| Hacking on the suite itself | `git clone && uv sync && uv run shadownet-conformance ...` |
+
+PyPI is intentionally not used at v0.1 — the test runner is consumed via
+the Docker image, the GitHub Action, or `uvx` directly from a tagged git
+ref. This keeps the supply-chain surface small (one registry, one
+artifact). PyPI may be added later if there's demand.
 
 ## Sidecar coverage
 
