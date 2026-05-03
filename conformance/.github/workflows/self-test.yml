@@ -53,31 +53,8 @@ jobs:
           mkdir -p /tmp/sn-self
           /tmp/shadownet keygen -out /tmp/sn-self/issuer.jwk
           /tmp/shadownet keygen -out /tmp/sn-self/provider.jwk
-          cat > /tmp/sn-self/sca.yaml <<EOF
-          did: did:web:127.0.0.1%3A18443
-          listen: 127.0.0.1:18443
-          signing:
-            keyfile: /tmp/sn-self/issuer.jwk
-          storage:
-            driver: memory
-          policy:
-            freshnessWindowSeconds: 86400
-            statusListBase: http://127.0.0.1:18443/status/
-            levels:
-              - level: urn:shadownet:level:L1
-                method: instant-approval
-                credentialLifetimeDays: 90
-          EOF
-          cat > /tmp/sn-self/sns.yaml <<EOF
-          did: did:web:127.0.0.1%3A18444
-          provider: 127.0.0.1
-          listen: 127.0.0.1:18444
-          signing:
-            keyfile: /tmp/sn-self/provider.jwk
-          storage:
-            driver: memory
-          defaultTtl: 300
-          EOF
+          cp ci/sca-server.yaml /tmp/sn-self/sca.yaml
+          cp ci/sns-server.yaml /tmp/sn-self/sns.yaml
 
       - name: Boot reference servers
         run: |

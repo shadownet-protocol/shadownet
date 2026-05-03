@@ -1,0 +1,15 @@
+# Conformance self-test SCA config. Used by .github/workflows/self-test.yml.
+# Loopback-only; instant-approval; in-memory storage.
+did: did:web:127.0.0.1%3A18443
+listen: 127.0.0.1:18443
+signing:
+  keyfile: /tmp/sn-self/issuer.jwk
+storage:
+  driver: memory
+policy:
+  freshnessWindowSeconds: 86400
+  statusListBase: http://127.0.0.1:18443/status/
+  levels:
+    - level: urn:shadownet:level:L1
+      method: instant-approval
+      credentialLifetimeDays: 90
