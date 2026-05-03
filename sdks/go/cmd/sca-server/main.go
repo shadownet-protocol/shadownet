@@ -25,6 +25,7 @@ import (
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
 	"github.com/shadownet-protocol/shadownet-go/internal/httpx"
+	"github.com/shadownet-protocol/shadownet-go/internal/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
@@ -98,6 +99,9 @@ func run() error {
 	kp, err := crypto.LoadKeyFile(cfg.Signing.KeyFile)
 	if err != nil {
 		return fmt.Errorf("load signing key: %w (generate one with `shadownet keygen`)", err)
+	}
+	if err := keyguard.AssertNotFixture(kp.Public, "sca-server"); err != nil {
+		return err
 	}
 	keyID := cfg.DID + "#" + sca.DefaultListID // simple key fragment; matches did:web doc we serve
 
