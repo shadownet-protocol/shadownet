@@ -9,7 +9,12 @@ storage:
 policy:
   freshnessWindowSeconds: 86400
   statusListBase: http://127.0.0.1:18443/status/
+  # NOTE: keys inside `levels[]` are all-lowercase. shadownet-go v0.1.1's
+  # `sca.LevelPolicy` struct carries only json tags; yaml.v3 falls back to
+  # the lowercased Go field name when no yaml tag is present, so
+  # `credentialLifetimeDays` (camelCase) won't bind. Future shadownet-go
+  # may add yaml tags — when that lands, this comment can go.
   levels:
     - level: urn:shadownet:level:L1
       method: instant-approval
-      credentialLifetimeDays: 90
+      credentiallifetimedays: 90
