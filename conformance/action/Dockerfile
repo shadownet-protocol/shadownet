@@ -19,22 +19,13 @@ RUN pip install --no-cache-dir uv==0.5.*
 
 WORKDIR /app
 
-# Copy only what we need to build & run. Tests + fixtures + shadownet-py
-# editable path-dep are all required because the runner imports them.
-COPY pyproject.toml README.md CHANGELOG.md LICENSE CLAUDE.md uv.lock* ./
+# Tests + fixtures + this package's source — uv resolves shadownet from PyPI.
+COPY pyproject.toml README.md CHANGELOG.md LICENSE CLAUDE.md uv.lock ./
 COPY src ./src
 COPY tests ./tests
 COPY fixtures ./fixtures
 
-# shadownet-py is a path-dep; copy it next to ourselves so uv can resolve.
-# The ../shadownet-py checkout must be present in the build context.
-COPY ./.docker-shadownet-py /shadownet-py
-
-# Rewrite the path-dep to point at /shadownet-py (the in-image location)
-# instead of ../shadownet-py (host-relative).
-RUN sed -i 's|path = "../shadownet-py"|path = "/shadownet-py"|' pyproject.toml
-
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
 ENTRYPOINT ["uv", "run", "shadownet-conformance"]
 CMD ["--help"]
