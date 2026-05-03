@@ -27,7 +27,7 @@ func TestParseShadowname(t *testing.T) {
 		host  string
 	}{
 		"alice@sh4dow.org":             {true, "alice", "sh4dow.org"},
-		"ALICE@SHADOWNET.example":      {true, "alice", "SHADOWNET.example"},
+		"ALICE@SH4DOW.org":             {true, "alice", "SH4DOW.org"},
 		"a.b-c_d@x.example":            {true, "a.b-c_d", "x.example"},
 		"@x.example":                   {false, "", ""},
 		"x@":                           {false, "", ""},
@@ -60,7 +60,7 @@ func TestRecordRoundtrip(t *testing.T) {
 
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	rec := sns.Record{
-		Shadowname:  "alice@example.org",
+		Shadowname:  "alice@sh4dow.org",
 		DID:         subjDID,
 		Endpoint:    "https://shadow.example.org/u/alice/a2a",
 		PublicKey:   pubJWK,
@@ -71,7 +71,7 @@ func TestRecordRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueRecord: %v", err)
 	}
-	got, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), jwt, "alice@example.org", now.Add(time.Minute))
+	got, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), jwt, "alice@sh4dow.org", now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("VerifyRecord: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestRecordSubMismatch(t *testing.T) {
 	pubJWK, _ := crypto.PublicJWK(subjKP.Public, "")
 	now := time.Now().UTC()
 	jwt, _ := sns.IssueRecord(provKP, provDID, provKID, sns.Record{
-		Shadowname: "alice@example.org", DID: subjDID, Endpoint: "https://x/y",
+		Shadowname: "alice@sh4dow.org", DID: subjDID, Endpoint: "https://x/y",
 		PublicKey: pubJWK, SubjectType: vc.SubjectPerson, TTL: 300,
 	}, now)
 	if _, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), jwt, "bob@example.org", now); err == nil {
