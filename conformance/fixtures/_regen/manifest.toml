@@ -1,0 +1,250 @@
+# Declarative fixture manifest.
+#
+# Each entry describes exactly one fixture file. The regen CLI:
+#   1. Resolves seeds from ../seeds.toml.
+#   2. Pipes the resolved spec (JSON) to BOTH the Python emitter
+#      (`python -m shadownet_conformance.regen.py_emit <kind>`) and the
+#      Go emitter (`fixtures/_regen/go-emit/go-emit <kind>`).
+#   3. Diffs the two outputs byte-for-byte.
+#   4. On match: writes to `fixtures/<out>`. On mismatch: errors, writes
+#      nothing.
+#
+# Order matters: VPs reference credentials, status lists are referenced
+# by credentials, etc. The CLI emits in declaration order.
+
+schema_version = 1
+
+# ---------------------------------------------------------------------------
+# Keys (one per seed). Output: {did, public_jwk, private_jwk} JSON.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "key_subject_alice"
+kind = "key"
+out  = "keys/subject_alice.json"
+[fixtures.spec]
+seed = "subject_alice"
+
+[[fixtures]]
+id   = "key_subject_bob"
+kind = "key"
+out  = "keys/subject_bob.json"
+[fixtures.spec]
+seed = "subject_bob"
+
+[[fixtures]]
+id   = "key_subject_acme"
+kind = "key"
+out  = "keys/subject_acme.json"
+[fixtures.spec]
+seed = "subject_acme"
+
+[[fixtures]]
+id   = "key_sca_issuer"
+kind = "key"
+out  = "keys/sca_issuer.json"
+[fixtures.spec]
+seed = "sca_issuer"
+
+[[fixtures]]
+id   = "key_sns_provider"
+kind = "key"
+out  = "keys/sns_provider.json"
+[fixtures.spec]
+seed = "sns_provider"
+
+[[fixtures]]
+id   = "key_peer_holder"
+kind = "key"
+out  = "keys/peer_holder.json"
+[fixtures.spec]
+seed = "peer_holder"
+
+# ---------------------------------------------------------------------------
+# Status list (issued first so credentials can point at it).
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "status_list_2026_q3"
+kind = "status_list"
+out  = "status_lists/2026-q3.jwt"
+[fixtures.spec]
+issuer            = "did:web:sca.sh4dow.org"
+issuer_seed       = "sca_issuer"
+issuer_kid        = "did:web:sca.sh4dow.org#k1"
+status_list_url   = "https://sca.sh4dow.org/status/2026-q3"
+list_id           = "2026-q3"
+size              = 131072            # 128k bits, RFC-recommended minimum
+set_indices       = [5]               # bit 5 is the "revoked" example
+iat               = 1756684800        # 2025-09-01T00:00:00Z
+exp               = 1759276800        # 2025-10-01T00:00:00Z
+purpose           = "revocation"
+
+# ---------------------------------------------------------------------------
+# Credentials.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "credential_alice_l1"
+kind = "credential"
+out  = "credentials/alice_l1.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+subject_seed  = "subject_alice"   # subject DID derived as did:key:z6Mk...
+level         = "urn:shadownet:level:L1"
+subject_type  = "person"
+iat           = 1756684800        # 2025-09-01T00:00:00Z
+exp           = 1759276800        # 2025-10-01T00:00:00Z
+jti           = "urn:uuid:00000000-0000-4000-8000-000000000001"
+
+[[fixtures]]
+id   = "credential_alice_l2"
+kind = "credential"
+out  = "credentials/alice_l2.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+subject_seed  = "subject_alice"
+level         = "urn:shadownet:level:L2"
+subject_type  = "person"
+iat           = 1756684800
+exp           = 1759276800
+jti           = "urn:uuid:00000000-0000-4000-8000-000000000002"
+[fixtures.spec.status]
+status_list_index      = "12345"
+status_list_credential = "https://sca.sh4dow.org/status/2026-q3"
+
+[[fixtures]]
+id   = "credential_acme_o1"
+kind = "credential"
+out  = "credentials/acme_o1.jwt"
+[fixtures.spec]
+issuer            = "did:web:sca.sh4dow.org"
+issuer_seed       = "sca_issuer"
+issuer_kid        = "did:web:sca.sh4dow.org#k1"
+subject_did       = "did:web:acme.example"   # explicit; org subjects are did:web
+level             = "urn:shadownet:level:O1"
+subject_type      = "organization"
+iat               = 1756684800
+exp               = 1759276800
+jti               = "urn:uuid:00000000-0000-4000-8000-000000000003"
+
+[[fixtures]]
+id   = "credential_bob_l1"
+kind = "credential"
+out  = "credentials/bob_l1.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+subject_seed  = "subject_bob"
+level         = "urn:shadownet:level:L1"
+subject_type  = "person"
+iat           = 1756684800
+exp           = 1759276800
+jti           = "urn:uuid:00000000-0000-4000-8000-000000000004"
+
+[[fixtures]]
+id   = "credential_peer_l2"
+kind = "credential"
+out  = "credentials/peer_l2.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+subject_seed  = "peer_holder"
+level         = "urn:shadownet:level:L2"
+subject_type  = "person"
+iat           = 1756684800
+exp           = 1759276800
+jti           = "urn:uuid:00000000-0000-4000-8000-000000000005"
+
+# ---------------------------------------------------------------------------
+# Freshness proofs.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "freshness_alice_l2_fresh"
+kind = "freshness"
+out  = "freshness/alice_l2_fresh.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000002"
+iat           = 1756684860            # 1 minute after credential
+exp           = 1756771260            # +24h
+
+[[fixtures]]
+id   = "freshness_bob_l1_stale"
+kind = "freshness"
+out  = "freshness/bob_l1_stale.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000004"
+iat           = 1756684800            # at credential issuance
+exp           = 1756685100            # +5 min — intentionally stale by now
+
+[[fixtures]]
+id   = "freshness_peer_l2_fresh"
+kind = "freshness"
+out  = "freshness/peer_l2_fresh.jwt"
+[fixtures.spec]
+issuer        = "did:web:sca.sh4dow.org"
+issuer_seed   = "sca_issuer"
+issuer_kid    = "did:web:sca.sh4dow.org#k1"
+credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000005"
+iat           = 1756684860
+exp           = 1756771260
+
+# ---------------------------------------------------------------------------
+# Verifiable Presentations.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "presentation_alice_l2_to_peer"
+kind = "presentation"
+out  = "presentations/alice_l2_to_peer.jwt"
+[fixtures.spec]
+holder_seed       = "subject_alice"
+audience_seed     = "peer_holder"     # audience DID derived from peer's seed
+iat               = 1756684900
+exp               = 1756685020        # +120s, the RFC-0003 max
+nonce             = "0123456789abcdef0123456789abcdef"
+credential_refs   = ["credentials/alice_l2.jwt", "freshness/alice_l2_fresh.jwt"]
+
+[[fixtures]]
+id   = "presentation_bob_l1_to_peer"
+kind = "presentation"
+out  = "presentations/bob_l1_to_peer.jwt"
+[fixtures.spec]
+holder_seed       = "subject_bob"
+audience_seed     = "peer_holder"
+iat               = 1756684900
+exp               = 1756685020
+nonce             = "fedcba9876543210fedcba9876543210"
+credential_refs   = ["credentials/bob_l1.jwt"]
+
+# ---------------------------------------------------------------------------
+# SNS records.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "sns_record_alice"
+kind = "sns_record"
+out  = "sns_records/alice.jwt"
+[fixtures.spec]
+provider_did    = "did:web:sh4dow.org"
+provider_seed   = "sns_provider"
+provider_kid    = "did:web:sh4dow.org#k1"
+shadowname      = "alice@sh4dow.org"
+subject_seed    = "subject_alice"
+endpoint        = "https://shadow.sh4dow.org/u/alice/a2a"
+subject_type    = "person"
+ttl             = 300
+iat             = 1759200000
