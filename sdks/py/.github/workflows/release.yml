@@ -45,14 +45,21 @@ jobs:
         run: uv build
 
       - name: Verify tag matches package version
+        # Both sides go through PEP 440 normalization so the tag (`v0.1.0-rc.1`)
+        # and the wheel version (`0.1.0rc1`) compare equal.
         run: |
           set -euo pipefail
           tag="${GITHUB_REF#refs/tags/v}"
-          pkg="$(uv run python -c 'import importlib.metadata as m; print(m.version("shadownet"))')"
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::git tag v$tag does not match pyproject version $pkg"
-            exit 1
-          fi
+          uv run python - "$tag" <<'PY'
+          import sys
+          from importlib.metadata import version
+          from packaging.version import Version
+          tag = Version(sys.argv[1])
+          pkg = Version(version("shadownet"))
+          if tag != pkg:
+              raise SystemExit(f"git tag {tag} does not match pyproject version {pkg}")
+          print(f"ok: git tag and pyproject both resolve to {tag}")
+          PY
 
       - name: Verify py.typed marker is shipped
         run: |
