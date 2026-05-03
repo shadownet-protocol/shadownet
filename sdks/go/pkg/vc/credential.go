@@ -24,7 +24,7 @@ const (
 	TypVPJWT = "vp+jwt"
 
 	ContextW3CCredentialsV2 = "https://www.w3.org/ns/credentials/v2"
-	ContextShadownetV1      = "https://shadownet.example/contexts/v1"
+	ContextShadownetV1      = "https://sh4dow.org/contexts/v1"
 
 	CredentialType                 = "VerifiableCredential"
 	ShadownetSubjectCredentialType = "ShadownetSubjectCredential"
@@ -73,7 +73,7 @@ type Status struct {
 
 // IssueOptions controls credential issuance. The IssuerKeyID is the JWS "kid"
 // header — typically the issuer DID with a key fragment, e.g.
-// "did:web:sca.shadownet.example#k1".
+// "did:web:sca.sh4dow.org#k1".
 type IssueOptions struct {
 	IssuerKeyID string
 }

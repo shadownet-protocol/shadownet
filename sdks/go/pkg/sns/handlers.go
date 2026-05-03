@@ -29,7 +29,7 @@ type Server struct {
 	ProviderDID string
 	ProviderKID string
 	// Provider is the host portion that appears in shadownames this server
-	// authoritatively serves (e.g. "shadownet.example"). For did:web-based
+	// authoritatively serves (e.g. "sh4dow.org"). For did:web-based
 	// SNS deployments this is typically the did:web body. Required.
 	Provider    string
 	Key         crypto.KeyPair

@@ -1,6 +1,6 @@
 # Sample sns-server config for the Docker Compose dev stack.
-did: "did:web:sns.shadownet.example"
-provider: "shadownet.example"
+did: "did:web:sns.sh4dow.org"
+provider: "sh4dow.org"
 listen: "0.0.0.0:8443"
 signing:
   keyfile: "/etc/shadownet/provider.jwk"

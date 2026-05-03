@@ -30,7 +30,7 @@ docker compose up
 
 # In another shell:
 curl http://127.0.0.1:8443/.well-known/sca/policy.json
-curl 'http://127.0.0.1:8444/.well-known/sns/v1/resolve?name=alice@shadownet.example'
+curl 'http://127.0.0.1:8444/.well-known/sns/v1/resolve?name=alice@sh4dow.org'
 ```
 
 The compose stack uses `InstantApprovalProofMethod` (see warning below) and binds only to `127.0.0.1` of the host. For production, write your own `ProofMethod`, terminate TLS in front of the binaries (or set `tls.cert`/`tls.key` in their YAML), and put the servers on real `did:web` DIDs.
@@ -52,7 +52,7 @@ API documentation: [pkg.go.dev/github.com/shadownet-protocol/shadownet-go](https
 
 ```sh
 shadownet keygen --out ./holder.jwk        # Ed25519 keypair → did:key
-shadownet resolve alice@shadownet.example  # SNS lookup + verify
+shadownet resolve alice@sh4dow.org  # SNS lookup + verify
 shadownet inspect <jwt>                    # decode VC / VP / freshness / SNS record
 shadownet handshake --key holder.jwk --vc cred.jwt --peer-did <DID> https://peer/a2a
 shadownet doctor --sca https://sca.example --sns https://sns.example
@@ -111,7 +111,7 @@ Tagged releases (`v0.1.x` while the spec is at v0.1) publish:
 - **Go module** — auto-indexed at [pkg.go.dev/github.com/shadownet-protocol/shadownet-go](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go) on tag.
 - **Container images** — `ghcr.io/shadownet-protocol/sca-server:<tag>` and `ghcr.io/shadownet-protocol/sns-server:<tag>` (linux/amd64 + linux/arm64); `:latest` tracks the highest released non-pre-release tag.
 - **CLI binaries** — `shadownet_<tag>_<os>_<arch>.tar.gz` plus `SHA256SUMS` attached to the GitHub Release (linux + macOS, amd64 + arm64).
-- **OpenAPI specs** — [`api/{sca,sns}/openapi.yaml`](./api/) and [`api/messages/envelope.schema.json`](./api/messages/envelope.schema.json) ship with the source; the canonical mirror at `schemas.shadownet.example` lands once the domain is allocated.
+- **OpenAPI specs** — [`api/{sca,sns}/openapi.yaml`](./api/) and [`api/messages/envelope.schema.json`](./api/messages/envelope.schema.json) ship with the source; the canonical mirror at `schemas.sh4dow.org` lands once the domain is allocated.
 
 ## Specifications
 

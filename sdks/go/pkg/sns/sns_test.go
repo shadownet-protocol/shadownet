@@ -26,8 +26,8 @@ func TestParseShadowname(t *testing.T) {
 		local string
 		host  string
 	}{
-		"mahdi@shadownet.example":      {true, "mahdi", "shadownet.example"},
-		"MAHDI@SHADOWNET.example":      {true, "mahdi", "SHADOWNET.example"},
+		"alice@sh4dow.org":             {true, "alice", "sh4dow.org"},
+		"ALICE@SHADOWNET.example":      {true, "alice", "SHADOWNET.example"},
 		"a.b-c_d@x.example":            {true, "a.b-c_d", "x.example"},
 		"@x.example":                   {false, "", ""},
 		"x@":                           {false, "", ""},
@@ -127,7 +127,7 @@ func TestSNSResolveAndUpdate(t *testing.T) {
 	pubJWK, _ := crypto.PublicJWK(subjKP.Public, "")
 
 	store := storemem.NewSNSRecordStore()
-	const provider = "test.shadownet.example"
+	const provider = "test.sh4dow.org"
 	server := &sns.Server{
 		ProviderDID: provDID, ProviderKID: provKID, Provider: provider, Key: provKP,
 		Records:     store,

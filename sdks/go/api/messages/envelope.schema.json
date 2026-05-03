@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://shadownet.example/schemas/v0/messages/envelope.schema.json",
+  "$id": "https://sh4dow.org/schemas/v0/messages/envelope.schema.json",
   "title": "Shadownet A2A Message Envelope",
   "description": "Schema for the `data` of a part with type `shadownet/v1+envelope`. See RFC-0006. Mirrored from ../shadownet-specs/schemas/messages/envelope.schema.json — kept in sync via tools/check-schemas.sh.",
   "type": "object",

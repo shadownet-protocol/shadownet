@@ -22,7 +22,7 @@ const DefaultListID = "main"
 // Issuer is the SCA orchestrator. It owns the signing key, the proof-method
 // registry, and the persistence handles.
 type Issuer struct {
-	DID        string         // SCA DID (e.g. did:web:sca.shadownet.example)
+	DID        string         // SCA DID (e.g. did:web:sca.sh4dow.org)
 	KeyID      string         // DID URL with key fragment, e.g. <DID>#k1
 	Key        crypto.KeyPair // signing key matching KeyID
 	Resolver   did.Resolver

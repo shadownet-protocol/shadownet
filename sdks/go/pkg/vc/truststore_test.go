@@ -6,11 +6,11 @@ import "testing"
 
 func TestMemoryTrustStore(t *testing.T) {
 	s := NewMemoryTrustStore([]TrustEntry{{
-		Issuer:         "did:web:sca.shadownet.example",
+		Issuer:         "did:web:sca.sh4dow.org",
 		AcceptedLevels: []string{LevelL1, LevelL2},
 	}})
 
-	e, ok := s.Lookup("did:web:sca.shadownet.example")
+	e, ok := s.Lookup("did:web:sca.sh4dow.org")
 	if !ok {
 		t.Fatal("expected entry")
 	}

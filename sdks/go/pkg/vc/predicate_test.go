@@ -9,7 +9,7 @@ import (
 
 func TestPredicateLeafs(t *testing.T) {
 	creds := []*Credential{
-		{Issuer: "did:web:sca.shadownet.example", Level: LevelL2, SubjectType: SubjectPerson},
+		{Issuer: "did:web:sca.sh4dow.org", Level: LevelL2, SubjectType: SubjectPerson},
 		{Issuer: "did:web:other.example", Level: LevelL1, SubjectType: SubjectPerson},
 	}
 
@@ -20,7 +20,7 @@ func TestPredicateLeafs(t *testing.T) {
 	}{
 		{"level matches", `{"level":"urn:shadownet:level:L2"}`, true},
 		{"level absent", `{"level":"urn:shadownet:level:L3"}`, false},
-		{"issuer matches", `{"issuer":"did:web:sca.shadownet.example"}`, true},
+		{"issuer matches", `{"issuer":"did:web:sca.sh4dow.org"}`, true},
 		{"subjectType matches", `{"subjectType":"person"}`, true},
 		{"subjectType absent", `{"subjectType":"organization"}`, false},
 	}

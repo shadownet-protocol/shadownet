@@ -10,7 +10,7 @@ info:
   license:
     name: MIT
 servers:
-  - url: https://sca.shadownet.example
+  - url: https://sca.sh4dow.org
     description: Reference deployment placeholder
 security:
   - subjectAuth: []

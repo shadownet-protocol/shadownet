@@ -10,7 +10,7 @@ info:
   license:
     name: MIT
 servers:
-  - url: https://sns.shadownet.example
+  - url: https://sns.sh4dow.org
     description: Reference deployment placeholder
 components:
   securitySchemes:

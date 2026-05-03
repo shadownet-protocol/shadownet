@@ -2,7 +2,7 @@
 # `did:key` is used here so the dev stack works with no DNS plumbing; for
 # production deployments use `did:web:sca.<your-domain>` and serve
 # /.well-known/did.json on TLS.
-did: "did:web:sca.shadownet.example"
+did: "did:web:sca.sh4dow.org"
 listen: "0.0.0.0:8443"
 signing:
   keyfile: "/etc/shadownet/issuer.jwk"
