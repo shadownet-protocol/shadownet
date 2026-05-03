@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import base64
 import gzip
-import json
 import logging
 import sys
 from pathlib import Path
@@ -247,10 +246,6 @@ def _encode_bitstring(size: int, set_indices: list[int]) -> str:
         buf[idx // 8] |= 1 << (7 - (idx % 8))
     compressed = gzip.compress(bytes(buf), mtime=0)
     return base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
-
-
-# Imported here only to satisfy the JSON spec parser; emitters get them via stdin.
-_ = json  # silence unused import in rare formatter passes
 
 
 if __name__ == "__main__":  # pragma: no cover

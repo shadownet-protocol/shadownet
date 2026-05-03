@@ -1,0 +1,62 @@
+# Changelog
+
+All notable changes to this project follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+The version mirrors the protocol version this suite tests. See
+[CLAUDE.md](./CLAUDE.md) §Versioning & release.
+
+## [Unreleased]
+
+### Added
+
+- **Scaffold + CLI.** `shadownet-conformance` entry point with config via
+  CLI flags + `SHADOWNET_CONFORMANCE_*` env vars. Three reports: JUnit XML,
+  RFC-keyed JSON, GitHub Actions step-summary markdown.
+- **Cross-SDK fixture safety net** (`shadownet-conformance-fixtures regen`).
+  Versioned seed manifest at `fixtures/seeds.toml`; declarative entries at
+  `fixtures/_regen/manifest.toml`. The regen CLI pipes each spec through
+  the Python emitter (using `shadownet-py`) and the Go emitter (small Go
+  binary at `fixtures/_regen/go-emit/` importing `shadownet-go`), byte-diffs
+  the outputs, and refuses to write a fixture unless both SDKs produce
+  identical bytes. Initial fixture set: 6 keypairs, 5 credentials, 3
+  freshness proofs, 2 VPs, 1 SNS record, 1 BitstringStatusList VC.
+- **Predicate evaluator tests** (RFC-0004 §Required-level predicates).
+  Exhaustive table of leaf / `all` / `any` / `not` cases including the
+  three RFC-0004 example predicates and the depth-4 limit.
+- **JSON-Schema conformance tests** for the credential and envelope
+  schemas in `../shadownet-specs/schemas/`.
+- **SCA tests** (RFC-0004): well-known DID document, policy document,
+  subject-auth (missing / wrong-aud / expired / TTL-cap), proof-flow
+  (start / status / instant-approval ready / unknown-session),
+  issuance (happy path / session consumed / bogus session), freshness
+  (happy path / unknown jti), status list (reachable / shape /
+  cache-control SHOULD), re-issuance (new jti / freshness still works).
+- **SNS tests** (RFC-0005): well-known DID document, resolve happy path,
+  404 for unknown shadowname, ttl bounds, signed-record verification
+  end-to-end, alg = EdDSA, negative cache bound.
+- **Sidecar tests** (RFC-0006): agent card, handshake (missing auth /
+  missing VP → `presentation_required` / valid handshake / wrong-aud
+  session / malformed VP / expired session / no-envelope-part / error
+  envelope shape).
+- **Round-trip e2e tests**. SCA round-trip (issue with A, verify with B)
+  and SNS round-trip (resolve same name on A and B, assert agreement).
+  Sidecar round-trip is registered but skipped pending a second v0.1
+  implementation.
+- **In-process A2A test peer.** Starlette/uvicorn ASGI server bound to a
+  random localhost port. Hosts `/.well-known/agent-card.json`,
+  `/a2a/{method}`, and `/webhooks/inbox`. Records inbound requests for
+  test inspection; mints session tokens + VPs as the outbound side of a
+  Sidecar handshake.
+- **RFC-marker enforcement.** Tests under
+  `tests/{predicate,sca,sns,sidecar,e2e}/` MUST carry
+  `pytest.mark.rfc(number, section=..., requirement=...)` — collection
+  fails with a clear list otherwise. Verified by `pytester`-driven tests.
+- **GitHub Action.** `action/action.yml` + Docker image
+  (`action/Dockerfile` → `ghcr.io/shadownet-protocol/conformance`).
+- **CI workflows.** `ci.yml` (lint + mypy + pytest + fixture
+  drift-check), `release.yml` (PyPI Trusted Publishing + image push),
+  `self-test.yml` (boots `shadownet-go` reference SCA + SNS, runs the
+  suite end-to-end on every PR).
+- Path dep on `shadownet-py` for crypto / DID / VC / SCA / SNS / A2A /
+  webhook primitives. Swap to a pinned PyPI version is mechanical.
+- Development conventions in [`CLAUDE.md`](./CLAUDE.md).

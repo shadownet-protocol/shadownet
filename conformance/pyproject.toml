@@ -119,7 +119,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "N", "TID"]
+# Tests: bandit (S), pep8-naming (N), tidy-imports (TID), flake8-type-checking
+# (TC002/TC003) all add friction without correctness value in test files.
+# PT018 chained-assert is acceptable in negative-path tests.
+"tests/**" = ["S", "N", "TID", "TC002", "TC003", "PT018"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shadownet_conformance"]

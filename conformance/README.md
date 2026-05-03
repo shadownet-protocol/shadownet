@@ -4,7 +4,11 @@ Wire-level interop test suite for the [Shadownet](../shadownet-specs/) protocol.
 
 ## Status
 
-Early. No code yet. Tests the v0.1 RFCs at [`shadownet-specs/rfcs`](../shadownet-specs/rfcs/).
+v0.1 alpha. Tests the v0.1 RFCs at [`shadownet-specs/rfcs`](../shadownet-specs/rfcs/).
+Coverage: SCA (RFC-0004), SNS (RFC-0005), Sidecar inbound handshake (RFC-0006),
+predicate evaluation, JSON-Schema conformance, round-trip across two SCA / SNS
+implementations. RFC-0007 MCP/webhook coverage lands once a Sidecar
+implementation supports it (see [Sidecar coverage](#sidecar-coverage) below).
 
 ## What this repo is
 
@@ -24,10 +28,38 @@ It is what catches **Go and Python disagreeing about JWT canonicalization**, or 
 
 ```bash
 uv sync
-uv run shadownet-conformance --target sca=https://sca.example  --target sns=https://sns.example  --target sidecar=https://shadow.example
+uv run shadownet-conformance \
+    --target sca=https://sca.example \
+    --target sns=https://sns.example \
+    --target sidecar=https://shadow.example \
+    --report-junit=conformance.xml \
+    --report-json=conformance.json
 ```
 
-Also published as a **GitHub Action** so any implementation's CI can verify itself before merging:
+Three reports are emitted (configurable independently):
+
+- `--report-junit=PATH` — JUnit XML (CI-standard).
+- `--report-json=PATH` — RFC-keyed JSON, one entry per `(rfc, section, requirement)`.
+- `--gha-summary=PATH|auto` — GitHub Actions step-summary markdown.
+  `auto` honors `$GITHUB_STEP_SUMMARY`.
+
+For round-trip across two implementations of the same role:
+
+```bash
+uv run shadownet-conformance \
+    --target sca=https://sca-go.example \
+    --peer-target sca=https://sca-py.example \
+    --target sns=https://sns-go.example \
+    --peer-target sns=https://sns-py.example
+```
+
+For SCAs that expose an instant-approval test method under a non-default
+URI, set `--proof-method <URI>`. For SNS resolve happy-path tests, set
+`--sns-test-shadowname <local@provider>` to a name pre-registered against
+the target.
+
+Also published as a **GitHub Action** so any implementation's CI can
+verify itself before merging:
 
 ```yaml
 - uses: shadownet-protocol/conformance-action@v0.1
@@ -36,6 +68,29 @@ Also published as a **GitHub Action** so any implementation's CI can verify itse
     sns:     http://localhost:8444
     sidecar: http://localhost:8340
 ```
+
+### Smoke-testing locally against the Go reference
+
+```sh
+# In one terminal, boot the reference SCA + SNS:
+( cd ../shadownet-go
+  go build -o /tmp/sca-server ./cmd/sca-server
+  go build -o /tmp/sns-server ./cmd/sns-server
+  go build -o /tmp/shadownet ./cmd/shadownet
+  /tmp/shadownet keygen -out /tmp/issuer.jwk
+  /tmp/shadownet keygen -out /tmp/provider.jwk
+  # Copy/edit deploy/sca-server.yaml and deploy/sns-server.yaml as needed.
+  SHADOWNET_ALLOW_INSTANT_APPROVAL=1 /tmp/sca-server -config /path/to/sca.yaml
+)
+
+# In another terminal:
+uv run shadownet-conformance \
+    --target sca=http://127.0.0.1:8443 \
+    --target sns=http://127.0.0.1:8444 \
+    --proof-method instant-approval
+```
+
+The full automated version of this lives in `.github/workflows/self-test.yml`.
 
 ## Test vectors
 
@@ -70,6 +125,25 @@ the conformance suite itself never needs Go.
 | Python package | PyPI as `shadownet-conformance` |
 | Docker image | `ghcr.io/shadownet-protocol/conformance` |
 | GitHub Action | Marketplace as `shadownet-protocol/conformance-action` |
+
+## Sidecar coverage
+
+The Sidecar conformance suite at v0.1 covers:
+
+- `GET /.well-known/agent-card.json` shape (RFC-0006 §Required A2A surface).
+- A2A inbound handshake: missing auth, missing VP (→ `presentation_required`),
+  valid handshake, wrong audience, malformed VP, expired session token,
+  envelope-part absence (RFC-0006 §Handshake / §Errors).
+
+RFC-0007 MCP tool surface and webhook dispatch tests will land once at
+least one Sidecar implementation supports them. The plan keeps the
+`--target sidecar=URL` flag uniform; new tests opt in without a
+flag-design change.
+
+Sidecar↔Sidecar round-trip is registered with a documented skip
+(`sidecar round-trip skipped: only one v0.1 Sidecar impl exists`) so v0.2
+can light it up by simply pointing `--peer-target sidecar=` at a second
+implementation.
 
 ## Specifications
 

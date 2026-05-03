@@ -40,7 +40,8 @@ def load_jwt(rel_path: str) -> str:
 
 def load_json(rel_path: str) -> dict[str, Any]:
     """Load a JSON fixture as a dict."""
-    return json.loads(_read_text(rel_path))
+    payload: dict[str, Any] = json.loads(_read_text(rel_path))
+    return payload
 
 
 def load_bytes(rel_path: str) -> bytes:

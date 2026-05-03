@@ -47,6 +47,7 @@ def _build_pytest_args(config: Config) -> list[str]:
     tests_dir = _tests_dir()
     args: list[str] = [str(tests_dir)]
     if config.report_junit is not None:
+        config.report_junit.parent.mkdir(parents=True, exist_ok=True)
         args.append(f"--junit-xml={config.report_junit}")
     if config.marker_expr:
         args.extend(["-m", config.marker_expr])

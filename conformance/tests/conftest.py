@@ -10,6 +10,8 @@ from shadownet_conformance import _markers
 from shadownet_conformance.cli import CONFIG_ENV_PATH
 from shadownet_conformance.config import Config, Role
 
+pytest_plugins = ["shadownet_conformance.reporters.rfc_json"]
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -48,6 +50,7 @@ def _empty_namespace() -> object:
         no_network=False,
         marker_expr=None,
         peer_listen_host=None,
+        sns_test_shadowname=None,
     )
 
 

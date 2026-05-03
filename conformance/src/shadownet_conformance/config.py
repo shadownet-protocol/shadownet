@@ -36,6 +36,7 @@ class Config(BaseModel):
     targets: dict[Role, str] = Field(default_factory=dict)
     peer_targets: dict[Role, str] = Field(default_factory=dict)
     proof_method_uri: str = DEFAULT_PROOF_METHOD_URI
+    sns_test_shadowname: str | None = None
     specs_path: Path = DEFAULT_SPECS_PATH
     http_timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS
     report_junit: Path | None = None
@@ -93,6 +94,7 @@ class Config(BaseModel):
             include_network=not args.no_network and _env_bool("INCLUDE_NETWORK", default=True),
             marker_expr=args.marker_expr or _env_str("MARKER_EXPR"),
             peer_listen_host=args.peer_listen_host or _env_str("PEER_LISTEN_HOST") or "127.0.0.1",
+            sns_test_shadowname=args.sns_test_shadowname or _env_str("SNS_TEST_SHADOWNAME"),
         )
 
 
@@ -171,6 +173,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--peer-listen-host",
         metavar="HOST",
         help="Bind host for the in-process A2A test peer (default: 127.0.0.1).",
+    )
+    parser.add_argument(
+        "--sns-test-shadowname",
+        metavar="LOCAL@PROVIDER",
+        help=(
+            "Shadowname the operator has pre-registered against the SNS target, "
+            "used by the resolve happy-path test. If unset, the test is skipped."
+        ),
     )
     return parser
 
