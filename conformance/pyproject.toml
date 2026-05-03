@@ -31,7 +31,7 @@ dependencies = [
     "jsonschema>=4.23",
     "starlette>=0.40",
     "uvicorn>=0.32",
-    "shadownet",
+    "shadownet>=0.1.1,<0.2",
 ]
 
 [project.optional-dependencies]
@@ -61,11 +61,6 @@ dev = [
     "types-jsonschema>=4.23",
     "tomli-w>=1.0",
 ]
-
-# uv-only: editable path deps for sibling SDKs.
-# Swap to PyPI versions once shadownet-py publishes.
-[tool.uv.sources]
-shadownet = { path = "../shadownet-py", editable = true }
 
 [tool.hatch.version]
 path = "src/shadownet_conformance/_version.py"

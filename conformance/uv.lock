@@ -1097,7 +1097,8 @@ wheels = [
 
 [[package]]
 name = "shadownet"
-source = { editable = "../shadownet-py" }
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "cryptography" },
@@ -1106,30 +1107,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "a2a-sdk", specifier = ">=0.2" },
-    { name = "cryptography", specifier = ">=43" },
-    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", specifier = ">=1.2" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9" },
-    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40" },
-]
-provides-extras = ["fastapi"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jsonschema", specifier = ">=4.23" },
-    { name = "mypy", specifier = ">=1.13" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-cov", specifier = ">=5" },
-    { name = "respx", specifier = ">=0.21" },
-    { name = "ruff", specifier = ">=0.7" },
-    { name = "types-jsonschema", specifier = ">=4.23" },
+sdist = { url = "https://files.pythonhosted.org/packages/3d/7e/b9eeee669cfd9a77f02200572e0d9d43fc293b580bc898e8c2ae3e741204/shadownet-0.1.1.tar.gz", hash = "sha256:990d17d451a2f4a7cb735a814152a21a5df97ad84a507231fd211eae26d02649", size = 39548, upload-time = "2026-05-03T23:11:34.737Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e2/2b/bfcf11922a1e7105938f30469b836b1dfbe0c0b3ae0506c1b92b08d947d3/shadownet-0.1.1-py3-none-any.whl", hash = "sha256:fcc0535aaa9cf2f7b743cf475312d3f67944be3face1a5cf4ae21ef09baf94ea", size = 58960, upload-time = "2026-05-03T23:11:33.303Z" },
 ]
 
 [[package]]
@@ -1169,7 +1149,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "shadownet", editable = "../shadownet-py" },
+    { name = "shadownet", specifier = ">=0.1.1,<0.2" },
     { name = "starlette", specifier = ">=0.40" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
