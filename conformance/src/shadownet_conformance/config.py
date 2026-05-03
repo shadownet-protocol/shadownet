@@ -16,6 +16,7 @@ from shadownet_conformance.errors import ConfigError
 
 ENV_PREFIX: Final[str] = "SHADOWNET_CONFORMANCE_"
 
+
 # The package ships a frozen copy of shadownet-specs/schemas at the version
 # the suite was tagged against. `_bundled_specs_root()` returns the parent
 # directory whose `schemas/` subtree mirrors the upstream `shadownet-specs/`

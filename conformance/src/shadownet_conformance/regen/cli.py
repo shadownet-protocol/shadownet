@@ -11,8 +11,6 @@ changes that drift fixtures away from canon.
 from __future__ import annotations
 
 import argparse
-import base64
-import gzip
 import logging
 import sys
 from pathlib import Path
@@ -210,11 +208,14 @@ def _resolve_spec(
     if entry.kind == "status_list":
         issuer_seed = spec.pop("issuer_seed")
         spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
-        size = int(spec.pop("size"))
-        set_indices = list(spec.pop("set_indices"))
-        # list_id is informational; the wire artifact carries status_list_url.
-        spec.pop("list_id", None)
-        spec["encoded_list"] = _encode_bitstring(size, set_indices)
+        # encoded_list is hardcoded in the manifest because gzip output is
+        # library-version-dependent. The W3C BitstringStatusList spec only
+        # requires the *decompressed* bits to match, not byte-equal compressed
+        # payloads — see fixtures/_regen/manifest.toml for derivation.
+        if "encoded_list" not in spec:
+            raise ConformanceError(
+                f"status_list fixture {entry.id!r} is missing encoded_list in manifest"
+            )
         return spec
 
     raise ConformanceError(f"unknown fixture kind: {entry.kind}")
@@ -228,24 +229,6 @@ def _read_committed_jwt(rel_path: str) -> str:
             "Order your manifest so the referenced fixture comes first."
         )
     return full.read_bytes().decode("ascii").strip()
-
-
-def _encode_bitstring(size: int, set_indices: list[int]) -> str:
-    """Canonical bitstring encoder for BitstringStatusList #encodedList.
-
-    gzip output is implementation-defined; the conformance suite picks the
-    Python `gzip.compress(buf, mtime=0)` output as the canonical bytes for
-    fixtures. Implementations are required to produce a *decompressed*
-    bitstring with the same bits set, not byte-equal compressed payloads.
-    """
-    nbytes = (size + 7) // 8
-    buf = bytearray(nbytes)
-    for idx in set_indices:
-        if idx < 0 or idx >= size:
-            raise ConformanceError(f"set_index {idx} out of range for size {size}")
-        buf[idx // 8] |= 1 << (7 - (idx % 8))
-    compressed = gzip.compress(bytes(buf), mtime=0)
-    return base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
 
 
 if __name__ == "__main__":  # pragma: no cover

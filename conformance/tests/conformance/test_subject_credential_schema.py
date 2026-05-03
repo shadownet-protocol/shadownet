@@ -30,9 +30,7 @@ CREDENTIAL_FIXTURES = (
 @pytest.fixture(scope="module")
 def schema(conformance_config) -> dict[str, object]:
     schemas_root = resolve_schemas_root(conformance_config.specs_path)
-    return json.loads(
-        (schemas_root / "credentials" / "subject-credential.schema.json").read_text()
-    )
+    return json.loads((schemas_root / "credentials" / "subject-credential.schema.json").read_text())
 
 
 @pytest.mark.parametrize("rel_path", CREDENTIAL_FIXTURES)

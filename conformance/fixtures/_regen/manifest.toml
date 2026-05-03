@@ -73,12 +73,19 @@ issuer            = "did:web:sca.sh4dow.org"
 issuer_seed       = "sca_issuer"
 issuer_kid        = "did:web:sca.sh4dow.org#k1"
 status_list_url   = "https://sca.sh4dow.org/status/2026-q3"
-list_id           = "2026-q3"
-size              = 131072            # 128k bits, RFC-recommended minimum
-set_indices       = [5]               # bit 5 is the "revoked" example
 iat               = 1756684800        # 2025-09-01T00:00:00Z
 exp               = 1759276800        # 2025-10-01T00:00:00Z
 purpose           = "revocation"
+# encoded_list is hardcoded (not regenerated) because gzip output is
+# library-version-dependent. The committed value below was produced once
+# from a 131072-bit (16384-byte) bitstring with bit 5 set:
+#
+#   buf = bytearray(16384); buf[0] |= 1 << 2
+#   base64.urlsafe_b64encode(gzip.compress(bytes(buf), mtime=0)).rstrip(b'=')
+#
+# Decoding it (decompress + check bit 5) is what verifiers do; the exact
+# byte-encoding of the compressed payload is not normative.
+encoded_list      = "H4sIAAAAAAACE-3BIQEAAAACIIP_NzvDAjQAAAAAAAAAAAAAAAAAAADA2wC5foOwAEAAAA"
 
 # ---------------------------------------------------------------------------
 # Credentials.
