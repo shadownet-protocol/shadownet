@@ -62,7 +62,7 @@ func TestRecordRoundtrip(t *testing.T) {
 	rec := sns.Record{
 		Shadowname:  "alice@sh4dow.org",
 		DID:         subjDID,
-		Endpoint:    "https://shadow.example.org/u/alice/a2a",
+		Endpoint:    "https://shadow.sh4dow.org/u/alice/a2a",
 		PublicKey:   pubJWK,
 		SubjectType: vc.SubjectPerson,
 		TTL:         300,
@@ -111,7 +111,7 @@ func TestRecordSubMismatch(t *testing.T) {
 		Shadowname: "alice@sh4dow.org", DID: subjDID, Endpoint: "https://x/y",
 		PublicKey: pubJWK, SubjectType: vc.SubjectPerson, TTL: 300,
 	}, now)
-	if _, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), jwt, "bob@example.org", now); err == nil {
+	if _, err := sns.VerifyRecord(context.Background(), did.NewKeyResolver(), jwt, "bob@sh4dow.org", now); err == nil {
 		t.Fatalf("expected sub-mismatch error")
 	}
 }
