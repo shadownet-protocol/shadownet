@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: lint + mypy + pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy
+
+      - name: Run conformance suite (no targets — predicate + schema only)
+        run: uv run pytest -v
+
+  fixture-drift:
+    name: fixtures regen --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Build go-emit binary
+        working-directory: fixtures/_regen/go-emit
+        run: go build -o go-emit .
+
+      - name: regen --check (cross-SDK fixture verification)
+        run: uv run shadownet-conformance-fixtures regen --check
+
+  build:
+    name: build (sdist + wheel)
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, fixture-drift]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Verify py.typed marker is shipped
+        run: |
+          unzip -l dist/shadownet_conformance-*.whl \
+            | grep -q 'shadownet_conformance/py\.typed' \
+            || { echo "py.typed missing from wheel"; exit 1; }
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7

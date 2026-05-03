@@ -1,0 +1,122 @@
+name: Self-test against shadownet-go
+
+# Runs the conformance suite against the published shadownet-go reference SCA
+# + SNS binaries, end-to-end. This is what catches *us* getting a test wrong:
+# the reference servers are known-good, so any failure here is a bug in this
+# suite, not in the impl under test.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pin the shadownet-go version under test. Bump together with shadownet-py
+  # in pyproject.toml when the protocol minor moves.
+  SHADOWNET_GO_VERSION: v0.1.1
+
+jobs:
+  self-test:
+    name: shadownet-conformance vs shadownet-go reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Install shadownet-go reference binaries
+        run: |
+          export GOBIN=/tmp
+          go install "github.com/shadownet-protocol/shadownet-go/cmd/sca-server@${SHADOWNET_GO_VERSION}"
+          go install "github.com/shadownet-protocol/shadownet-go/cmd/sns-server@${SHADOWNET_GO_VERSION}"
+          go install "github.com/shadownet-protocol/shadownet-go/cmd/shadownet@${SHADOWNET_GO_VERSION}"
+
+      - name: Provision keys + SCA config + SNS config
+        run: |
+          mkdir -p /tmp/sn-self
+          /tmp/shadownet keygen -out /tmp/sn-self/issuer.jwk
+          /tmp/shadownet keygen -out /tmp/sn-self/provider.jwk
+          cat > /tmp/sn-self/sca.yaml <<EOF
+          did: did:web:127.0.0.1%3A18443
+          listen: 127.0.0.1:18443
+          signing:
+            keyfile: /tmp/sn-self/issuer.jwk
+          storage:
+            driver: memory
+          policy:
+            freshnessWindowSeconds: 86400
+            statusListBase: http://127.0.0.1:18443/status/
+            levels:
+              - level: urn:shadownet:level:L1
+                method: instant-approval
+                credentialLifetimeDays: 90
+          EOF
+          cat > /tmp/sn-self/sns.yaml <<EOF
+          did: did:web:127.0.0.1%3A18444
+          provider: 127.0.0.1
+          listen: 127.0.0.1:18444
+          signing:
+            keyfile: /tmp/sn-self/provider.jwk
+          storage:
+            driver: memory
+          defaultTtl: 300
+          EOF
+
+      - name: Boot reference servers
+        run: |
+          SHADOWNET_ALLOW_INSTANT_APPROVAL=1 /tmp/sca-server -config /tmp/sn-self/sca.yaml > /tmp/sca.log 2>&1 &
+          /tmp/sns-server -config /tmp/sn-self/sns.yaml > /tmp/sns.log 2>&1 &
+          for url in http://127.0.0.1:18443/.well-known/did.json http://127.0.0.1:18444/.well-known/did.json; do
+            for _ in $(seq 1 30); do
+              if curl -fsS "$url" >/dev/null; then break; fi
+              sleep 0.5
+            done
+          done
+
+      - name: Run conformance suite
+        run: |
+          uv run shadownet-conformance \
+            --target sca=http://127.0.0.1:18443 \
+            --target sns=http://127.0.0.1:18444 \
+            --proof-method instant-approval \
+            --report-junit=report.xml \
+            --report-json=report.json \
+            --gha-summary=auto
+
+      - name: Tail server logs on failure
+        if: failure()
+        run: |
+          echo "::group::sca-server log"
+          tail -200 /tmp/sca.log || true
+          echo "::endgroup::"
+          echo "::group::sns-server log"
+          tail -200 /tmp/sns.log || true
+          echo "::endgroup::"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-reports
+          path: |
+            report.xml
+            report.json
+          if-no-files-found: warn
+          retention-days: 7
