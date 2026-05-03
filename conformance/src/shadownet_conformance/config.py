@@ -15,9 +15,47 @@ from shadownet_conformance._version import __version__
 from shadownet_conformance.errors import ConfigError
 
 ENV_PREFIX: Final[str] = "SHADOWNET_CONFORMANCE_"
-DEFAULT_SPECS_PATH: Final[Path] = Path("../shadownet-specs")
+
+# The package ships a frozen copy of shadownet-specs/schemas at the version
+# the suite was tagged against. `_bundled_specs_root()` returns the parent
+# directory whose `schemas/` subtree mirrors the upstream `shadownet-specs/`
+# layout, so consumers' tests just look up `<specs_path>/schemas/<...>`.
+def _bundled_specs_root() -> Path:
+    return Path(__file__).resolve().parent / "_specs"
+
+
+DEFAULT_SPECS_PATH: Final[Path] = _bundled_specs_root().parent
+# Note: DEFAULT_SPECS_PATH points at the package directory; the schemas live
+# at <DEFAULT_SPECS_PATH>/_specs/schemas/... A user override via --specs-path
+# should be a checkout of shadownet-specs whose layout is `<root>/schemas/...`.
+# To keep both forms working, the schema-loading helpers try both layouts.
 DEFAULT_PROOF_METHOD_URI: Final[str] = "instant-approval"
 DEFAULT_HTTP_TIMEOUT_SECONDS: Final[float] = 10.0
+
+
+def resolve_schemas_root(specs_path: Path) -> Path:
+    """Return the directory whose direct subdirs are credentials/, messages/, ...
+
+    Accepts either a shadownet-specs checkout (`<root>/schemas/...`) or the
+    bundled layout (`<package>/_specs/...`).
+    """
+    bundled = _bundled_specs_root()
+    if (specs_path / "schemas").is_dir():
+        return specs_path / "schemas"
+    if (specs_path / "_specs").is_dir():
+        return specs_path / "_specs"
+    if specs_path == bundled.parent and bundled.is_dir():
+        return bundled
+    if specs_path.name == "schemas" and specs_path.is_dir():
+        return specs_path
+    if (bundled / "credentials").is_dir():
+        # Last-resort fallback to the bundled copy; raised by callers if the
+        # supplied path was meant to override.
+        return bundled
+    raise FileNotFoundError(
+        f"could not locate a schemas directory under {specs_path!r}; "
+        "pass --specs-path pointing at a shadownet-specs checkout"
+    )
 
 
 class Role(StrEnum):

@@ -11,16 +11,13 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import TYPE_CHECKING
 
 import jsonschema
 import pytest
 from shadownet.crypto.jwt import decode_unverified_claims
 
+from shadownet_conformance.config import resolve_schemas_root
 from shadownet_conformance.fixtures import fixture_path, load_jwt
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 CREDENTIAL_FIXTURES = (
     "credentials/alice_l1.jwt",
@@ -30,15 +27,12 @@ CREDENTIAL_FIXTURES = (
 )
 
 
-def _schema(specs_path: Path) -> dict[str, object]:
-    return json.loads(
-        (specs_path / "schemas" / "credentials" / "subject-credential.schema.json").read_text()
-    )
-
-
 @pytest.fixture(scope="module")
 def schema(conformance_config) -> dict[str, object]:
-    return _schema(conformance_config.specs_path)
+    schemas_root = resolve_schemas_root(conformance_config.specs_path)
+    return json.loads(
+        (schemas_root / "credentials" / "subject-credential.schema.json").read_text()
+    )
 
 
 @pytest.mark.parametrize("rel_path", CREDENTIAL_FIXTURES)
@@ -84,12 +78,11 @@ def test_required_top_level_claims_present():
 
 
 def test_schemas_directory_is_present(conformance_config):
-    """If --specs-path is mis-configured the rest of the suite has no contract to test against."""
-    schema_path = conformance_config.specs_path / "schemas"
-    assert schema_path.is_dir(), (
-        f"schemas/ not found under {conformance_config.specs_path}; "
-        "set --specs-path or SHADOWNET_CONFORMANCE_SPECS_PATH to your shadownet-specs checkout"
-    )
+    """The schemas/ tree (bundled or from --specs-path override) MUST resolve."""
+    schemas_root = resolve_schemas_root(conformance_config.specs_path)
+    assert schemas_root.is_dir(), f"schemas root did not resolve: {schemas_root}"
+    assert (schemas_root / "credentials").is_dir()
+    assert (schemas_root / "messages").is_dir()
 
 
 def test_fixture_files_resolve():

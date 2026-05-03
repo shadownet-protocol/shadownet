@@ -5,22 +5,17 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
 import jsonschema
 import pytest
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-def _schema(specs_path: Path) -> dict[str, object]:
-    return json.loads((specs_path / "schemas" / "messages" / "envelope.schema.json").read_text())
+from shadownet_conformance.config import resolve_schemas_root
 
 
 @pytest.fixture(scope="module")
 def schema(conformance_config) -> dict[str, object]:
-    return _schema(conformance_config.specs_path)
+    schemas_root = resolve_schemas_root(conformance_config.specs_path)
+    return json.loads((schemas_root / "messages" / "envelope.schema.json").read_text())
 
 
 # RFC-0006 illustrative envelope payload.
