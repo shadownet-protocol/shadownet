@@ -51,5 +51,3 @@ report.json
 fixtures/_regen/go-emit/go-emit
 fixtures/_regen/.cache/
 
-# Build context for the Docker image (release pipeline copies shadownet-py here)
-.docker-shadownet-py/
