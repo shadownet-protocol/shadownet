@@ -33,7 +33,7 @@ L1 = "urn:shadownet:level:L1"
 L2 = "urn:shadownet:level:L2"
 L3 = "urn:shadownet:level:L3"
 O1 = "urn:shadownet:level:O1"
-SCA = "did:web:sca.shadownet.example"
+SCA = "did:web:sca.sh4dow.org"
 OTHER_SCA = "did:web:other-sca.example"
 
 

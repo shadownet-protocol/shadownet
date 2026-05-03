@@ -24,7 +24,7 @@ Emitter = Callable[[dict[str, Any]], bytes]
 EMITTERS: dict[str, Emitter] = {}
 
 CONTEXT_W3C_CRED_V2 = "https://www.w3.org/ns/credentials/v2"
-CONTEXT_SHADOWNET_V1 = "https://shadownet.example/contexts/v1"
+CONTEXT_SHADOWNET_V1 = "https://sh4dow.org/contexts/v1"
 TYPE_VC = "VerifiableCredential"
 TYPE_SUBJECT_CRED = "ShadownetSubjectCredential"
 TYPE_VP = "VerifiablePresentation"
