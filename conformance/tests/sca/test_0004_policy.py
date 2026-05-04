@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import pytest
+from shadownet.sca.policy import SCAPolicy
 
 pytestmark = pytest.mark.class_("sca")
 
@@ -17,16 +18,10 @@ async def test_policy_endpoint_returns_200(sca_url, http):
 
 
 @pytest.mark.network
-@pytest.mark.rfc("0004", section="Policy", requirement="top_level_shape")
-async def test_policy_has_required_top_level_keys(sca_url, http):
-    """RFC-0004 §Policy: required keys = issuer, shadownet:v, levels, freshnessWindowSeconds, statusListBase."""
-    body = (await http.get(f"{sca_url}/.well-known/sca/policy.json")).json()
-    required = {"issuer", "shadownet:v", "levels", "freshnessWindowSeconds", "statusListBase"}
-    missing = required - set(body)
-    assert not missing, f"policy.json missing required keys: {missing}"
-    assert isinstance(body["levels"], list)
-    assert isinstance(body["freshnessWindowSeconds"], int)
-    assert isinstance(body["statusListBase"], str)
+@pytest.mark.rfc("0004", section="Policy", requirement="parses_into_model")
+async def test_policy_parses_into_model(sca_url, http):
+    resp = await http.get(f"{sca_url}/.well-known/sca/policy.json")
+    SCAPolicy.model_validate(resp.json())
 
 
 @pytest.mark.network

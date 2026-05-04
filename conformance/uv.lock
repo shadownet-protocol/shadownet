@@ -32,9 +32,9 @@ name = "aiologic"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "sniffio", marker = "python_full_version < '3.15'" },
+    { name = "sniffio", marker = "python_full_version < '3.13'" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
-    { name = "wrapt", marker = "python_full_version < '3.15'" },
+    { name = "wrapt", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/13/50b91a3ea6b030d280d2654be97c48b6ed81753a50286ee43c646ba36d3c/aiologic-0.16.0.tar.gz", hash = "sha256:c267ccbd3ff417ec93e78d28d4d577ccca115d5797cdbd16785a551d9658858f", size = 225952, upload-time = "2025-11-27T23:48:41.195Z" }
 wheels = [
@@ -374,7 +374,7 @@ name = "culsans"
 version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "aiologic", marker = "python_full_version < '3.15'" },
+    { name = "aiologic", marker = "python_full_version < '3.13'" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d9/e3/49afa1bc180e0d28008ec6bcdf82a4072d1c7a41032b5b759b60814ca4b0/culsans-0.11.0.tar.gz", hash = "sha256:0b43d0d05dce6106293d114c86e3fb4bfc63088cfe8ff08ed3fe36891447fe33", size = 107546, upload-time = "2025-12-31T23:15:38.196Z" }
@@ -1097,7 +1097,7 @@ wheels = [
 
 [[package]]
 name = "shadownet"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -1107,9 +1107,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/7e/b9eeee669cfd9a77f02200572e0d9d43fc293b580bc898e8c2ae3e741204/shadownet-0.1.1.tar.gz", hash = "sha256:990d17d451a2f4a7cb735a814152a21a5df97ad84a507231fd211eae26d02649", size = 39548, upload-time = "2026-05-03T23:11:34.737Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/18/2c8f311f9e5db8a87c7ba1c348b440dedc16778604fa579bac684f7d52c7/shadownet-0.1.2.tar.gz", hash = "sha256:5d21714db0c60e6223ecbd03520409cc04c31d3d1dbdf4b3cb471df405325153", size = 39981, upload-time = "2026-05-04T00:18:08.026Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/2b/bfcf11922a1e7105938f30469b836b1dfbe0c0b3ae0506c1b92b08d947d3/shadownet-0.1.1-py3-none-any.whl", hash = "sha256:fcc0535aaa9cf2f7b743cf475312d3f67944be3face1a5cf4ae21ef09baf94ea", size = 58960, upload-time = "2026-05-03T23:11:33.303Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/93/235e1889b080937e8f90a543b3fcbfebd4bf0988e015e760a2e5416814e1/shadownet-0.1.2-py3-none-any.whl", hash = "sha256:89b4639e691c061d8174fbe5c8bac39222be01664049c9a35c3e65f8c5669568", size = 59540, upload-time = "2026-05-04T00:18:06.646Z" },
 ]
 
 [[package]]
