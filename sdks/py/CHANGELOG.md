@@ -12,11 +12,31 @@ _Nothing yet — track changes here as they land on `main`._
 
 ## [0.1.3] — 2026-05-03
 
-Placeholder release slot. Add changes here before tagging `v0.1.3`.
+A fourth interop bug surfaced by `shadownet-conformance` after v0.1.2 shipped:
+the CSR JWT was still missing its `kid` header, parallel to the subject-auth
+fix in v0.1.2.
+
+### Fixed
+
+- `sca.csr.build_csr` now sets `kid` in the JWT header (defaults to the bare
+  holder DID; explicit override via the `kid=` keyword argument). Matches the
+  pattern landed for `build_subject_auth` and `mint_session_token` in v0.1.2.
+  `SCAClient.request_issuance` picks this up automatically through the new
+  default — no callsite change needed downstream.
+
+### Added
+
+- `CHANGELOG.md` (this file). The README now links here for per-release
+  detail.
+
+### Tests
+
+- 2 additional regression tests in `tests/unit/test_v0_1_2_regressions.py`
+  cover the new CSR `kid` default and override.
 
 ## [0.1.2] — 2026-05-03
 
-Four interop bugs caught by `shadownet-conformance` against v0.1.1.
+Three interop bugs caught by `shadownet-conformance` against v0.1.1.
 
 ### Fixed
 
@@ -24,7 +44,6 @@ Four interop bugs caught by `shadownet-conformance` against v0.1.1.
   RFC-0004 §Common: subject authentication. Defaults to the bare holder DID;
   override via the new `kid=` keyword argument when a `did:web` controller
   has multiple verification methods.
-- `sca.csr.build_csr` gets the same treatment — header now carries `kid`.
 - `a2a.session.mint_session_token` mirrors the change for symmetry. RFC-0006
   doesn't strictly require `kid` on session tokens, but stricter peer SDKs
   may; this keeps holder-signed JWTs consistent across the surface.
@@ -34,7 +53,7 @@ Four interop bugs caught by `shadownet-conformance` against v0.1.1.
 
 ### Tests
 
-- 9 new regression tests in `tests/unit/test_v0_1_2_regressions.py`
+- 7 new regression tests in `tests/unit/test_v0_1_2_regressions.py`
   pin every fix and the explicit `kid=` override paths.
 
 ## [0.1.1] — 2026-05-03
