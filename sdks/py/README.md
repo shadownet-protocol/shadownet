@@ -149,7 +149,7 @@ Engineering conventions and contribution rules live in [`CLAUDE.md`](./CLAUDE.md
 
 ## Versioning
 
-Releases track the protocol version they implement (`0.1.x` while the spec is at v0.1). Pre-releases use the PEP 440 form (`0.1.0rc1`) and the matching git tag (`v0.1.0-rc.1`).
+Releases track the protocol version they implement (`0.1.x` while the spec is at v0.1). Pre-releases use the PEP 440 form (`0.1.0rc1`) and the matching git tag (`v0.1.0-rc.1`). Per-release changes are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## License
 
