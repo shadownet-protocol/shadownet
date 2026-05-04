@@ -45,7 +45,12 @@ def _build_subject_auth_with_kid(
         "shadownet:v": "0.1",
         "purpose": "sca-request",
     }
-    return sign_jwt(claims, holder_key, header_extras={"typ": "JWT", "kid": f"{holder_did}#key-1"})
+    # For did:key the kid is the bare DID — there's only one verification
+    # method and the canonical fragment is the base58 body of the DID itself.
+    # Using a made-up fragment like "#key-1" makes shadownet-go's LookupKey
+    # fail with "no verification method with id 'key-1'". A fragmentless kid
+    # routes to the first (only) VM.
+    return sign_jwt(claims, holder_key, header_extras={"typ": "JWT", "kid": holder_did})
 
 
 @pytest.fixture(autouse=True)
