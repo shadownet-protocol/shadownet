@@ -13,7 +13,9 @@ class LevelPolicy(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     level: str = Field(pattern=r"^urn:")
-    method: str = Field(pattern=r"^urn:")
+    # RFC-0004 §Policy document: `method` is an "operator-defined URI" — the
+    # protocol does not constrain the URI scheme. Accept any URI shape.
+    method: str = Field(min_length=1)
     rate_limit: str | None = Field(default=None, alias="rateLimit")
     credential_lifetime_days: int | None = Field(default=None, alias="credentialLifetimeDays", ge=1)
 

@@ -38,7 +38,8 @@ class ProofSession(BaseModel):
     shadownet_v: Literal["0.1"] = Field(alias="shadownet:v")
     session_id: str = Field(alias="sessionId")
     expires_at: int = Field(alias="expiresAt", ge=0)
-    method: str = Field(pattern=r"^urn:")
+    # RFC-0004 §Policy document: `method` is an operator-defined URI; not URN-only.
+    method: str = Field(min_length=1)
     next: NextStep
 
 

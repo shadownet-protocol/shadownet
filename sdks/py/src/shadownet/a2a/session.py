@@ -47,9 +47,17 @@ def mint_session_token(
     holder_key: Ed25519KeyPair,
     holder_did: str,
     audience_did: str,
+    kid: str | None = None,
     issued_at: int | None = None,
     ttl_seconds: int = DEFAULT_SESSION_TOKEN_TTL,
 ) -> str:
+    """Mint an A2A session-token JWT per RFC-0006 §Session token.
+
+    The header carries ``kid`` for symmetry with subject-auth and credential
+    JWTs (RFC-0006 doesn't mandate it explicitly, but stricter peer SDKs may
+    require one). ``kid`` defaults to the bare ``holder_did``; ``did:web``
+    callers with multiple keys SHOULD pass an explicit ``<did>#<key-id>``.
+    """
     if ttl_seconds > DEFAULT_SESSION_TOKEN_TTL:
         raise ValueError(f"session-token TTL must be ≤ {DEFAULT_SESSION_TOKEN_TTL}s per RFC-0006")
     iat = issued_at if issued_at is not None else int(time.time())
@@ -62,7 +70,11 @@ def mint_session_token(
         shadownet_v="0.1",
         purpose="a2a-session",
     )
-    return sign_jwt(claims.model_dump(by_alias=True), holder_key)
+    return sign_jwt(
+        claims.model_dump(by_alias=True),
+        holder_key,
+        header_extras={"kid": kid or holder_did},
+    )
 
 
 async def verify_session_token(

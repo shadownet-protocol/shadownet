@@ -134,9 +134,17 @@ def build_subject_auth(
     holder_key: Ed25519KeyPair,
     holder_did: str,
     sca_did: str,
+    kid: str | None = None,
     issued_at: int | None = None,
     ttl_seconds: int = DEFAULT_AUTH_TTL_SECONDS,
 ) -> str:
+    """Mint a subject-auth JWT per RFC-0004 §Common: subject authentication.
+
+    The header carries ``kid`` per the spec example. ``kid`` defaults to the
+    bare ``holder_did`` (sufficient for ``did:key`` since the document has a
+    single verification method); ``did:web`` callers with multiple keys SHOULD
+    pass ``kid="<did>#<key-id>"`` explicitly.
+    """
     if ttl_seconds > DEFAULT_AUTH_TTL_SECONDS:
         raise ValueError(f"subject-auth JWT TTL must be ≤ {DEFAULT_AUTH_TTL_SECONDS}s per RFC-0004")
     iat = issued_at if issued_at is not None else int(time.time())
@@ -149,7 +157,11 @@ def build_subject_auth(
         shadownet_v="0.1",
         purpose="sca-request",
     )
-    return sign_jwt(claims.model_dump(by_alias=True), holder_key)
+    return sign_jwt(
+        claims.model_dump(by_alias=True),
+        holder_key,
+        header_extras={"kid": kid or holder_did},
+    )
 
 
 async def verify_subject_auth(
