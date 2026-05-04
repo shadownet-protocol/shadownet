@@ -1097,7 +1097,7 @@ wheels = [
 
 [[package]]
 name = "shadownet"
-version = "0.1.2"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -1107,9 +1107,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/18/2c8f311f9e5db8a87c7ba1c348b440dedc16778604fa579bac684f7d52c7/shadownet-0.1.2.tar.gz", hash = "sha256:5d21714db0c60e6223ecbd03520409cc04c31d3d1dbdf4b3cb471df405325153", size = 39981, upload-time = "2026-05-04T00:18:08.026Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/ce/bef3a6af675c8685326101566acfadc363a63b2c609cdd96c25d7d10f1b4/shadownet-0.1.3.tar.gz", hash = "sha256:3d39149162a419e53054e2040d685e54cbdc23a39c297f6032637a152926ef81", size = 40104, upload-time = "2026-05-04T00:30:35.339Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/93/235e1889b080937e8f90a543b3fcbfebd4bf0988e015e760a2e5416814e1/shadownet-0.1.2-py3-none-any.whl", hash = "sha256:89b4639e691c061d8174fbe5c8bac39222be01664049c9a35c3e65f8c5669568", size = 59540, upload-time = "2026-05-04T00:18:06.646Z" },
+    { url = "https://files.pythonhosted.org/packages/50/c1/b6b7cc82669cb9f9215fbf5120c533e5e41cf331503a942e4527c6c44c71/shadownet-0.1.3-py3-none-any.whl", hash = "sha256:8a83777555edcaebd86196fd4064f970fcf38ab355dab66a044a5127ae1b06d6", size = 59657, upload-time = "2026-05-04T00:30:33.881Z" },
 ]
 
 [[package]]
