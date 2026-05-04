@@ -148,7 +148,8 @@ func run() error {
 		warnIfNotLoopback(logger, cfg.Listen)
 	}
 
-	logger.Info("starting sns-server",
+	logger.Info(
+		"starting sns-server",
 		slog.String("version", version),
 		slog.String("did", cfg.DID), slog.String("provider", cfg.Provider),
 		slog.String("listen", cfg.Listen), slog.Bool("tls", tlsCfg != nil),

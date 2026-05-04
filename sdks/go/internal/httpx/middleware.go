@@ -47,7 +47,8 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			rec := &statusRecorder{ResponseWriter: w, status: 200}
 			next.ServeHTTP(rec, r)
-			logger.LogAttrs(r.Context(), slog.LevelInfo, "http",
+			logger.LogAttrs(
+				r.Context(), slog.LevelInfo, "http",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),
@@ -65,7 +66,8 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rv := recover(); rv != nil {
-					logger.LogAttrs(r.Context(), slog.LevelError, "panic",
+					logger.LogAttrs(
+						r.Context(), slog.LevelError, "panic",
 						slog.Any("value", rv),
 						slog.String("rid", RequestIDFromContext(r.Context())),
 						slog.String("stack", string(debug.Stack())),

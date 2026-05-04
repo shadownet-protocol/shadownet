@@ -56,7 +56,7 @@ jobs:
 
       - name: gofumpt
         run: |
-          go install mvdan.cc/gofumpt@latest
+          go install mvdan.cc/gofumpt@v0.10.0
           diff <(gofumpt -l -extra .) <(printf '')
 
       - name: staticcheck

@@ -169,7 +169,8 @@ func run() error {
 		return err
 	}
 
-	logger.Info("starting sca-server",
+	logger.Info(
+		"starting sca-server",
 		slog.String("version", version),
 		slog.String("did", cfg.DID),
 		slog.String("listen", cfg.Listen),
