@@ -61,9 +61,17 @@ def build_csr(
     sca_did: str,
     level: str,
     subject_type: Literal["person", "organization"],
+    kid: str | None = None,
     issued_at: int | None = None,
     ttl_seconds: int = DEFAULT_CSR_TTL_SECONDS,
 ) -> str:
+    """Build a CSR JWT per RFC-0004 §POST /issuance.
+
+    The header carries ``kid`` for consistency with subject-auth and credential
+    JWTs. ``kid`` defaults to the bare ``holder_did`` (works for ``did:key``
+    documents with a single verification method); ``did:web`` callers with
+    multiple keys SHOULD pass an explicit ``<did>#<key-id>``.
+    """
     iat = issued_at if issued_at is not None else int(time.time())
     csr = CertificateSigningRequest(
         iss=holder_did,
@@ -72,7 +80,11 @@ def build_csr(
         aud=sca_did,
         request=CSRRequest(level=level, subject_type=subject_type),
     )
-    return sign_jwt(csr.to_claims(), holder_key)
+    return sign_jwt(
+        csr.to_claims(),
+        holder_key,
+        header_extras={"kid": kid or holder_did},
+    )
 
 
 async def verify_csr(

@@ -5,9 +5,11 @@ Each test pins down a behavior we got wrong in v0.1.1:
 1. `build_subject_auth` was emitting headers without `kid` (RFC-0004
    §Common: subject authentication shows kid in the example header).
 2. `mint_session_token` had the same header issue (symmetric fix).
-3. `LevelPolicy.method` rejected non-URN URIs (RFC-0004 §Policy document
+3. `build_csr` had the same header issue — JWT body signed by the holder
+   but no kid in the header.
+4. `LevelPolicy.method` rejected non-URN URIs (RFC-0004 §Policy document
    says method is "operator-defined URI" — any scheme).
-4. `ProofSession.method` had the same over-strict regex.
+5. `ProofSession.method` had the same over-strict regex.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from shadownet.crypto.ed25519 import Ed25519KeyPair
 from shadownet.crypto.jwt import decode_header
 from shadownet.did.key import derive_did_key
 from shadownet.sca.client import ProofSession
-from shadownet.sca.csr import build_subject_auth
+from shadownet.sca.csr import build_csr, build_subject_auth
 from shadownet.sca.policy import SCAPolicy
 
 
@@ -47,6 +49,37 @@ def test_subject_auth_header_kid_override() -> None:
         holder_key=kp,
         holder_did=did,
         sca_did="did:web:sca.sh4dow.org",
+        kid=explicit_kid,
+    )
+    assert decode_header(token)["kid"] == explicit_kid
+
+
+# --- Bug 1b: CSR header carries kid (parallel to subject-auth) ---
+
+
+def test_csr_header_includes_kid_default() -> None:
+    kp, did = _holder()
+    token = build_csr(
+        holder_key=kp,
+        holder_did=did,
+        sca_did="did:web:sca.sh4dow.org",
+        level="urn:shadownet:level:L1",
+        subject_type="person",
+    )
+    header = decode_header(token)
+    assert header["kid"] == did
+    assert header["alg"] == "EdDSA"
+
+
+def test_csr_header_kid_override() -> None:
+    kp, did = _holder()
+    explicit_kid = "did:web:org.example#signing-key"
+    token = build_csr(
+        holder_key=kp,
+        holder_did=did,
+        sca_did="did:web:sca.sh4dow.org",
+        level="urn:shadownet:level:L2",
+        subject_type="organization",
         kid=explicit_kid,
     )
     assert decode_header(token)["kid"] == explicit_kid
