@@ -23,13 +23,13 @@ import (
 	"time"
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
-	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
 	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
 	"github.com/shadownet-protocol/shadownet-go/pkg/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
 	"github.com/shadownet-protocol/shadownet-go/pkg/scaserver"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
 )
 
@@ -139,15 +139,18 @@ func run() error {
 		Sessions:   sessions,
 		Issuance:   issuance,
 		Revocation: revocation,
-		Methods:    map[string]sca.ProofMethod{InstantApproval: InstantApprovalProofMethod{}},
+		Methods: map[string]sca.ProofMethod{
+			scaserver.InstantApproval: scaserver.InstantApprovalProofMethod{},
+		},
 		Policy:     policy,
 		ReadyCheck: readyCheck(db),
+		Caller:     &sca.HTTPCaller{Logger: logger},
 	}
 	if err := issuer.Validate(); err != nil {
 		return err
 	}
 
-	if err := assertInstantApprovalNotPublic(logger, cfg); err != nil {
+	if err := scaserver.AssertInstantApprovalNotPublic(logger, cfg.Listen, cfg.Policy.Levels); err != nil {
 		return err
 	}
 
@@ -264,34 +267,6 @@ func buildTLS(cfg fileConfig) (*tls.Config, error) {
 		return nil, fmt.Errorf("load TLS cert/key: %w", err)
 	}
 	return httpx.TLSConfig(cert), nil
-}
-
-// assertInstantApprovalNotPublic enforces RFC-0004's intent that production
-// SCAs must not auto-issue: cmd/sca-server is allowed to use InstantApproval
-// for local development only. The check is two-tier — refuse to start on a
-// non-loopback listener without explicit opt-in, otherwise log a loud Warn.
-func assertInstantApprovalNotPublic(logger *slog.Logger, cfg fileConfig) error {
-	uses := false
-	for _, l := range cfg.Policy.Levels {
-		if l.Method == InstantApproval {
-			uses = true
-			break
-		}
-	}
-	if !uses {
-		return nil
-	}
-	allow := config.EnvString("SHADOWNET_ALLOW_INSTANT_APPROVAL", "") == "1"
-	if !httpx.IsLoopback(cfg.Listen) && !allow {
-		return fmt.Errorf("instant-approval is configured but listen %q is not loopback; "+
-			"this auto-approves every CSR and must not be exposed beyond a trusted network. "+
-			"Set SHADOWNET_ALLOW_INSTANT_APPROVAL=1 to opt in for a private test deploy", cfg.Listen)
-	}
-	logger.Warn(
-		"InstantApprovalProofMethod is enabled — every /proof/start opens a session that is immediately ready. " +
-			"Use this configuration for local development only.",
-	)
-	return nil
 }
 
 // newLogger builds the root slog.Logger.

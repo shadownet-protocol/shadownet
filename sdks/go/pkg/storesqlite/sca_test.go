@@ -6,9 +6,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/internal/storesqlite"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca/storetest"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storesqlite"
 )
 
 // Each test gets its own :memory: database; sqlite's :memory: form is
