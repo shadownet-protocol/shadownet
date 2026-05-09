@@ -16,7 +16,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,12 +23,13 @@ import (
 	"time"
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
-	"github.com/shadownet-protocol/shadownet-go/internal/httpx"
-	"github.com/shadownet-protocol/shadownet-go/internal/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet-go/pkg/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet-go/pkg/scaserver"
 	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
 )
 
@@ -103,7 +103,7 @@ func run() error {
 	if err := keyguard.AssertNotFixture(kp.Public, "sca-server"); err != nil {
 		return err
 	}
-	keyID := cfg.DID + "#" + sca.DefaultListID // simple key fragment; matches did:web doc we serve
+	keyID := cfg.DID + "#" + sca.DefaultListID
 
 	policy := sca.Policy{
 		Issuer:                 cfg.DID,
@@ -131,19 +131,15 @@ func run() error {
 		}()
 	}
 
-	resolver := buildResolver(cfg.DID)
-
 	issuer := &sca.Issuer{
 		DID:        cfg.DID,
 		KeyID:      keyID,
 		Key:        kp,
-		Resolver:   resolver,
+		Resolver:   buildResolver(cfg.DID),
 		Sessions:   sessions,
 		Issuance:   issuance,
 		Revocation: revocation,
-		Methods: map[string]sca.ProofMethod{
-			InstantApproval: InstantApprovalProofMethod{},
-		},
+		Methods:    map[string]sca.ProofMethod{InstantApproval: InstantApprovalProofMethod{}},
 		Policy:     policy,
 		ReadyCheck: readyCheck(db),
 	}
@@ -151,21 +147,12 @@ func run() error {
 		return err
 	}
 
-	tlsCfg, err := buildTLS(cfg, cfg.Listen)
-	if err != nil {
+	if err := assertInstantApprovalNotPublic(logger, cfg); err != nil {
 		return err
 	}
 
-	srv := httpx.NewServer(issuer.Handler(), httpx.ServerOptions{
-		Addr:      cfg.Listen,
-		TLSConfig: tlsCfg,
-		Logger:    logger,
-	})
-
-	if tlsCfg == nil {
-		warnIfNotLoopback(logger, cfg.Listen)
-	}
-	if err := warnIfInstantApprovalUnsafe(logger, cfg); err != nil {
+	tlsCfg, err := buildTLS(cfg)
+	if err != nil {
 		return err
 	}
 
@@ -173,14 +160,17 @@ func run() error {
 		"starting sca-server",
 		slog.String("version", version),
 		slog.String("did", cfg.DID),
-		slog.String("listen", cfg.Listen),
-		slog.Bool("tls", tlsCfg != nil),
 		slog.String("storage", cfg.Storage.Driver),
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	return httpx.ListenAndServe(ctx, srv)
+	return scaserver.Run(ctx, scaserver.RunConfig{
+		Issuer: issuer,
+		Listen: cfg.Listen,
+		TLS:    tlsCfg,
+		Logger: logger,
+	})
 }
 
 func validateConfig(cfg *fileConfig) error {
@@ -242,8 +232,6 @@ func openStores(driver, dsn string) (sca.SessionStore, sca.IssuanceStore, sca.Re
 	}
 }
 
-// readyCheck returns a /readyz hook that pings db, or nil when there is no DB
-// (e.g. memory driver — there's nothing external to check).
 func readyCheck(db *sql.DB) func(context.Context) error {
 	if db == nil {
 		return nil
@@ -255,9 +243,8 @@ func readyCheck(db *sql.DB) func(context.Context) error {
 	}
 }
 
-// buildResolver returns a DID resolver. If the SCA's DID is did:web, we
-// configure a WebResolver; for did:key we return the local resolver and
-// dispatcher only.
+// buildResolver returns a DID resolver. did:web SCAs need WebResolver to
+// validate subject-auth and CSR signatures; did:key SCAs (test/dev) don't.
 func buildResolver(scaDID string) did.Resolver {
 	if strings.HasPrefix(scaDID, "did:web:") {
 		return did.NewResolver(did.NewWebResolver())
@@ -265,7 +252,7 @@ func buildResolver(scaDID string) did.Resolver {
 	return did.NewResolver(nil)
 }
 
-func buildTLS(cfg fileConfig, listen string) (*tls.Config, error) {
+func buildTLS(cfg fileConfig) (*tls.Config, error) {
 	if cfg.TLS.Cert == "" && cfg.TLS.Key == "" {
 		return nil, nil
 	}
@@ -276,20 +263,14 @@ func buildTLS(cfg fileConfig, listen string) (*tls.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load TLS cert/key: %w", err)
 	}
-	_ = listen
 	return httpx.TLSConfig(cert), nil
 }
 
-// warnIfInstantApprovalUnsafe enforces RFC-0004's intent that production SCAs
-// must not auto-issue: cmd/sca-server is allowed to use InstantApproval for
-// local development only. The check is two-tier:
-//
-//   - If a level uses instant-approval AND the listener is non-loopback AND
-//     SHADOWNET_ALLOW_INSTANT_APPROVAL is not set to "1", refuse to start.
-//   - Otherwise log a loud warning so operators see it on every boot.
-//
-// Operators who genuinely want a public dev-grade SCA opt in via the env var.
-func warnIfInstantApprovalUnsafe(logger *slog.Logger, cfg fileConfig) error {
+// assertInstantApprovalNotPublic enforces RFC-0004's intent that production
+// SCAs must not auto-issue: cmd/sca-server is allowed to use InstantApproval
+// for local development only. The check is two-tier — refuse to start on a
+// non-loopback listener without explicit opt-in, otherwise log a loud Warn.
+func assertInstantApprovalNotPublic(logger *slog.Logger, cfg fileConfig) error {
 	uses := false
 	for _, l := range cfg.Policy.Levels {
 		if l.Method == InstantApproval {
@@ -300,51 +281,24 @@ func warnIfInstantApprovalUnsafe(logger *slog.Logger, cfg fileConfig) error {
 	if !uses {
 		return nil
 	}
-	loopback := isLoopbackListener(cfg.Listen)
 	allow := config.EnvString("SHADOWNET_ALLOW_INSTANT_APPROVAL", "") == "1"
-	if !loopback && !allow {
+	if !httpx.IsLoopback(cfg.Listen) && !allow {
 		return fmt.Errorf("instant-approval is configured but listen %q is not loopback; "+
 			"this auto-approves every CSR and must not be exposed beyond a trusted network. "+
 			"Set SHADOWNET_ALLOW_INSTANT_APPROVAL=1 to opt in for a private test deploy", cfg.Listen)
 	}
-	logger.Warn("InstantApprovalProofMethod is enabled — every /proof/start opens a session that is immediately ready. " +
-		"Use this configuration for local development only.")
+	logger.Warn(
+		"InstantApprovalProofMethod is enabled — every /proof/start opens a session that is immediately ready. " +
+			"Use this configuration for local development only.",
+	)
 	return nil
-}
-
-func isLoopbackListener(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return false
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		return false
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return host == "localhost"
-}
-
-func warnIfNotLoopback(logger *slog.Logger, addr string) {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		logger.Warn("plaintext HTTP on a non-loopback address; configure tls.cert and tls.key for production", slog.String("listen", addr))
-		return
-	}
-	if ip := net.ParseIP(host); ip != nil && !ip.IsLoopback() {
-		logger.Warn("plaintext HTTP on a non-loopback address; configure tls.cert and tls.key for production", slog.String("listen", addr))
-	}
 }
 
 // newLogger builds the root slog.Logger.
 //
-// format is one of "json", "text", or "" (auto: text on a TTY, json otherwise).
-// SHADOWNET_LOG_FORMAT in the environment overrides; container images are
-// expected to ship in JSON mode for log aggregators.
+// format ∈ {"json", "text", ""} (auto: text on a TTY, json otherwise).
+// SHADOWNET_LOG_FORMAT in the environment overrides; container images set it
+// to json so log aggregators get structured records.
 func newLogger(level, format string) *slog.Logger {
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(level)); err != nil {
