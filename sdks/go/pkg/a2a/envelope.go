@@ -16,11 +16,17 @@ const EnvelopePartType = PartShadownetEnvelope
 const EnvelopeMediaType = "application/json"
 
 // Envelope is the data of a `shadownet/v1+envelope` part.
+//
+// Interaction is OPTIONAL per the current RFC-0006 schema: when absent, the
+// envelope carries a free-form message and the payload SHOULD include a
+// natural-language `text` field; when present, the payload follows the
+// schema set by the named Interaction Profile. Verifiers MUST NOT reject
+// envelopes solely because Interaction is absent or unknown.
 type Envelope struct {
 	Version     string          `json:"shadownet:v"`
 	IntentID    string          `json:"intentId"`
 	SessionID   string          `json:"sessionId,omitempty"`
-	Interaction string          `json:"interaction"`
+	Interaction string          `json:"interaction,omitempty"`
 	Payload     json.RawMessage `json:"payload"`
 }
 
@@ -31,9 +37,6 @@ func (e *Envelope) Validate() error {
 	}
 	if e.IntentID == "" {
 		return errors.New("a2a: envelope intentId required")
-	}
-	if e.Interaction == "" {
-		return errors.New("a2a: envelope interaction required")
 	}
 	if len(e.Payload) == 0 {
 		return errors.New("a2a: envelope payload required")

@@ -58,8 +58,9 @@ type Server struct {
 	Card        CardOptions
 	Now         func() time.Time
 
-	mu  sync.Mutex
-	vps map[string]cachedVP // keyed by callerDID
+	mu       sync.Mutex
+	vps      map[string]cachedVP // keyed by callerDID
+	vpWrites uint64              // counter; every vpSweepInterval writes triggers a sweep
 }
 
 type cachedVP struct {
@@ -67,6 +68,12 @@ type cachedVP struct {
 	nonce     string // last issued challenge nonce, if a challenge was sent
 	expiresAt time.Time
 }
+
+// vpSweepInterval is the cache-write count after which we sweep expired
+// entries. Picked so the per-write cost stays O(1) amortized while bounding
+// live-set growth on a busy multi-tenant Sidecar that sees many distinct
+// caller DIDs.
+const vpSweepInterval = 100
 
 // Validate confirms a Server has all dependencies wired.
 func (s *Server) Validate() error {
@@ -263,6 +270,7 @@ func (s *Server) handshake(r *http.Request, sess *SessionToken) (InboundCaller, 
 		s.vps = make(map[string]cachedVP)
 	}
 	s.vps[sess.Issuer] = cachedVP{nonce: nonce, expiresAt: s.now().Add(2 * time.Minute)}
+	s.maybeSweepLocked()
 	s.mu.Unlock()
 	return InboundCaller{}, &Error{Code: CodePresentationRequired, Nonce: nonce}
 }
@@ -274,6 +282,7 @@ func (s *Server) cacheVP(callerDID string, p *vc.VerifiedPresentation) {
 		s.vps = make(map[string]cachedVP)
 	}
 	s.vps[callerDID] = cachedVP{pres: p, expiresAt: s.now().Add(s.Verifier.FreshnessWindow)}
+	s.maybeSweepLocked()
 }
 
 func (s *Server) lookupCachedVP(callerDID string) (*vc.VerifiedPresentation, bool) {
@@ -288,6 +297,36 @@ func (s *Server) lookupCachedVP(callerDID string) (*vc.VerifiedPresentation, boo
 		return nil, false
 	}
 	return c.pres, true
+}
+
+// maybeSweepLocked is called from cache-write paths under s.mu. Every
+// vpSweepInterval writes it walks the map and removes expired entries.
+// The amortized cost is O(1) per write; live-set growth is bounded by
+// (active callers within freshness window) + at most vpSweepInterval-1.
+func (s *Server) maybeSweepLocked() {
+	s.vpWrites++
+	if s.vpWrites%vpSweepInterval != 0 {
+		return
+	}
+	s.sweepLocked(s.now())
+}
+
+func (s *Server) sweepLocked(now time.Time) {
+	for did, c := range s.vps {
+		if c.expiresAt.Before(now) {
+			delete(s.vps, did)
+		}
+	}
+}
+
+// SweepVPCache evicts every cached VP and challenge-nonce entry whose
+// expiry has passed. The cache is also swept automatically every
+// vpSweepInterval writes; SweepVPCache is exposed for tests and for any
+// operator who wants deterministic eviction at a checkpoint.
+func (s *Server) SweepVPCache() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sweepLocked(s.now())
 }
 
 // messageSendParams is the params object of message:send / message:stream.
