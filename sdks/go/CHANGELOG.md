@@ -8,6 +8,22 @@ land in minor bumps.
 The `pgstore` submodule is versioned in lockstep with the main module
 (`pgstore/vX.Y.Z`).
 
+## [v0.1.7] — 2026-05-09
+
+### Fixed
+
+- `pgstore.Open` no longer races when two backends boot concurrently against
+  the same database. The schema-apply step is now wrapped in a transaction
+  guarded by `pg_advisory_xact_lock`, so simultaneous `sca-server-pg` /
+  `sns-server-pg` startups against a shared Postgres serialize on the lock
+  instead of crashing one with `duplicate key value violates unique
+  constraint "pg_type_typname_nsp_index"`. `CREATE TABLE IF NOT EXISTS` is
+  not a synchronization primitive in Postgres; this is the canonical fix.
+  Reported from a real shadownet-cloud co-tenant deployment. Integration
+  test exercises the race against a real Postgres.
+
+[v0.1.7]: https://github.com/shadownet-protocol/shadownet-go/releases/tag/v0.1.7
+
 ## [v0.1.6] — 2026-05-09
 
 The first usable release of the production-readiness pass. v0.1.4 and
