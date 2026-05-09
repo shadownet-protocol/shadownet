@@ -4,6 +4,7 @@ package storemem
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -122,56 +123,81 @@ func (s *SCAIssuanceStore) Get(_ context.Context, jti string) (sca.IssuedCredent
 	return c, nil
 }
 
-// SCARevocationStore is an in-memory sca.RevocationStore. It maintains a
-// single bitstring of fixed size; AssignIndex returns the next sequential
-// index and the configured listID.
+// SCARevocationStore is an in-memory sca.RevocationStore. It maintains
+// rolling status lists: AssignIndex assigns into the active list until that
+// list fills, then allocates a fresh list (`<baseID>-2`, `<baseID>-3`, …)
+// and continues there. Old lists remain readable via Snapshot — that's how
+// previously-issued credentials' status URLs stay resolvable.
 type SCARevocationStore struct {
-	mu     sync.Mutex
-	listID string
-	list   *vc.StatusList
-	next   uint64
+	mu       sync.Mutex
+	baseID   string
+	capacity uint64
+	lists    map[string]*vc.StatusList // every list ever allocated
+	seq      []string                  // creation order for naming
+	active   string                    // empty until first AssignIndex
+	next     uint64                    // next index in active
 }
 
 // SCARevocationStoreOption configures NewSCARevocationStore.
 type SCARevocationStoreOption func(*SCARevocationStore)
 
-// WithListSize overrides the default 131_072-bit list capacity.
+// WithListSize overrides the default 131_072-bit per-list capacity.
 func WithListSize(size uint64) SCARevocationStoreOption {
 	return func(s *SCARevocationStore) {
-		s.list = vc.NewStatusList(size)
+		s.capacity = size
 	}
 }
 
-// NewSCARevocationStore returns a revocation store backed by a single status
-// list with the supplied ID and a default 131072-bit capacity.
-func NewSCARevocationStore(listID string, opts ...SCARevocationStoreOption) *SCARevocationStore {
-	s := &SCARevocationStore{listID: listID, list: vc.NewStatusList(131_072)}
+// NewSCARevocationStore returns a rotating revocation store. baseID is the
+// first list's ID; subsequent lists are named `<baseID>-2`, `<baseID>-3`, …
+// Default per-list capacity is 131072 bits; override via WithListSize.
+func NewSCARevocationStore(baseID string, opts ...SCARevocationStoreOption) *SCARevocationStore {
+	s := &SCARevocationStore{
+		baseID:   baseID,
+		capacity: 131_072,
+		lists:    make(map[string]*vc.StatusList),
+	}
 	for _, o := range opts {
 		o(s)
 	}
 	return s
 }
 
-// AssignIndex implements sca.RevocationStore.
+// listOrdinalName returns the name of the i-th allocated list (0-indexed):
+// 0 → baseID, 1 → baseID-2, 2 → baseID-3, …
+func (s *SCARevocationStore) listOrdinalName(i int) string {
+	if i == 0 {
+		return s.baseID
+	}
+	return fmt.Sprintf("%s-%d", s.baseID, i+1)
+}
+
+// AssignIndex implements sca.RevocationStore. Allocates a new list when the
+// active one is full; never returns "capacity exhausted" under normal use.
 func (s *SCARevocationStore) AssignIndex(_ context.Context) (string, uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	idx := s.next
-	if idx >= s.list.Size() {
-		return "", 0, sca.New(500, sca.CodeRevoked, "status list capacity exhausted")
+	if s.active == "" || s.next >= s.capacity {
+		name := s.listOrdinalName(len(s.seq))
+		s.lists[name] = vc.NewStatusList(s.capacity)
+		s.seq = append(s.seq, name)
+		s.active = name
+		s.next = 0
 	}
+	idx := s.next
 	s.next++
-	return s.listID, idx, nil
+	return s.active, idx, nil
 }
 
 // Revoke implements sca.RevocationStore.
 func (s *SCARevocationStore) Revoke(_ context.Context, listID string, index uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if listID != s.listID {
+	list, ok := s.lists[listID]
+	if !ok {
 		return sca.New(404, sca.CodeRevoked, "unknown listID")
 	}
-	return s.list.Set(index, true)
+	return list.Set(index, true)
 }
 
 // Snapshot implements sca.RevocationStore. The returned StatusList is a deep
@@ -179,10 +205,11 @@ func (s *SCARevocationStore) Revoke(_ context.Context, listID string, index uint
 func (s *SCARevocationStore) Snapshot(_ context.Context, listID string) (*vc.StatusList, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if listID != s.listID {
+	list, ok := s.lists[listID]
+	if !ok {
 		return nil, sca.New(404, sca.CodeRevoked, "unknown listID")
 	}
-	encoded, err := s.list.Encode()
+	encoded, err := list.Encode()
 	if err != nil {
 		return nil, err
 	}

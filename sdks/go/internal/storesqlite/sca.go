@@ -207,71 +207,95 @@ FROM credentials WHERE jti = ?`, jti)
 	return c, nil
 }
 
-// SCARevocationStore implements sca.RevocationStore against SQLite.
+// SCARevocationStore implements sca.RevocationStore against SQLite with
+// rolling status-list semantics: AssignIndex assigns into the active list
+// until that list fills, then allocates a new list (`<baseID>-2`,
+// `<baseID>-3`, …) and continues there. Old lists remain readable so
+// previously-issued credentials' status URLs stay resolvable indefinitely.
 type SCARevocationStore struct {
-	db     *sql.DB
-	listID string
-	size   uint64
+	db       *sql.DB
+	baseID   string
+	capacity uint64
 }
 
-// NewSCARevocationStore returns a RevocationStore backed by db. listID names
-// the single status list this store maintains; size is the bit count.
-func NewSCARevocationStore(db *sql.DB, listID string, size uint64) (*SCARevocationStore, error) {
+// NewSCARevocationStore returns a rotating RevocationStore backed by db.
+// baseID is the first list's ID; subsequent lists are named `<baseID>-2`,
+// `<baseID>-3`, … Default capacity is 131072 bits.
+func NewSCARevocationStore(db *sql.DB, baseID string, size uint64) (*SCARevocationStore, error) {
 	if size == 0 {
 		size = 131_072
 	}
-	bits := vc.NewStatusList(size)
-	encoded, err := bits.Encode()
-	if err != nil {
-		return nil, err
-	}
-	_ = encoded // not used; we store the raw bytes
-	emptyRaw := newEmptyBits(size)
-	_, err = db.Exec(`
-INSERT INTO status_lists (list_id, bits, next_index, size)
-VALUES (?, ?, 0, ?)
-ON CONFLICT(list_id) DO NOTHING`, listID, emptyRaw, int64(size))
-	if err != nil {
-		return nil, fmt.Errorf("storesqlite: init status list: %w", err)
-	}
-	return &SCARevocationStore{db: db, listID: listID, size: size}, nil
+	return &SCARevocationStore{db: db, baseID: baseID, capacity: size}, nil
 }
 
-// AssignIndex implements sca.RevocationStore.
+func (s *SCARevocationStore) listOrdinalName(i int) string {
+	if i == 0 {
+		return s.baseID
+	}
+	return fmt.Sprintf("%s-%d", s.baseID, i+1)
+}
+
+// AssignIndex implements sca.RevocationStore. The transaction picks the
+// oldest non-full list (if any) and bumps its next_index; otherwise it
+// inserts a fresh list and returns index 0.
 func (s *SCARevocationStore) AssignIndex(ctx context.Context) (string, uint64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	var idx int64
-	if err := tx.QueryRowContext(ctx, `SELECT next_index FROM status_lists WHERE list_id = ?`, s.listID).Scan(&idx); err != nil {
-		return "", 0, fmt.Errorf("storesqlite: read next_index: %w", err)
+
+	var (
+		listID string
+		idx    int64
+	)
+	err = tx.QueryRowContext(ctx, `
+SELECT list_id, next_index FROM status_lists
+WHERE next_index < size
+ORDER BY rowid
+LIMIT 1`).Scan(&listID, &idx)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM status_lists`).Scan(&count); err != nil {
+			return "", 0, fmt.Errorf("storesqlite: count lists: %w", err)
+		}
+		listID = s.listOrdinalName(count)
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO status_lists (list_id, bits, next_index, size)
+VALUES (?, ?, 1, ?)`, listID, newEmptyBits(s.capacity), int64(s.capacity)); err != nil {
+			return "", 0, fmt.Errorf("storesqlite: insert new list: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return "", 0, fmt.Errorf("storesqlite: commit: %w", err)
+		}
+		return listID, 0, nil
+	case err != nil:
+		return "", 0, fmt.Errorf("storesqlite: find active list: %w", err)
 	}
-	if uint64(idx) >= s.size {
-		return "", 0, sca.New(500, sca.CodeRevoked, "status list capacity exhausted")
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE status_lists SET next_index = next_index + 1 WHERE list_id = ?`, s.listID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+UPDATE status_lists SET next_index = next_index + 1 WHERE list_id = ?`, listID); err != nil {
 		return "", 0, fmt.Errorf("storesqlite: bump next_index: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return "", 0, fmt.Errorf("storesqlite: commit: %w", err)
 	}
-	return s.listID, uint64(idx), nil
+	return listID, uint64(idx), nil
 }
 
 // Revoke implements sca.RevocationStore.
 func (s *SCARevocationStore) Revoke(ctx context.Context, listID string, index uint64) error {
-	if listID != s.listID {
-		return sca.New(404, sca.CodeRevoked, "unknown listID")
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var bits []byte
-	if err := tx.QueryRowContext(ctx, `SELECT bits FROM status_lists WHERE list_id = ?`, listID).Scan(&bits); err != nil {
+	err = tx.QueryRowContext(ctx, `SELECT bits FROM status_lists WHERE list_id = ?`, listID).Scan(&bits)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sca.New(404, sca.CodeRevoked, "unknown listID")
+	}
+	if err != nil {
 		return fmt.Errorf("storesqlite: read bits: %w", err)
 	}
 	if index >= uint64(len(bits))*8 {
@@ -286,15 +310,15 @@ func (s *SCARevocationStore) Revoke(ctx context.Context, listID string, index ui
 
 // Snapshot implements sca.RevocationStore.
 func (s *SCARevocationStore) Snapshot(ctx context.Context, listID string) (*vc.StatusList, error) {
-	if listID != s.listID {
+	var bits []byte
+	err := s.db.QueryRowContext(ctx, `SELECT bits FROM status_lists WHERE list_id = ?`, listID).Scan(&bits)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, sca.New(404, sca.CodeRevoked, "unknown listID")
 	}
-	var bits []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT bits FROM status_lists WHERE list_id = ?`, listID).Scan(&bits); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("storesqlite: read bits: %w", err)
 	}
-	// Round-trip through Encode/Decode so we hand back a vc.StatusList of the
-	// right shape; the caller only uses Get/Encode on it.
+	// Reconstruct the StatusList from raw bits.
 	tmp := vc.NewStatusList(uint64(len(bits)) * 8)
 	for i := uint64(0); i < uint64(len(bits))*8; i++ {
 		if bits[i/8]&(1<<(7-i%8)) != 0 {
