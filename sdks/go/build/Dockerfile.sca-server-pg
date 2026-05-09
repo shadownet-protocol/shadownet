@@ -7,9 +7,9 @@ ARG TARGETARCH
 ARG VERSION=dev
 WORKDIR /src
 
-# Cache modules. The build runs in workspace mode so go.work resolves the
-# pgstore submodule against the local source tree, not the proxy.
-COPY go.mod go.sum go.work ./
+# Cache modules. pgstore/go.mod has a replace directive pointing at the
+# parent for in-repo builds, so no go.work is needed.
+COPY go.mod go.sum ./
 COPY pgstore/go.mod pgstore/go.sum ./pgstore/
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download && cd pgstore && go mod download
