@@ -64,31 +64,35 @@ func TestHTTPCallerHappyPathHMACMatches(t *testing.T) {
 }
 
 func TestHTTPCallerHMACBytesMatchManualComputation(t *testing.T) {
-	// Reference vector: cross-check the wire signature against an inline
-	// HMAC-SHA256 calculation.
+	// Reference vector: receiver records the exact body bytes it gets, then
+	// recomputes HMAC-SHA256(sessionID, body) inline. JSON map ordering is
+	// stable for encoding/json (alphabetical keys) but we don't depend on
+	// that here — we hash whatever the wire actually carried.
 	const sessID = "ses-test-vector"
-	body := []byte(`{"shadownet:v":"0.1","sessionId":"ses-test-vector","status":"ready"}`)
-
-	mac := hmac.New(sha256.New, []byte(sessID))
-	mac.Write(body)
-	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-	var got string
+	var (
+		gotSig  atomic.Pointer[string]
+		gotBody atomic.Pointer[[]byte]
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.Header.Get("X-SCA-Callback-Sig")
+		body, _ := io.ReadAll(r.Body)
+		s := r.Header.Get("X-SCA-Callback-Sig")
+		gotSig.Store(&s)
+		gotBody.Store(&body)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	caller := &sca.HTTPCaller{Client: srv.Client(), Backoff: fastBackoff}
 	caller.Notify(context.Background(), sca.Session{ID: sessID, CallbackURL: srv.URL}, "ready")
-	// Spin briefly for goroutine.
-	deadline := time.Now().Add(time.Second)
-	for got == "" && time.Now().Before(deadline) {
-		time.Sleep(2 * time.Millisecond)
-	}
-	if got != want {
-		t.Fatalf("\n  got  %s\n  want %s", got, want)
+	waitFor(t, func() bool { return gotSig.Load() != nil }, time.Second)
+
+	body := *gotBody.Load()
+	sig := *gotSig.Load()
+	mac := hmac.New(sha256.New, []byte(sessID))
+	mac.Write(body)
+	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	if sig != want {
+		t.Fatalf("\n  got  %s\n  want %s\n  body %s", sig, want, body)
 	}
 }
 
