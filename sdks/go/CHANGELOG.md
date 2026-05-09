@@ -8,7 +8,12 @@ land in minor bumps.
 The `pgstore` submodule is versioned in lockstep with the main module
 (`pgstore/vX.Y.Z`).
 
-## [v0.1.4] — 2026-05-09
+## [v0.1.5] — 2026-05-09
+
+The first usable release of the production-readiness pass; the v0.1.4 tag
+was cut but its `-pg` Docker images failed to build (a `COPY go.work` line
+that hadn't been gitignored). v0.1.5 fixes the Dockerfiles and ships the
+full image set.
 
 ### Added
 
@@ -79,5 +84,5 @@ Initial v0.1 protocol implementation (RFC-0001 through RFC-0006): SDK
 (`pkg/{crypto,did,vc,a2a,sca,sns}`), reference SCA + SNS servers, operator
 CLI, build-time version stamping, fixture-key safety net (`keyguard`).
 
-[v0.1.4]: https://github.com/shadownet-protocol/shadownet-go/releases/tag/v0.1.4
+[v0.1.5]: https://github.com/shadownet-protocol/shadownet-go/releases/tag/v0.1.5
 [v0.1.3]: https://github.com/shadownet-protocol/shadownet-go/releases/tag/v0.1.3
