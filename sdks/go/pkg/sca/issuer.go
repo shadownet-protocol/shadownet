@@ -36,6 +36,12 @@ type Issuer struct {
 	// ReadyCheck is invoked by /readyz. nil = always ready.
 	// Implementations typically ping their backing store.
 	ReadyCheck func(context.Context) error
+
+	// Caller delivers session state-transition notifications to operator
+	// callbackUrls per RFC-0004 §Callbacks. nil = no callbacks (clients still
+	// learn about transitions by polling /proof/status, which is the
+	// canonical durable path).
+	Caller Caller
 }
 
 // Validate confirms an Issuer has all dependencies wired.
@@ -70,6 +76,15 @@ func (i *Issuer) now() time.Time {
 		return i.Now()
 	}
 	return time.Now().UTC()
+}
+
+// notify dispatches a state-transition callback when a Caller is wired and
+// the session has a callbackUrl. No-op otherwise.
+func (i *Issuer) notify(ctx context.Context, sess Session, status string) {
+	if i.Caller == nil || sess.CallbackURL == "" {
+		return
+	}
+	i.Caller.Notify(ctx, sess, status)
 }
 
 // StartProof handles POST /proof/start.
@@ -112,6 +127,7 @@ func (i *Issuer) StartProof(ctx context.Context, auth *SubjectAuth, req ProofSta
 		if err := i.Sessions.MarkReady(ctx, sess.ID, *readyAt); err != nil {
 			return nil, New(http.StatusInternalServerError, CodeUnauthorized, "mark ready").wrap(err)
 		}
+		i.notify(ctx, sess, string(StateReady))
 	}
 	return &ProofStartResponse{
 		Version:   vc.Version,
@@ -139,6 +155,7 @@ func (i *Issuer) StatusProof(ctx context.Context, auth *SubjectAuth, req ProofSt
 	if sess.State == StatePending && now.After(sess.ExpiresAt) {
 		_ = i.Sessions.Fail(ctx, sess.ID)
 		sess.State = StateExpired
+		i.notify(ctx, sess, string(StateExpired))
 	}
 	return &ProofStatusResponse{
 		Version:   vc.Version,
@@ -180,6 +197,7 @@ func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req Iss
 	case StatePending:
 		if now.After(sess.ExpiresAt) {
 			_ = i.Sessions.Fail(ctx, sess.ID)
+			i.notify(ctx, sess, string(StateExpired))
 			return nil, New(http.StatusConflict, CodeSessionNotReady, "session expired")
 		}
 		return nil, New(http.StatusConflict, CodeSessionNotReady, "session not ready")
