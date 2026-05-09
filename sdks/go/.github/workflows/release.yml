@@ -68,6 +68,14 @@ jobs:
             dockerfile: build/Dockerfile.sca-server
           - name: sns-server
             dockerfile: build/Dockerfile.sns-server
+          # The -pg variants live in the pgstore submodule and add Postgres
+          # support on top of memory + sqlite. Two images per server give
+          # operators a clear choice between lean (sqlite-only) and full
+          # (sqlite + postgres) builds without coupling the dep graphs.
+          - name: sca-server-pg
+            dockerfile: build/Dockerfile.sca-server-pg
+          - name: sns-server-pg
+            dockerfile: build/Dockerfile.sns-server-pg
     steps:
       - uses: actions/checkout@v4
 
