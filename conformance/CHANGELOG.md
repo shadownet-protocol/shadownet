@@ -7,6 +7,10 @@ The version mirrors the protocol version this suite tests. See
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.1] — 2026-05-09
+
 ### Changed
 
 - Resync bundled `_specs/` schemas to the upstream `shadownet-specs`
