@@ -15,11 +15,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download && cd pgstore && go mod download
 
 COPY . .
+# Build from inside the pgstore module — `./pgstore/cmd/sns-server` is not
+# addressable from the parent module since pgstore is its own go.mod.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    cd pgstore && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-        -o /out/sns-server-pg ./pgstore/cmd/sns-server
+        -o /out/sns-server-pg ./cmd/sns-server
 
 RUN mkdir -p /out/data
 
