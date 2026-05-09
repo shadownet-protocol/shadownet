@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,13 +19,14 @@ import (
 	"time"
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
-	"github.com/shadownet-protocol/shadownet-go/internal/httpx"
-	"github.com/shadownet-protocol/shadownet-go/internal/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
 	"github.com/shadownet-protocol/shadownet-go/internal/storesqlite"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet-go/pkg/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet-go/pkg/snsserver"
 )
 
 type fileConfig struct {
@@ -81,23 +81,9 @@ func run() error {
 	if err := config.Load(*configPath, &cfg); err != nil {
 		return err
 	}
-	cfg.DID = config.EnvString("SHADOWNET_DID", cfg.DID)
-	cfg.Provider = config.EnvString("SHADOWNET_PROVIDER", cfg.Provider)
-	cfg.Listen = config.EnvString("SHADOWNET_LISTEN", cfg.Listen)
-	cfg.TLS.Cert = config.EnvString("SHADOWNET_TLS_CERT", cfg.TLS.Cert)
-	cfg.TLS.Key = config.EnvString("SHADOWNET_TLS_KEY", cfg.TLS.Key)
-	cfg.Signing.KeyFile = config.EnvString("SHADOWNET_SIGNING_KEYFILE", cfg.Signing.KeyFile)
-	cfg.Storage.Driver = config.EnvString("SHADOWNET_STORAGE_DRIVER", cfg.Storage.Driver)
-	cfg.Storage.DSN = config.EnvString("SHADOWNET_STORAGE_DSN", cfg.Storage.DSN)
-	if cfg.Storage.Driver == "" {
-		cfg.Storage.Driver = "memory"
-	}
-	if cfg.DefaultTTL == 0 {
-		cfg.DefaultTTL = 300
-	}
-
-	if cfg.DID == "" || cfg.Provider == "" || cfg.Listen == "" || cfg.Signing.KeyFile == "" {
-		return errors.New("did, provider, listen, signing.keyfile are required")
+	applyEnvOverrides(&cfg)
+	if err := validateConfig(&cfg); err != nil {
+		return err
 	}
 
 	kp, err := crypto.LoadKeyFile(cfg.Signing.KeyFile)
@@ -108,8 +94,6 @@ func run() error {
 		return err
 	}
 	keyID := cfg.DID + "#sns-1"
-
-	resolver := buildResolver(cfg.DID)
 
 	store, db, err := openStore(cfg.Storage.Driver, cfg.Storage.DSN)
 	if err != nil {
@@ -129,7 +113,7 @@ func run() error {
 		Provider:    cfg.Provider,
 		Key:         kp,
 		Records:     store,
-		DIDResolver: resolver,
+		DIDResolver: buildResolver(cfg.DID),
 		DefaultTTL:  cfg.DefaultTTL,
 		ReadyCheck:  readyCheck(db),
 	}
@@ -141,24 +125,47 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	srv := httpx.NewServer(server.Handler(), httpx.ServerOptions{
-		Addr: cfg.Listen, TLSConfig: tlsCfg, Logger: logger,
-	})
-	if tlsCfg == nil {
-		warnIfNotLoopback(logger, cfg.Listen)
-	}
 
 	logger.Info(
 		"starting sns-server",
 		slog.String("version", version),
-		slog.String("did", cfg.DID), slog.String("provider", cfg.Provider),
-		slog.String("listen", cfg.Listen), slog.Bool("tls", tlsCfg != nil),
+		slog.String("did", cfg.DID),
+		slog.String("provider", cfg.Provider),
 		slog.String("storage", cfg.Storage.Driver),
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	return httpx.ListenAndServe(ctx, srv)
+	return snsserver.Run(ctx, snsserver.RunConfig{
+		Server: server,
+		Listen: cfg.Listen,
+		TLS:    tlsCfg,
+		Logger: logger,
+	})
+}
+
+func validateConfig(cfg *fileConfig) error {
+	if cfg.DID == "" || cfg.Provider == "" || cfg.Listen == "" || cfg.Signing.KeyFile == "" {
+		return errors.New("did, provider, listen, signing.keyfile are required")
+	}
+	if cfg.Storage.Driver == "" {
+		cfg.Storage.Driver = "memory"
+	}
+	if cfg.DefaultTTL == 0 {
+		cfg.DefaultTTL = 300
+	}
+	return nil
+}
+
+func applyEnvOverrides(cfg *fileConfig) {
+	cfg.DID = config.EnvString("SHADOWNET_DID", cfg.DID)
+	cfg.Provider = config.EnvString("SHADOWNET_PROVIDER", cfg.Provider)
+	cfg.Listen = config.EnvString("SHADOWNET_LISTEN", cfg.Listen)
+	cfg.TLS.Cert = config.EnvString("SHADOWNET_TLS_CERT", cfg.TLS.Cert)
+	cfg.TLS.Key = config.EnvString("SHADOWNET_TLS_KEY", cfg.TLS.Key)
+	cfg.Signing.KeyFile = config.EnvString("SHADOWNET_SIGNING_KEYFILE", cfg.Signing.KeyFile)
+	cfg.Storage.Driver = config.EnvString("SHADOWNET_STORAGE_DRIVER", cfg.Storage.Driver)
+	cfg.Storage.DSN = config.EnvString("SHADOWNET_STORAGE_DSN", cfg.Storage.DSN)
 }
 
 // openStore returns the record store plus an optional *sql.DB to close on
@@ -181,8 +188,6 @@ func openStore(driver, dsn string) (sns.RecordStore, *sql.DB, error) {
 	}
 }
 
-// readyCheck returns a /readyz hook that pings db, or nil for the memory
-// driver where there is nothing external to verify.
 func readyCheck(db *sql.DB) func(context.Context) error {
 	if db == nil {
 		return nil
@@ -215,21 +220,7 @@ func buildTLS(cfg fileConfig) (*tls.Config, error) {
 	return httpx.TLSConfig(cert), nil
 }
 
-func warnIfNotLoopback(logger *slog.Logger, addr string) {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		logger.Warn("plaintext HTTP on a non-loopback address; configure tls.cert and tls.key for production", slog.String("listen", addr))
-		return
-	}
-	if ip := net.ParseIP(host); ip != nil && !ip.IsLoopback() {
-		logger.Warn("plaintext HTTP on a non-loopback address; configure tls.cert and tls.key for production", slog.String("listen", addr))
-	}
-}
-
-// newLogger builds the root slog.Logger. format ∈ {"json","text",""};
+// newLogger mirrors cmd/sca-server's helper. format ∈ {"json","text",""};
 // SHADOWNET_LOG_FORMAT overrides the auto-by-TTY default.
 func newLogger(level, format string) *slog.Logger {
 	var lvl slog.Level

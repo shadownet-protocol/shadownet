@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -41,6 +42,12 @@ type Server struct {
 	// ReadyCheck is invoked by /readyz. nil = always ready.
 	// Implementations typically ping their backing store.
 	ReadyCheck func(context.Context) error
+
+	// Logger receives internal error details that the response body
+	// deliberately omits. nil → slog.Default(). Operators get the full
+	// failure reason in their log aggregator while clients see a stable,
+	// sanitized message.
+	Logger *slog.Logger
 }
 
 // Validate confirms a Server has all dependencies wired.
@@ -74,6 +81,23 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now().UTC()
+}
+
+func (s *Server) logger() *slog.Logger {
+	if s.Logger != nil {
+		return s.Logger
+	}
+	return slog.Default()
+}
+
+// logInternal records the full failure reason server-side. Callers then
+// return a stable, sanitized message to clients via writeErr.
+func (s *Server) logInternal(r *http.Request, level slog.Level, what string, err error) {
+	s.logger().LogAttrs(
+		r.Context(), level, "sns: "+what,
+		slog.String("path", r.URL.Path),
+		slog.String("err", err.Error()),
+	)
 }
 
 // Handler returns an http.Handler with SNS routes registered.
@@ -145,7 +169,8 @@ func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	canon, err := ParseShadowname(name)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		s.logInternal(r, slog.LevelWarn, "parse name", err)
+		writeErr(w, http.StatusBadRequest, "invalid name")
 		return
 	}
 	if !strings.EqualFold(canon.Provider, s.Provider) {
@@ -161,7 +186,8 @@ func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusGone, "shadowname tombstoned")
 		return
 	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "internal")
+		s.logInternal(r, slog.LevelError, "store lookup on resolve", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if rec.Shadowname == "" {
@@ -170,7 +196,8 @@ func (s *Server) serveResolve(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	jwt, err := IssueRecord(s.Key, s.ProviderDID, s.ProviderKID, rec, now)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "issue record: "+err.Error())
+		s.logInternal(r, slog.LevelError, "issue record", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.Header().Set("Content-Type", "application/jwt")
@@ -201,18 +228,21 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	auth, err := s.verifySubjectAuth(r)
 	if err != nil {
-		writeErr(w, http.StatusUnauthorized, err.Error())
+		s.logInternal(r, slog.LevelWarn, "subject auth on update", err)
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	defer r.Body.Close()
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxRequestBytes))
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "read body")
+		s.logInternal(r, slog.LevelWarn, "read body on update", err)
+		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	var req UpdateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeErr(w, http.StatusBadRequest, "decode body: "+err.Error())
+		s.logInternal(r, slog.LevelWarn, "decode body on update", err)
+		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.DID != auth.subject {
@@ -242,7 +272,8 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusGone, "shadowname tombstoned")
 		return
 	case priorErr != nil:
-		writeErr(w, http.StatusInternalServerError, "lookup: "+priorErr.Error())
+		s.logInternal(r, slog.LevelError, "store lookup on update", priorErr)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	default:
 		if prior.DID != req.DID {
@@ -252,7 +283,8 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 			}
 			stmt, err := did.VerifyKeyRotation(r.Context(), s.DIDResolver, req.RotationStatement)
 			if err != nil {
-				writeErr(w, http.StatusBadRequest, "rotation statement invalid: "+err.Error())
+				s.logInternal(r, slog.LevelWarn, "rotation statement verification", err)
+				writeErr(w, http.StatusBadRequest, "rotation statement invalid")
 				return
 			}
 			if stmt.Issuer != prior.DID || stmt.Subject != req.DID {
@@ -273,7 +305,8 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 		IssuedAt:    s.now(),
 	}
 	if err := s.Records.Put(r.Context(), record); err != nil {
-		writeErr(w, http.StatusInternalServerError, "store: "+err.Error())
+		s.logInternal(r, slog.LevelError, "store put on update", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -285,7 +318,8 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request) {
 	local := strings.ToLower(r.PathValue("local"))
 	auth, err := s.verifySubjectAuth(r)
 	if err != nil {
-		writeErr(w, http.StatusUnauthorized, err.Error())
+		s.logInternal(r, slog.LevelWarn, "subject auth on delete", err)
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	prior, perr := s.Records.Get(r.Context(), local)
@@ -294,7 +328,8 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if perr != nil && !errors.Is(perr, ErrRecordTombstoned) {
-		writeErr(w, http.StatusInternalServerError, "lookup: "+perr.Error())
+		s.logInternal(r, slog.LevelError, "store lookup on delete", perr)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if !errors.Is(perr, ErrRecordTombstoned) && prior.DID != auth.subject {
@@ -302,7 +337,8 @@ func (s *Server) serveDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Records.Delete(r.Context(), local); err != nil {
-		writeErr(w, http.StatusInternalServerError, "delete: "+err.Error())
+		s.logInternal(r, slog.LevelError, "store delete", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
