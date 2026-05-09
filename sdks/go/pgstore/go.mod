@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/shadownet-protocol/shadownet-go v0.1.3
+	github.com/shadownet-protocol/shadownet-go v0.1.6
 )
 
 require (
