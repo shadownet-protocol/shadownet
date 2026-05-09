@@ -8,10 +8,10 @@ v0.1 protocol implementation: SDK, reference SCA + SNS servers, and CLI. Impleme
 
 ## What this repo is
 
-Two things in one Go module:
+Two Go modules in one repository:
 
-- **SDK** — reusable libraries for any Go program that needs to speak Shadownet (resolve a Shadowname, mint or verify a Verifiable Presentation, run an A2A handshake, build an SCA or SNS server).
-- **Reference servers** — single-binary HTTP servers that consume the SDK and implement the canonical SCA and SNS defined by the spec, plus an operator CLI.
+- **`github.com/shadownet-protocol/shadownet-go`** — the SDK (`pkg/*`) plus reference SCA + SNS server binaries (`cmd/*-server`) and the operator CLI (`cmd/shadownet`). Memory + SQLite storage drivers; zero pgx in the dependency graph.
+- **`github.com/shadownet-protocol/shadownet-go/pgstore`** — a separate submodule that adds the Postgres backend. Operators who want PG depend on it explicitly; everyone else stays clean of `github.com/jackc/pgx/v5`.
 
 It is not "the" Shadownet implementation. It is one of several language SDKs (alongside `shadownet-py` and `shadownet-ts`); cross-implementation interop is verified by [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-specs/blob/main/DEVELOPMENT.md).
 
@@ -65,31 +65,43 @@ shadownet doctor --sca https://sca.example --sns https://sns.example
 ## Layout
 
 ```
-pkg/                  public, importable; semver-stable
-  crypto/             Ed25519, JWS sign/verify (EdDSA only via go-jose v4)
-  did/                did:key, did:web (TLS 1.3, 16 KiB cap, Cache-Control-aware)
-  vc/                 VC-JWT, VP, freshness proof, BitstringStatusList, predicate eval, trust store
-  a2a/                A2A v1.0 surface (message:send, message:stream/SSE, task:get, task:cancel) + handshake
-  sca/                SCA library: ProofMethod + Store interfaces, issuance pipeline, RFC-0004 endpoints
-  sns/                SNS library: signed records, caching resolver, RFC-0005 endpoints
-cmd/
-  sca-server/         reference SCA HTTP server
-  sns-server/         reference SNS HTTP server
-  shadownet/          operator + developer CLI
-internal/             not importable downstream
-  storesqlite/        SQLite-backed Store impls (modernc.org/sqlite, CGo-free)
-  storemem/           in-memory Store impls
-  httpx/              hardened http.Server defaults, request-id, recover, access-log
-  config/             YAML + env-var config loader
-  cli/                CLI command implementations
-api/                  OpenAPI 3.1 specs + JSON-Schema mirrors of the RFC endpoints
-build/                Dockerfiles for the reference servers
-deploy/               sample docker-compose stack and YAML configs
+shadownet-go/                          # main module — no pgx
+├── go.work                            # links pgstore for local builds
+├── pkg/                               # public, importable; semver-stable
+│   ├── crypto/                        Ed25519, JWS sign/verify (EdDSA only via go-jose v4)
+│   ├── did/                           did:key, did:web (TLS 1.3, 16 KiB cap, Cache-Control)
+│   ├── vc/                            VC-JWT, VP, freshness proof, status list, predicate eval, trust store
+│   ├── a2a/                           A2A v1.0 surface + handshake; VP cache eviction
+│   ├── sca/                           SCA library; ProofMethod + Store interfaces, callback HMAC delivery
+│   │   └── storetest/                 reusable contract test suite for sca.*Store
+│   ├── sns/                           SNS library; signed records, caching resolver, sanitized errors
+│   │   └── storetest/                 reusable contract test suite for sns.RecordStore
+│   ├── scaserver/                     SCA HTTP-server bootstrap; InstantApprovalProofMethod (dev-only)
+│   ├── snsserver/                     SNS HTTP-server bootstrap
+│   ├── httpx/                         hardened http.Server defaults, request-id, recover, access-log, IsLoopback
+│   ├── keyguard/                      fixture-key safety net
+│   ├── storemem/                      in-memory Store impls
+│   └── storesqlite/                   SQLite Store impls (modernc.org/sqlite, CGo-free)
+├── cmd/
+│   ├── sca-server/                    default SCA binary (memory + sqlite drivers)
+│   ├── sns-server/                    default SNS binary (memory + sqlite drivers)
+│   └── shadownet/                     operator + developer CLI
+├── internal/
+│   ├── cli/                           CLI command implementations
+│   └── config/                        YAML + env-var config loader
+├── api/                               OpenAPI 3.1 + JSON-Schema mirrors of the RFC endpoints
+├── build/                             Dockerfiles for all four reference binaries
+└── deploy/                            sample docker-compose stack + YAML configs
+
+pgstore/                               # github.com/shadownet-protocol/shadownet-go/pgstore
+├── go.mod                             depends on parent + jackc/pgx/v5
+├── schema.sql + sca.go + sns.go       Postgres-backed Store impls
+└── cmd/{sca,sns}-server/              -pg binary variants (memory + sqlite + postgres drivers)
 ```
 
-Storage interfaces live in `pkg/sca` and `pkg/sns`; concrete implementations live in `internal/store*` and are wired only by the `cmd/*-server` binaries. Operators that need other backends write their own `Store` implementations in their deployment repo.
+Storage interfaces live in `pkg/sca` and `pkg/sns`. Three SDK-shipped implementations: `pkg/storemem`, `pkg/storesqlite`, and `pgstore` (separate module). Operators wanting a fourth backend implement the same interfaces and validate via `pkg/{sca,sns}/storetest` — see [Custom storage](#custom-storage) below.
 
-Proof-method implementations are likewise out of `pkg/`: `pkg/sca` defines the `ProofMethod` interface and `cmd/sca-server` ships a single `InstantApprovalProofMethod` for local development. SMTP, Stripe Identity, biometric kiosks, and similar live in operator deployments.
+Proof methods are likewise out of `pkg/sca`: the package defines the `ProofMethod` interface and `pkg/scaserver` ships a single `InstantApprovalProofMethod` for local development. SMTP, Stripe Identity, biometric kiosks, and similar live in operator deployments.
 
 > **`InstantApprovalProofMethod` is for local development only.** Every `/proof/start` it sees opens a session that is immediately ready, so any `/issuance` request gets a credential. `cmd/sca-server` refuses to start when this method is configured against a non-loopback listener unless `SHADOWNET_ALLOW_INSTANT_APPROVAL=1` is set explicitly. Production deployments write their own `ProofMethod`.
 
@@ -108,10 +120,39 @@ Configuration is YAML with `SHADOWNET_<SECTION>_<KEY>` env-var overrides. See [`
 
 Tagged releases (`v0.1.x` while the spec is at v0.1) publish:
 
-- **Go module** — auto-indexed at [pkg.go.dev/github.com/shadownet-protocol/shadownet-go](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go) on tag.
-- **Container images** — `ghcr.io/shadownet-protocol/sca-server:<tag>` and `ghcr.io/shadownet-protocol/sns-server:<tag>` (linux/amd64 + linux/arm64); `:latest` tracks the highest released non-pre-release tag.
+- **Go modules** — both auto-indexed at pkg.go.dev on tag:
+  - [`github.com/shadownet-protocol/shadownet-go`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go) — SDK + default binaries.
+  - [`github.com/shadownet-protocol/shadownet-go/pgstore`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go/pgstore) — Postgres backend; tagged `pgstore/v0.1.x`.
+- **Container images** (linux/amd64 + linux/arm64; `:latest` tracks the highest non-pre-release tag):
+  - `ghcr.io/shadownet-protocol/sca-server:<tag>` — SCA, memory + sqlite drivers. Self-host default.
+  - `ghcr.io/shadownet-protocol/sns-server:<tag>` — SNS, memory + sqlite drivers. Self-host default.
+  - `ghcr.io/shadownet-protocol/sca-server-pg:<tag>` — SCA, memory + sqlite + postgres drivers. Cloud-tier default.
+  - `ghcr.io/shadownet-protocol/sns-server-pg:<tag>` — SNS, memory + sqlite + postgres drivers. Cloud-tier default.
 - **CLI binaries** — `shadownet_<tag>_<os>_<arch>.tar.gz` plus `SHA256SUMS` attached to the GitHub Release (linux + macOS, amd64 + arm64).
 - **OpenAPI specs** — [`api/{sca,sns}/openapi.yaml`](./api/) and [`api/messages/envelope.schema.json`](./api/messages/envelope.schema.json) ship with the source; the canonical mirror at `schemas.sh4dow.org` lands once the domain is allocated.
+
+Use the default `:sca-server` / `:sns-server` images unless you need Postgres. The `-pg` variants exist for operators with managed Postgres (RDS, Cloud SQL, Aurora) or HA via streaming replication.
+
+## Custom storage
+
+The default binaries ship three storage drivers (memory, sqlite, postgres). Operators that need a fourth backend (DynamoDB, Cassandra, MySQL, …) implement the `Store` interfaces in `pkg/sca` and `pkg/sns` and ship their own binary. The path:
+
+1. Implement `sca.SessionStore`, `sca.IssuanceStore`, `sca.RevocationStore`, and `sns.RecordStore` against your backend.
+2. Validate via the contract suites in [`pkg/sca/storetest`](./pkg/sca/storetest) and [`pkg/sns/storetest`](./pkg/sns/storetest) — the same suites that validate `pkg/storemem`, `pkg/storesqlite`, and `pgstore`. Passing them is the protocol-conformance bar for storage.
+3. Wire your stores into `pkg/scaserver.Run` / `pkg/snsserver.Run`. The reference binaries are ~150 LOC of YAML loading + driver selection on top of those entry points; your binary follows the same shape.
+
+[`pgstore/`](./pgstore) is the canonical worked example — a separate Go submodule that adds Postgres without polluting the main module's dependency graph.
+
+## Operational caveats
+
+What the reference binaries deliberately do **not** include — these belong to the deployment, not the binary:
+
+- **Rate limiting / abuse mitigation** — terminate at a reverse proxy or WAF in front of the binary. The HTTP server enforces hard timeouts (read-header 5s, read 10s, write 30s, idle 120s) but does no per-IP throttling.
+- **Metrics, tracing, profiling endpoints** — operator-supplied. Wrap the `http.Handler` returned by `pkg/scaserver` / `pkg/snsserver` with your OTel / Prometheus middleware, or run a sidecar that scrapes structured `slog` output.
+- **Multi-region / HA** — infrastructure layer. With the `-pg` images: PG read replicas + LB + multiple binary replicas. SQLite-backed binaries are single-node by design.
+- **Schema migrations beyond the v0.1 baseline** — `pgstore` applies its schema once on startup. Future schema changes will ship a migrations table and tooling; v0.1.x is one schema only.
+
+Teams that need any of these as part of the binary itself should fork `cmd/{sca,sns}-server` (or `pgstore/cmd/{sca,sns}-server`) and wire what they need on top of `pkg/scaserver.Run` / `pkg/snsserver.Run`.
 
 ## Specifications
 
