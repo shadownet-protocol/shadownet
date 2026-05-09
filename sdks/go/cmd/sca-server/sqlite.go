@@ -5,8 +5,8 @@ package main
 import (
 	"database/sql"
 
-	"github.com/shadownet-protocol/shadownet-go/internal/storesqlite"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storesqlite"
 )
 
 func openSQLiteStores(dsn string) (sca.SessionStore, sca.IssuanceStore, sca.RevocationStore, *sql.DB, error) {
