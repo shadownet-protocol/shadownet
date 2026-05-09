@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 )
@@ -83,4 +84,40 @@ func TLSConfig(cert tls.Certificate) *tls.Config {
 		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{cert},
 	}
+}
+
+// IsLoopback reports whether addr (host:port form) binds to a loopback
+// address. Empty host, 0.0.0.0, and :: are explicitly NOT loopback — they
+// listen on every interface.
+func IsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
+}
+
+// WarnIfNotLoopback emits a Warn-level log line when addr is non-loopback
+// and the deployment lacks TLS. Plaintext HTTP on a public interface is a
+// real-world misconfiguration; this helper makes it loud at startup.
+//
+// hasTLS indicates whether the caller's tls.Config is non-nil; the helper
+// returns immediately when TLS is configured.
+func WarnIfNotLoopback(logger *slog.Logger, addr string, hasTLS bool) {
+	if hasTLS || IsLoopback(addr) {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Warn(
+		"plaintext HTTP on a non-loopback address; configure tls.cert and tls.key for production",
+		slog.String("listen", addr),
+	)
 }
