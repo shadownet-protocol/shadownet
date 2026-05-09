@@ -19,14 +19,14 @@ import (
 	"time"
 
 	"github.com/shadownet-protocol/shadownet-go/internal/config"
-	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
-	"github.com/shadownet-protocol/shadownet-go/internal/storesqlite"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
 	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
 	"github.com/shadownet-protocol/shadownet-go/pkg/keyguard"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
 	"github.com/shadownet-protocol/shadownet-go/pkg/snsserver"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storesqlite"
 )
 
 type fileConfig struct {

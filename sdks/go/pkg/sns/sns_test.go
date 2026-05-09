@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/internal/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
 	"github.com/shadownet-protocol/shadownet-go/pkg/did"
 	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
 	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
 )
 
