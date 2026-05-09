@@ -7,6 +7,25 @@ The version mirrors the protocol version this suite tests. See
 
 ## [Unreleased]
 
+### Changed
+
+- Resync bundled `_specs/` schemas to the upstream `shadownet-specs`
+  state on 2026-05-04: `interaction` is now optional in the envelope
+  schema; payload documents the `text`/`hints` shape for the free-form
+  default; both schemas' `$id` use the canonical `sh4dow.org` host.
+- Runtime SDK pin moved to `shadownet>=0.1.3` (RFC-0004 `kid` fix in
+  CSR + subject-auth + session-token JWTs).
+
+### Added
+
+- Envelope conformance tests for the v0.1 free-form path (RFC-0006
+  §Default form): minimal text-only envelope validates; verifier
+  obligations covered (missing `interaction` MUST validate, unknown
+  `interaction` MUST validate). Five new tests in
+  `tests/conformance/test_envelope_schema.py`.
+
+## [0.1.0] — 2026-05-04
+
 ### Added
 
 - **Scaffold + CLI.** `shadownet-conformance` entry point with config via
@@ -58,7 +77,7 @@ The version mirrors the protocol version this suite tests. See
   cut GitHub Release), `self-test.yml` (installs published `shadownet-go`
   binaries via the Go module proxy and runs the suite end-to-end on
   every PR).
-- Runtime dep on `shadownet>=0.1.1` from PyPI for crypto / DID / VC /
+- Runtime dep on `shadownet>=0.1.3` from PyPI for crypto / DID / VC /
   SCA / SNS / A2A / webhook primitives.
 - **Distribution: Docker image + GitHub Action + `uvx`.** PyPI is
   intentionally not used at v0.1 — consumers run the Docker image

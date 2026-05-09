@@ -156,6 +156,18 @@ The Sidecar conformance suite at v0.1 covers:
   valid handshake, wrong audience, malformed VP, expired session token,
   envelope-part absence (RFC-0006 §Handshake / §Errors).
 
+The envelope schema tests (which run with no targets) cover both forms
+RFC-0006 defines:
+
+- **Free-form text** (the v0.1 default): `payload.text` + optional `hints`,
+  no `interaction` URI.
+- **Typed Interaction Profile**: `interaction` set to a profile URI; payload
+  follows that profile's schema.
+
+…plus the verifier obligations: missing `interaction` MUST validate, unknown
+`interaction` MUST validate (envelope-layer rejection is forbidden by RFC-0006
+§Verifier obligations).
+
 RFC-0007 MCP tool surface and webhook dispatch tests will land once at
 least one Sidecar implementation supports them. The plan keeps the
 `--target sidecar=URL` flag uniform; new tests opt in without a

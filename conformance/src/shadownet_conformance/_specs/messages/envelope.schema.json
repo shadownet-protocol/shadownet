@@ -4,7 +4,7 @@
   "title": "Shadownet A2A Message Envelope",
   "description": "Schema for the `data` of a part with type `shadownet/v1+envelope`. See RFC-0006.",
   "type": "object",
-  "required": ["shadownet:v", "intentId", "interaction", "payload"],
+  "required": ["shadownet:v", "intentId", "payload"],
   "properties": {
     "shadownet:v": { "const": "0.1" },
     "intentId":    { "type": "string", "format": "uri" },
@@ -12,11 +12,15 @@
     "interaction": {
       "type": "string",
       "format": "uri",
-      "description": "URI naming an Interaction Profile. Opaque to RFC-0006; defined by separate Interaction Profile RFCs."
+      "description": "OPTIONAL. URI naming an Interaction Profile when payload follows a typed schema. Absent for free-form (text-default) envelopes. Verifiers MUST NOT reject envelopes solely because `interaction` is absent or unknown."
     },
     "payload": {
       "type": "object",
-      "description": "Interaction-specific. Schema is set by the Interaction Profile named in `interaction`."
+      "description": "When `interaction` is absent, payload SHOULD include a `text` field with the natural-language message; senders MAY attach structured `hints`. When `interaction` is present, payload follows the schema set by that Interaction Profile.",
+      "properties": {
+        "text":  { "type": "string" },
+        "hints": { "type": "object" }
+      }
     }
   },
   "additionalProperties": false
