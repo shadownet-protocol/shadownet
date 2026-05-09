@@ -207,20 +207,23 @@ func (s *SCARevocationStore) listOrdinalName(i int) string {
 }
 
 // AssignIndex implements sca.RevocationStore. Hot path: atomic
-// UPDATE … RETURNING on the active shard. Slow path (active shard full or
-// no shards yet): allocate a new shard inside the same transaction.
+// UPDATE … RETURNING on the active (least-recently-created, non-full) shard.
+// Cold path (active shard full or no shards yet): allocate a new shard via
+// INSERT … ON CONFLICT DO NOTHING and retry the loop on conflict.
+//
+// Concurrency notes: the inner SELECT uses FOR UPDATE (without SKIP LOCKED)
+// so concurrent callers queue on the row-level lock instead of falsely
+// concluding "no active shard." When a shard fills, multiple callers may
+// race on shard allocation; ON CONFLICT lets exactly one win, and the loop
+// retries the hot path against whichever shard the winner created.
 func (s *SCARevocationStore) AssignIndex(ctx context.Context) (string, uint64, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return "", 0, fmt.Errorf("pgstore: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	var (
-		listID  string
-		nextIdx int64
-	)
-	err = tx.QueryRow(ctx, `
+	const maxAttempts = 8
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		var (
+			listID  string
+			nextIdx int64
+		)
+		err := s.pool.QueryRow(ctx, `
 UPDATE sca_status_lists
 SET    next_index = next_index + 1
 WHERE  list_id = (
@@ -228,33 +231,34 @@ WHERE  list_id = (
     WHERE  next_index < size
     ORDER  BY created_at, list_id
     LIMIT  1
-    FOR UPDATE SKIP LOCKED
+    FOR UPDATE
 )
 RETURNING list_id, next_index - 1`).Scan(&listID, &nextIdx)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		// No non-full shard available — allocate a new one.
+		if err == nil {
+			return listID, uint64(nextIdx), nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", 0, fmt.Errorf("pgstore: assign index: %w", err)
+		}
+
 		var count int
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM sca_status_lists`).Scan(&count); err != nil {
+		if err := s.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM sca_status_lists`).Scan(&count); err != nil {
 			return "", 0, fmt.Errorf("pgstore: count shards: %w", err)
 		}
-		listID = s.listOrdinalName(count)
-		if _, err := tx.Exec(ctx, `
+		candidate := s.listOrdinalName(count)
+		cmd, err := s.pool.Exec(ctx, `
 INSERT INTO sca_status_lists (list_id, size, next_index)
-VALUES ($1, $2, 1)`, listID, s.capacity); err != nil {
+VALUES ($1, $2, 1)
+ON CONFLICT (list_id) DO NOTHING`, candidate, s.capacity)
+		if err != nil {
 			return "", 0, fmt.Errorf("pgstore: create shard: %w", err)
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return "", 0, fmt.Errorf("pgstore: commit: %w", err)
+		if cmd.RowsAffected() == 1 {
+			return candidate, 0, nil
 		}
-		return listID, 0, nil
-	case err != nil:
-		return "", 0, fmt.Errorf("pgstore: assign index: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return "", 0, fmt.Errorf("pgstore: commit: %w", err)
-	}
-	return listID, uint64(nextIdx), nil
+	return "", 0, errors.New("pgstore: assign index: too many concurrent rotations")
 }
 
 // Revoke implements sca.RevocationStore. Idempotent.
