@@ -8,6 +8,8 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-11
+
 ### Changed
 
 - Project moved from
@@ -25,6 +27,8 @@ the `conformance/vX.Y.Z` prefix.
 - Old `v0.1.x` releases of `shadownet-conformance` remain published; the
   `shadownet-protocol/conformance-action@v0.1` Docker action keeps
   working for external implementations.
+
+[0.2.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/conformance%2Fv0.2.0
 
 ## [0.1.1] — 2026-05-09
 
