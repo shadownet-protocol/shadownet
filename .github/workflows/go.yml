@@ -1,18 +1,33 @@
-name: ci
+name: Go SDK
 
 on:
   push:
     branches: [main]
+    paths:
+      - "sdks/go/**"
+      - ".github/workflows/go.yml"
   pull_request:
+    paths:
+      - "sdks/go/**"
+      - ".github/workflows/go.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: go-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: sdks/go
+
 jobs:
   build:
-    name: build
+    name: build & test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         go: ["1.25.x"]
     steps:
@@ -23,16 +38,9 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           check-latest: true
-
-      - name: Module cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go }}-
+          cache-dependency-path: |
+            sdks/go/go.sum
+            sdks/go/pgstore/go.sum
 
       - name: main module — build
         run: go build ./...
@@ -42,13 +50,13 @@ jobs:
         run: go vet ./...
 
       - name: pgstore module — build
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         run: go build ./...
       - name: pgstore module — test (non-integration)
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         run: go test -race -count=1 ./...
       - name: pgstore module — vet
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         run: go vet ./...
 
   integration:
@@ -73,8 +81,11 @@ jobs:
         with:
           go-version: "1.25.x"
           check-latest: true
+          cache-dependency-path: |
+            sdks/go/go.sum
+            sdks/go/pgstore/go.sum
       - name: pgstore integration tests
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         env:
           SHADOWNET_TEST_PG_DSN: postgres://postgres:postgres@localhost:5432/shadownet_test?sslmode=disable
         run: go test -tags integration -race -count=1 ./...
@@ -88,6 +99,9 @@ jobs:
         with:
           go-version: "1.25.x"
           check-latest: true
+          cache-dependency-path: |
+            sdks/go/go.sum
+            sdks/go/pgstore/go.sum
 
       - name: install gofumpt
         run: go install mvdan.cc/gofumpt@v0.10.0
@@ -101,9 +115,10 @@ jobs:
         with:
           version: latest
           install-go: false
+          working-directory: sdks/go
 
       - name: staticcheck — pgstore module
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
           staticcheck ./...
@@ -116,21 +131,17 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.1
+          working-directory: sdks/go
 
       - name: golangci-lint — pgstore module
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.1
-          working-directory: pgstore
+          working-directory: sdks/go/pgstore
           args: --config=../.golangci.yml
 
       - name: SPDX header check
         run: ./tools/spdx-check.sh
-
-      - name: schema mirror drift check
-        # ../shadownet-specs is not present in CI; the script exits 0 with a
-        # warn when the upstream repo isn't checked out alongside.
-        run: ./tools/check-schemas.sh
 
   vuln:
     name: govulncheck
@@ -141,10 +152,13 @@ jobs:
         with:
           go-version: "1.25.x"
           check-latest: true
+          cache-dependency-path: |
+            sdks/go/go.sum
+            sdks/go/pgstore/go.sum
       - name: install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: govulncheck — main module
         run: govulncheck ./...
       - name: govulncheck — pgstore module
-        working-directory: pgstore
+        working-directory: sdks/go/pgstore
         run: govulncheck ./...

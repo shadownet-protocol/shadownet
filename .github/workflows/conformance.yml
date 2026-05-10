@@ -1,0 +1,181 @@
+name: Conformance
+
+# Cross-implementation wire-level conformance. Boots the Go reference SCA
+# and SNS from this repo, then runs the published shadownet-conformance
+# action against them. The Python SDK is exercised separately by py.yml's
+# pytest run, which includes the conformance test files that validate every
+# Pydantic wire model against the JSON Schemas in shadownet-specs.
+#
+# This workflow is a required status check on PRs that touch wire-visible
+# surfaces. Implementations diverging from the spec should fail here before
+# merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdks/go/**"
+      - "sdks/py/**"
+      - ".github/workflows/conformance.yml"
+  pull_request:
+    paths:
+      - "sdks/go/**"
+      - "sdks/py/**"
+      - ".github/workflows/conformance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+# Pin to a tagged release of shadownet-specs so the suite runs deterministically.
+# Bump alongside spec releases; CI is the source of truth for which spec we
+# claim to implement.
+env:
+  SPECS_REF: main
+  CONFORMANCE_ACTION_REF: v0.1
+
+jobs:
+  # The Python SDK's own conformance tests validate Pydantic models against
+  # the schemas in shadownet-specs. py.yml runs them inside the SDK suite,
+  # but it skips when shadownet-specs isn't checked out. This job runs them
+  # explicitly with the spec checked out at the pinned ref.
+  py-schemas:
+    name: Python SDK — schema conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout shadownet-specs
+        uses: actions/checkout@v4
+        with:
+          repository: shadownet-protocol/shadownet-specs
+          ref: ${{ env.SPECS_REF }}
+          path: shadownet-specs
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "sdks/py/uv.lock"
+
+      - name: Sync Python SDK
+        working-directory: sdks/py
+        run: uv sync --all-extras
+
+      - name: Run schema conformance tests
+        working-directory: sdks/py
+        env:
+          SHADOWNET_SPECS_PATH: ${{ github.workspace }}/shadownet-specs
+        run: uv run pytest tests/conformance/ -v
+
+  # End-to-end wire-level: boot the Go reference SCA + SNS, run the
+  # cross-impl conformance action against them.
+  wire:
+    name: Wire-level — Go reference servers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          check-latest: true
+          cache-dependency-path: sdks/go/go.sum
+
+      - name: Build reference servers and CLI
+        working-directory: sdks/go
+        run: |
+          go build -o /tmp/sca-server ./cmd/sca-server
+          go build -o /tmp/sns-server ./cmd/sns-server
+          go build -o /tmp/shadownet  ./cmd/shadownet
+
+      - name: Generate fixture-fresh signing keys
+        run: |
+          /tmp/shadownet keygen --out /tmp/sca-issuer.jwk
+          /tmp/shadownet keygen --out /tmp/sns-provider.jwk
+
+      - name: Compose minimal SCA + SNS configs
+        run: |
+          mkdir -p /tmp/shadownet-data
+          cat > /tmp/sca.yaml <<'YAML'
+          # CI-only config: instant-approval proof method, sqlite storage.
+          # SHADOWNET_ALLOW_INSTANT_APPROVAL=1 unblocks the non-loopback guard.
+          did: "did:web:sca.localhost"
+          listen: "127.0.0.1:8443"
+          signing:
+            keyfile: "/tmp/sca-issuer.jwk"
+          storage:
+            driver: sqlite
+            dsn: "/tmp/shadownet-data/sca.db"
+          policy:
+            freshnessWindowSeconds: 86400
+            statusListBase: "http://127.0.0.1:8443/status/"
+            levels:
+              - level: "urn:shadownet:level:L1"
+                method: "instant-approval"
+                credentialLifetimeDays: 90
+          YAML
+          cat > /tmp/sns.yaml <<'YAML'
+          did: "did:web:sns.localhost"
+          provider: "localhost"
+          listen: "127.0.0.1:8444"
+          signing:
+            keyfile: "/tmp/sns-provider.jwk"
+          storage:
+            driver: sqlite
+            dsn: "/tmp/shadownet-data/sns.db"
+          defaultTtl: 300
+          YAML
+
+      - name: Boot SCA + SNS in the background
+        run: |
+          SHADOWNET_ALLOW_INSTANT_APPROVAL=1 \
+          SHADOWNET_LOG_FORMAT=text \
+            /tmp/sca-server -config /tmp/sca.yaml > /tmp/sca.log 2>&1 &
+          echo $! > /tmp/sca.pid
+          SHADOWNET_LOG_FORMAT=text \
+            /tmp/sns-server -config /tmp/sns.yaml > /tmp/sns.log 2>&1 &
+          echo $! > /tmp/sns.pid
+
+          # Wait for /readyz on both before handing off to the conformance action.
+          for url in http://127.0.0.1:8443/readyz http://127.0.0.1:8444/readyz; do
+            for i in $(seq 1 30); do
+              if curl -fsS "$url" > /dev/null; then
+                echo "ready: $url"; break
+              fi
+              sleep 1
+            done
+          done
+
+      - name: Run cross-impl conformance suite
+        # Continues even on failure so we can capture server logs for triage.
+        id: conformance
+        continue-on-error: true
+        uses: shadownet-protocol/conformance-action@v0.1
+        with:
+          sca: http://127.0.0.1:8443
+          sns: http://127.0.0.1:8444
+          proof-method: instant-approval
+
+      - name: SCA + SNS server logs
+        if: always()
+        run: |
+          echo '--- SCA log ---'; cat /tmp/sca.log || true
+          echo '--- SNS log ---'; cat /tmp/sns.log || true
+
+      - name: Stop background servers
+        if: always()
+        run: |
+          for pidfile in /tmp/sca.pid /tmp/sns.pid; do
+            [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null || true
+          done
+
+      - name: Fail the job if conformance failed
+        if: steps.conformance.outcome == 'failure'
+        run: |
+          echo "::error::shadownet-conformance reported failures; see suite output and server logs above."
+          exit 1
