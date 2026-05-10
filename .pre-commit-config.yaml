@@ -1,0 +1,87 @@
+# Pre-commit hooks for the shadownet monorepo.
+#
+#   pipx install pre-commit          (or: uv tool install pre-commit)
+#   pre-commit install
+#
+# Same checks run in CI; pre-commit just gives faster local feedback.
+
+minimum_pre_commit_version: "3.5.0"
+
+default_language_version:
+  python: python3.12
+
+# Run only on the files staged for the current commit. Some hooks
+# (gofumpt, ruff) modify files; pre-commit will abort the commit and ask
+# you to re-stage, which is the expected flow.
+default_stages: [pre-commit]
+
+repos:
+  # Generic hygiene — applies to every file in the repo.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.lock$|^sdks/py/uv\.lock$|^sdks/go/go\.sum$|^sdks/go/pgstore/go\.sum$
+      - id: end-of-file-fixer
+        exclude: \.lock$|^sdks/py/uv\.lock$|^sdks/go/go\.sum$|^sdks/go/pgstore/go\.sum$
+      - id: check-yaml
+        # GitHub Actions YAML uses anchors and tag-style values that the
+        # default check-yaml is fine with; nothing extra needed.
+      - id: check-toml
+      - id: check-json
+        exclude: \.devcontainer/.*\.json$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # Python — ruff (lint + format) for the sdks/py/ subtree.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        name: ruff (lint, sdks/py)
+        args: ["--fix"]
+        files: ^sdks/py/
+      - id: ruff-format
+        name: ruff (format, sdks/py)
+        files: ^sdks/py/
+
+  # YAML — repo-wide formatter to keep workflow files tidy.
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.14.0
+    hooks:
+      - id: yamlfmt
+        files: ^\.github/workflows/.*\.ya?ml$|\.pre-commit-config\.yaml$
+
+  # Go — local hooks. They shell out to the user's installed gofumpt /
+  # go vet, which CONTRIBUTING.md requires anyway. Skipped for non-Go
+  # commits via `files:`.
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt (sdks/go)
+        entry: bash -c 'cd sdks/go && gofumpt -l -extra -w "$@"' --
+        language: system
+        types_or: [go]
+        files: ^sdks/go/.+\.go$
+      - id: gofumpt-pgstore
+        name: gofumpt (sdks/go/pgstore)
+        entry: bash -c 'cd sdks/go/pgstore && gofumpt -l -extra -w "$@"' --
+        language: system
+        types_or: [go]
+        files: ^sdks/go/pgstore/.+\.go$
+      - id: go-vet
+        name: go vet (sdks/go)
+        entry: bash -c 'cd sdks/go && go vet ./...'
+        pass_filenames: false
+        language: system
+        files: ^sdks/go/(?!pgstore/).+\.go$
+      - id: go-vet-pgstore
+        name: go vet (sdks/go/pgstore)
+        entry: bash -c 'cd sdks/go/pgstore && go vet ./...'
+        pass_filenames: false
+        language: system
+        files: ^sdks/go/pgstore/.+\.go$
