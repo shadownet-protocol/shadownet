@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+# Build the reference SNS server. Pure Go (no CGo).
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/core/pkg/mod \
+    go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/core/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+        -o /out/sns-server ./cmd/sns-server
+
+# Stage an empty data directory so the distroless final image gets a
+# pre-created /var/lib/shadownet owned by nonroot. Distroless has no shell
+# or mkdir, so the writer (SQLite store) cannot create it at runtime.
+RUN mkdir -p /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/sns-server /usr/local/bin/sns-server
+COPY --from=build --chown=nonroot:nonroot /out/data /var/lib/shadownet
+USER nonroot:nonroot
+EXPOSE 8443
+VOLUME ["/var/lib/shadownet"]
+# Containers ship with JSON-line logs for log aggregators. Override in dev
+# with `-e SHADOWNET_LOG_FORMAT=text`.
+ENV SHADOWNET_LOG_FORMAT=json
+ENTRYPOINT ["/usr/local/bin/sns-server"]
+CMD ["--config", "/etc/shadownet/sns-server.yaml"]

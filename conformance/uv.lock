@@ -1097,8 +1097,7 @@ wheels = [
 
 [[package]]
 name = "shadownet"
-version = "0.1.3"
-source = { registry = "https://pypi.org/simple" }
+source = { directory = "../python-sdk" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "cryptography" },
@@ -1107,9 +1106,30 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/ce/bef3a6af675c8685326101566acfadc363a63b2c609cdd96c25d7d10f1b4/shadownet-0.1.3.tar.gz", hash = "sha256:3d39149162a419e53054e2040d685e54cbdc23a39c297f6032637a152926ef81", size = 40104, upload-time = "2026-05-04T00:30:35.339Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/c1/b6b7cc82669cb9f9215fbf5120c533e5e41cf331503a942e4527c6c44c71/shadownet-0.1.3-py3-none-any.whl", hash = "sha256:8a83777555edcaebd86196fd4064f970fcf38ab355dab66a044a5127ae1b06d6", size = 59657, upload-time = "2026-05-04T00:30:33.881Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "a2a-sdk", specifier = ">=0.2" },
+    { name = "cryptography", specifier = ">=43" },
+    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9" },
+    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40" },
+]
+provides-extras = ["fastapi"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jsonschema", specifier = ">=4.23" },
+    { name = "mypy", specifier = ">=1.13" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-cov", specifier = ">=5" },
+    { name = "respx", specifier = ">=0.21" },
+    { name = "ruff", specifier = ">=0.7" },
+    { name = "types-jsonschema", specifier = ">=4.23" },
 ]
 
 [[package]]
@@ -1149,7 +1169,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "shadownet", specifier = ">=0.1.3,<0.2" },
+    { name = "shadownet", directory = "../python-sdk" },
     { name = "starlette", specifier = ">=0.40" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]

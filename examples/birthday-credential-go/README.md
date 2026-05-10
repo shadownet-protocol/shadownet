@@ -22,12 +22,12 @@ example mirrors the Python example next door:
 go run .
 ```
 
-This module declares `replace github.com/shadownet-protocol/shadownet/go => ../../go`
+This module declares `replace github.com/shadownet-protocol/shadownet/core => ../../go`
 so it resolves the SDK from the in-repo checkout. The `require` line in
 `go.mod` is a placeholder; the replace directive is what binds it for
 example builds.
 
-If you want to consume the published SDK instead (after `go/v0.2.0` is
+If you want to consume the published SDK instead (after `core/v0.2.0` is
 tagged), drop the replace directive and bump the require line to the
 released version.
 

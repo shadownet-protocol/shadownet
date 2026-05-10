@@ -49,7 +49,7 @@ the Claude Code marketplace catalog at the repo root: `.claude-plugin/marketplac
 ### Installing as a user
 
 ```text
-/plugin marketplace add github:shadownet-protocol/shadownet-cloud
+/plugin marketplace add github:shadownet-protocol/shadownet
 /plugin install shadownet@shadownet-protocol
 ```
 

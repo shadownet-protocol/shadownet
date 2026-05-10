@@ -3,8 +3,8 @@
 > A protocol that lets personal AI agents discover, verify, and coordinate
 > with each other on behalf of their humans — without leaking private context.
 
-[![Go SDK CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/go.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/go.yml)
-[![Python SDK CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/py.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/py.yml)
+[![Core CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/core.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/core.yml)
+[![Python SDK CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/python-sdk.yml)
 [![Conformance](https://github.com/shadownet-protocol/shadownet/actions/workflows/conformance.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/conformance.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
@@ -46,36 +46,53 @@ or the
 
 ```
 shadownet/
-├── go/             Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
-├── py/             Python SDK (PyPI: shadownet); consumed by hermes-social and shadownet-cloud
-├── examples/       Runnable end-to-end examples (one per language)
+├── core/            Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
+├── python-sdk/      Python SDK (PyPI: shadownet); consumed by hermes-social and downstream Sidecar deployments
+├── conformance/     Wire-level interop test suite (PyPI: shadownet-conformance) + ghcr.io/shadownet-protocol/conformance image + GitHub Action
+├── integrations/    Host-agent plugins (Claude Code, Hermes Agent, OpenClaw, raw skill bundles)
+├── examples/        Runnable end-to-end examples (one per language)
 ├── CONTRIBUTING.md, SECURITY.md, MIGRATION.md, …
-└── .github/        Workflows, issue templates, Dependabot config
+└── .github/         Workflows, issue templates, Dependabot config
 ```
 
-The Go subtree is the protocol's **reference implementation** — it bundles the
-client SDK, the reference SCA + SNS server binaries, and the operator CLI as
-one Go module, which is idiomatic for Go projects that ship `pkg/` + `cmd/`
-together. The Python subtree is a **client SDK port** — it does not ship
-servers; cloud / sidecar deployments compose it with `hermes-social` or
-`shadownet-cloud`.
+What lives where, and why:
+
+- **`core/`** is the protocol's **reference implementation** — it bundles the
+  client SDK, the reference SCA + SNS server binaries, and the operator CLI
+  as one Go module. Idiomatic for Go projects that ship `pkg/` + `cmd/`
+  together.
+- **`python-sdk/`** is a **client SDK port** — no servers; downstream Sidecar
+  deployments compose it with
+  [`hermes-social`](https://github.com/meghancampbel9/hermes-social) or
+  any other A2A-capable host runtime.
+- **`conformance/`** is the **cross-implementation wire-level test suite**.
+  Run it against any RFC-compliant SCA / SNS / Sidecar and it tells you
+  whether they're correct — language-agnostic, talks the wire only. Ships
+  as a PyPI distribution, a GHCR container image, and a GitHub Action
+  (`shadownet-protocol/conformance-action@v0.1`).
+- **`integrations/`** are **protocol-level host-agent plugins** — they wire
+  agents (Claude Code, Hermes Agent, OpenClaw, …) to *any* Shadownet
+  Sidecar via the spec's public surfaces (RFC-0006 MCP at
+  `/u/<shadowname>/mcp`, RFC-0007 HMAC-signed webhooks). They are not
+  bound to any one operator; an optional `integration-bundle` endpoint
+  can fetch tenant configuration in one call when the host Sidecar
+  publishes one.
 
 The protocol RFCs and JSON Schemas live in
 [`shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs);
-cross-implementation interop is verified by
-[`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance),
-which runs against this repo's reference servers in CI.
+this monorepo's `conformance/` workflow pulls them at a pinned ref and runs
+against in-tree reference servers on every PR.
 
 ## Get started
 
 ### Go developers
 
 ```sh
-go get github.com/shadownet-protocol/shadownet/go
+go get github.com/shadownet-protocol/shadownet/core
 ```
 
-Quickstart and API surface: [`go/README.md`](./go/README.md) ·
-[`pkg.go.dev`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/go)
+Quickstart and API surface: [`core/README.md`](./core/README.md) ·
+[`pkg.go.dev`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/core)
 
 ### Python developers
 
@@ -84,15 +101,15 @@ pip install shadownet
 # or: uv add shadownet
 ```
 
-Quickstart and API surface: [`py/README.md`](./py/README.md) ·
+Quickstart and API surface: [`python-sdk/README.md`](./python-sdk/README.md) ·
 [PyPI](https://pypi.org/project/shadownet/)
 
 ### Operators (run an SCA / SNS)
 
 The Go SDK ships container images for the reference SCA + SNS servers and a
 sample `docker-compose.yml`. See the
-[operator quickstart](./go/README.md#as-an-operator--run-the-reference-servers)
-and [`go/deploy/`](./go/deploy/).
+[operator quickstart](./core/README.md#as-an-operator--run-the-reference-servers)
+and [`core/deploy/`](./core/deploy/).
 
 ## Architecture at a glance
 
@@ -130,10 +147,8 @@ claiming to speak for them.
 | Repo | Status | Role |
 | --- | --- | --- |
 | [`shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs) | Active | RFCs, JSON Schemas, fixture seeds — protocol source of truth |
-| **`shadownet`** (this repo) | Active | Go + Python SDKs, reference SCA / SNS, CLI |
-| [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance) | Active | Cross-impl wire-level test suite, also published as a GitHub Action |
+| **`shadownet`** (this repo) | Active | Go + Python SDKs, reference SCA / SNS, CLI, conformance suite, host-agent integrations |
 | [`hermes-social`](https://github.com/meghancampbel9/hermes-social) | Active | Sidecar reference implementation; drop-in for any A2A-capable runtime |
-| [`shadownet-cloud`](https://github.com/shadownet-protocol/shadownet-cloud) | Building | First-provider deployment: signup, hosted SCA + SNS, multi-tenant Sidecar |
 | `shadownet-ts` | Planned | TypeScript SDK for browser + Node |
 
 ## Versioning & releases
@@ -143,9 +158,9 @@ subtree's tags with its directory:
 
 | Tag pattern | Subject |
 | --- | --- |
-| `go/vX.Y.Z` | Go SDK + reference binaries |
-| `go/pgstore/vX.Y.Z` | Postgres backend submodule |
-| `py/vX.Y.Z` | Python SDK (PyPI: `shadownet`) |
+| `core/vX.Y.Z` | Go SDK + reference binaries |
+| `core/pgstore/vX.Y.Z` | Postgres backend submodule |
+| `python-sdk/vX.Y.Z` | Python SDK (PyPI: `shadownet`) |
 
 Each subtree maintains its own `CHANGELOG.md`. The protocol version
 (currently `v0.1`) is independent of SDK versions.

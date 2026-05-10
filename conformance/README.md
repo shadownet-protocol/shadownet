@@ -1,10 +1,22 @@
-# shadownet-conformance
+# Shadownet — Conformance suite
 
-Wire-level interop test suite for the [Shadownet](../shadownet-specs/) protocol.
+Wire-level interop test suite for the
+[Shadownet protocol](https://github.com/shadownet-protocol/shadownet-specs).
+
+> **Note (`v0.2.0` — repository move).** This suite previously shipped from
+> [`shadownet-protocol/shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance).
+> Starting with `v0.2.0` it lives in the
+> [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet)
+> monorepo at `conformance/`, alongside the SDKs it exists to test. The
+> distribution name (`shadownet-conformance`), CLI entry points, container
+> image (`ghcr.io/shadownet-protocol/conformance`), and GitHub Action
+> (`shadownet-protocol/conformance-action@v0.1`) are unchanged. Older `v0.1.x`
+> releases stay reachable to existing CI consumers.
 
 ## Status
 
-v0.1 alpha. Tests the v0.1 RFCs at [`shadownet-specs/rfcs`](../shadownet-specs/rfcs/).
+v0.1 alpha. Tests the v0.1 RFCs at the
+[shadownet-specs `rfcs/` directory](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
 Coverage: SCA (RFC-0004), SNS (RFC-0005), Sidecar inbound handshake (RFC-0006),
 predicate evaluation, JSON-Schema conformance, round-trip across two SCA / SNS
 implementations. RFC-0007 MCP/webhook coverage lands once a Sidecar
@@ -69,28 +81,34 @@ verify itself before merging:
     sidecar: http://localhost:8340
 ```
 
-### Smoke-testing locally against the Go reference
+### Smoke-testing locally against the in-repo Go reference
 
 ```sh
-# In one terminal, boot the reference SCA + SNS:
-( cd ../shadownet-go
+# In one terminal, boot the reference SCA + SNS from this monorepo:
+( cd ../core
   go build -o /tmp/sca-server ./cmd/sca-server
   go build -o /tmp/sns-server ./cmd/sns-server
-  go build -o /tmp/shadownet ./cmd/shadownet
-  /tmp/shadownet keygen -out /tmp/issuer.jwk
-  /tmp/shadownet keygen -out /tmp/provider.jwk
-  # Copy/edit deploy/sca-server.yaml and deploy/sns-server.yaml as needed.
-  SHADOWNET_ALLOW_INSTANT_APPROVAL=1 /tmp/sca-server -config /path/to/sca.yaml
+  go build -o /tmp/shadownet  ./cmd/shadownet
 )
+mkdir -p /tmp/sn-self
+/tmp/shadownet keygen --out /tmp/sn-self/issuer.jwk
+/tmp/shadownet keygen --out /tmp/sn-self/provider.jwk
+SHADOWNET_ALLOW_INSTANT_APPROVAL=1 \
+  /tmp/sca-server -config ci/sca-server.yaml &
+/tmp/sns-server -config ci/sns-server.yaml &
 
 # In another terminal:
 uv run shadownet-conformance \
-    --target sca=http://127.0.0.1:8443 \
-    --target sns=http://127.0.0.1:8444 \
+    --target sca=http://127.0.0.1:18443 \
+    --target sns=http://127.0.0.1:18444 \
     --proof-method instant-approval
 ```
 
-The full automated version of this lives in `.github/workflows/self-test.yml`.
+The pre-baked `ci/sca-server.yaml` and `ci/sns-server.yaml` configs use
+`did:web:127.0.0.1%3A18443/8444` (URL-encoded loopback) so no DNS or TLS
+plumbing is required. The full automated version of this lives in
+[`.github/workflows/conformance.yml`](../.github/workflows/conformance.yml)
+at the monorepo root.
 
 ## Test vectors
 
@@ -110,7 +128,7 @@ The fixture set is the protocol's empirical contract. New normative behavior in 
 >   generator). Never copy a fixture key into a production deployment.
 > - Never list a fixture public key in a production trust store.
 >
-> The reference servers in `shadownet-go` enforce the first rule at startup:
+> The reference servers under `../core/` enforce the first rule at startup:
 > `sca-server` and `sns-server` refuse to boot if their signing key matches
 > any fixture public key, unless `SHADOWNET_ALLOW_FIXTURE_KEYS=1` is set
 > (used by this suite's CI self-test, never in production).
@@ -128,19 +146,19 @@ The fixture set is the protocol's empirical contract. New normative behavior in 
   discipline).
 
 To run the **fixture regeneration** CLI you also need a Go toolchain
-(Go 1.25+); the regen tool builds a small Go emitter that imports
-[`shadownet-go`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go)
-from the public Go module proxy. Running the conformance suite itself
+(Go 1.25+); the regen tool builds a small Go emitter that imports the
+in-repo [`../core/`](../core/) SDK via a `replace` directive in
+`fixtures/_regen/go-emit/go.mod`. Running the conformance suite itself
 never needs Go.
 
 ## Distribution
 
 | Audience | How they consume it |
 | --- | --- |
-| Implementer CI (any language) | `uses: shadownet-protocol/conformance-action@v0.1` (Docker action) |
+| Implementer CI (any language) | `uses: shadownet-protocol/conformance-action@v0.2` (Docker action; the `@v0.1` series remains valid) |
 | Local debugging | `docker run --rm --network host ghcr.io/shadownet-protocol/conformance:latest --target ...` |
-| Python-native local run | `uvx --from git+https://github.com/shadownet-protocol/shadownet-conformance@v0.1.0 shadownet-conformance --target ...` |
-| Hacking on the suite itself | `git clone && uv sync && uv run shadownet-conformance ...` |
+| Python-native local run | `uvx --from git+https://github.com/shadownet-protocol/shadownet@conformance/v0.2.0#subdirectory=conformance shadownet-conformance --target ...` |
+| Hacking on the suite itself | `git clone shadownet-protocol/shadownet && cd shadownet/conformance && uv sync && uv run shadownet-conformance ...` |
 
 PyPI is intentionally not used at v0.1 — the test runner is consumed via
 the Docker image, the GitHub Action, or `uvx` directly from a tagged git

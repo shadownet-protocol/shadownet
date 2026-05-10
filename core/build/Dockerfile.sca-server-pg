@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+# Build the SCA server with Postgres support (memory + sqlite + postgres
+# drivers). Pure Go (no CGo) — modernc.org/sqlite + jackc/pgx/v5.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+WORKDIR /src
+
+# Cache modules. pgstore/go.mod has a replace directive pointing at the
+# parent for in-repo builds, so no go.work is needed.
+COPY go.mod go.sum ./
+COPY pgstore/go.mod pgstore/go.sum ./pgstore/
+RUN --mount=type=cache,target=/core/pkg/mod \
+    go mod download && cd pgstore && go mod download
+
+COPY . .
+# Build from inside the pgstore module — `./pgstore/cmd/sca-server` is not
+# addressable from the parent module since pgstore is its own go.mod.
+RUN --mount=type=cache,target=/core/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd pgstore && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+        -o /out/sca-server-pg ./cmd/sca-server
+
+RUN mkdir -p /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/sca-server-pg /usr/local/bin/sca-server
+COPY --from=build --chown=nonroot:nonroot /out/data /var/lib/shadownet
+USER nonroot:nonroot
+EXPOSE 8443
+VOLUME ["/var/lib/shadownet"]
+ENV SHADOWNET_LOG_FORMAT=json
+ENTRYPOINT ["/usr/local/bin/sca-server"]
+CMD ["--config", "/etc/shadownet/sca-server.yaml"]

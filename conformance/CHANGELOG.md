@@ -3,11 +3,28 @@
 All notable changes to this project follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 The version mirrors the protocol version this suite tests. See
-[CLAUDE.md](./CLAUDE.md) §Versioning & release.
+[CLAUDE.md](./CLAUDE.md) §Versioning & release. In the monorepo, tags use
+the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+
+- Project moved from
+  [`shadownet-protocol/shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance)
+  into the [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet)
+  monorepo at `conformance/`. The PyPI / sdist distribution name
+  (`shadownet-conformance`) and the CLI entry points
+  (`shadownet-conformance`, `shadownet-conformance-fixtures`) are unchanged.
+- Runtime SDK pin moved to `shadownet>=0.2.0,<0.3` to track the renamed
+  Python SDK in the same monorepo.
+- The `fixtures/_regen/go-emit` Go module now imports
+  `github.com/shadownet-protocol/shadownet/core` and uses an in-repo
+  `replace` directive against `../../../../core`.
+- Repository URLs in package metadata now point at the monorepo.
+- Old `v0.1.x` releases of `shadownet-conformance` remain published; the
+  `shadownet-protocol/conformance-action@v0.1` Docker action keeps
+  working for external implementations.
 
 ## [0.1.1] — 2026-05-09
 

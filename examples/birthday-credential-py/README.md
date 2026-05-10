@@ -17,7 +17,7 @@ no servers, no Docker — pure cryptographic primitives over `did:key`.
 This is the smallest possible end-to-end story — it exercises the
 `shadownet.{crypto, did, vc, trust}` packages without needing the SCA / SNS
 HTTP surfaces. For an operator-side walkthrough that boots the reference
-servers, see [`go/README.md`](../../go/README.md).
+servers, see [`core/README.md`](../../core/README.md).
 
 ## Run it
 

@@ -1,0 +1,145 @@
+name: release (conformance suite)
+
+# Triggered by tags of the shape `conformance/vX.Y.Z`. Lints + types + tests
+# the suite, builds and pushes the published Docker image
+# (ghcr.io/shadownet-protocol/conformance:<tag>), and creates a GitHub
+# Release. The published image is what the
+# `shadownet-protocol/conformance-action@v0.1` Docker action uses, so external
+# implementations consuming the action keep working unchanged.
+
+on:
+  push:
+    tags:
+      - "conformance/v*"
+
+permissions:
+  contents: write   # GitHub Release
+  packages: write   # ghcr.io image push
+  id-token: write   # OIDC for sigstore / provenance
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      bare: ${{ steps.parse.outputs.bare }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: parse
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#conformance/}"
+          bare="${version#v}"
+          if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.+-]+)?$ ]]; then
+            echo "::error::tag $tag does not look like conformance/vX.Y.Z[-pre]"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "bare=$bare"       >> "$GITHUB_OUTPUT"
+          echo "Releasing conformance $version (bare: $bare)"
+
+  gate:
+    name: lint + tests gate
+    runs-on: ubuntu-latest
+    needs: preflight
+    defaults:
+      run:
+        working-directory: conformance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          check-latest: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "conformance/uv.lock"
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Lint + format + mypy + pytest
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest
+
+      - name: Build go-emit binary
+        working-directory: conformance/fixtures/_regen/go-emit
+        run: go build -o go-emit .
+
+      - name: Cross-SDK fixture verification
+        run: uv run shadownet-conformance-fixtures regen --check
+
+      - name: Verify tag matches package version
+        env:
+          BARE_VERSION: ${{ needs.preflight.outputs.bare }}
+        run: |
+          set -euo pipefail
+          pkg="$(uv run python -c 'import importlib.metadata as m; print(m.version("shadownet-conformance"))')"
+          if [ "$BARE_VERSION" != "$pkg" ]; then
+            echo "::error::git tag $BARE_VERSION does not match pyproject version $pkg"
+            exit 1
+          fi
+          echo "ok: tag and pyproject both resolve to $pkg"
+
+  image:
+    name: ghcr.io/shadownet-protocol/conformance image
+    runs-on: ubuntu-latest
+    needs: [preflight, gate]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR (OIDC)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/conformance
+          tags: |
+            type=raw,value=${{ needs.preflight.outputs.version }}
+            type=raw,value=latest,enable=${{ !contains(needs.preflight.outputs.version, '-') }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: conformance
+          file: conformance/action/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release-note:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [preflight, image]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release with auto-generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release already exists; nothing to do."
+            exit 0
+          fi
+          gh release create "${GITHUB_REF_NAME}" --generate-notes \
+            --title "Conformance ${{ needs.preflight.outputs.version }}"

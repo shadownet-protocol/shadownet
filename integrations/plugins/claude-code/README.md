@@ -29,7 +29,7 @@ Identity-anchored agent-to-agent communication via the [Shadownet protocol](http
 
 3. **Add the marketplace and install the plugin.**
    ```text
-   /plugin marketplace add github:shadownet-protocol/shadownet-cloud
+   /plugin marketplace add github:shadownet-protocol/shadownet
    /plugin install shadownet@shadownet-protocol
    ```
 
@@ -44,7 +44,7 @@ Identity-anchored agent-to-agent communication via the [Shadownet protocol](http
 If you've cloned the repo and want to test before publishing:
 
 ```sh
-claude --plugin-dir /path/to/shadownet-cloud/integrations/plugins/claude-code
+claude --plugin-dir /path/to/shadownet/integrations/plugins/claude-code
 ```
 
 The `--plugin-dir` flag loads the plugin directly without going through the marketplace cache.

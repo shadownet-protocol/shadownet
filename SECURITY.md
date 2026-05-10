@@ -27,20 +27,23 @@ Security fixes target the latest released minor of each subtree:
 
 | Subtree | Currently supported |
 | --- | --- |
-| `go/` (Go SDK + reference servers) | `v0.2.x` |
-| `go/pgstore/` (Postgres backend) | `v0.2.x` |
-| `py/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
+| `core/` (Go SDK + reference servers) | `v0.2.x` |
+| `core/pgstore/` (Postgres backend) | `v0.2.x` |
+| `python-sdk/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
+| `conformance/` (PyPI `shadownet-conformance`, image `ghcr.io/shadownet-protocol/conformance`) | `0.2.x` |
+| `integrations/plugins/openclaw/` (npm `@shadownet/openclaw-plugin`) | latest only |
 
 Older `v0.1.x` releases — published from the legacy
-[`shadownet-go`](https://github.com/shadownet-protocol/shadownet-go) and
-[`shadownet-py`](https://github.com/shadownet-protocol/shadownet-py) repos —
-receive critical fixes only at maintainer discretion.
+[`shadownet-go`](https://github.com/shadownet-protocol/shadownet-go),
+[`shadownet-py`](https://github.com/shadownet-protocol/shadownet-py), and
+[`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance)
+repos — receive critical fixes only at maintainer discretion.
 
 ## Scope
 
 **In scope:**
 
-- Code in this repository (`go/`, `py/`, top-level configs).
+- Code in this repository (`core/`, `python-sdk/`, `conformance/`, `integrations/`, top-level configs).
 - Cryptographic correctness against the
   [v0.1 RFCs](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
 - Issues that allow forging Verifiable Credentials, bypassing freshness or
@@ -52,10 +55,9 @@ receive critical fixes only at maintainer discretion.
 
 **Out of scope:**
 
-- Issues against
-  [`shadownet-cloud`](https://github.com/shadownet-protocol/shadownet-cloud) or
-  [`hermes-social`](https://github.com/meghancampbel9/hermes-social) — report
-  those to those repos directly.
+- Issues against [`hermes-social`](https://github.com/meghancampbel9/hermes-social)
+  or any operator-side cloud / hosting deployment — report those to those
+  repos directly.
 - Issues against the protocol spec itself — file with
   [`shadownet-protocol/shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs).
 - Theoretical attacks on `did:web` resolution that require pre-existing

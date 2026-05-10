@@ -1,0 +1,176 @@
+name: Core (Go reference impl)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "core/**"
+      - "examples/birthday-credential-go/**"
+      - ".github/workflows/core.yml"
+  pull_request:
+    paths:
+      - "core/**"
+      - "examples/birthday-credential-go/**"
+      - ".github/workflows/core.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: core
+
+jobs:
+  build:
+    name: build & test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.25.x"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+          cache-dependency-path: |
+            core/go.sum
+            core/pgstore/go.sum
+
+      - name: main module — build
+        run: go build ./...
+      - name: main module — test
+        run: go test -race -count=1 ./...
+      - name: main module — vet
+        run: go vet ./...
+
+      - name: pgstore module — build
+        working-directory: core/pgstore
+        run: go build ./...
+      - name: pgstore module — test (non-integration)
+        working-directory: core/pgstore
+        run: go test -race -count=1 ./...
+      - name: pgstore module — vet
+        working-directory: core/pgstore
+        run: go vet ./...
+
+      - name: examples — build & run birthday-credential-go
+        # Catches API drift between the SDK and the example without needing
+        # a separate workflow. The example uses a replace directive against
+        # the in-repo SDK, so this is also an integration sanity check.
+        working-directory: examples/birthday-credential-go
+        run: |
+          go build ./...
+          go vet ./...
+          go run .
+
+  integration:
+    name: integration (pgstore + Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: shadownet_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          check-latest: true
+          cache-dependency-path: |
+            core/go.sum
+            core/pgstore/go.sum
+      - name: pgstore integration tests
+        working-directory: core/pgstore
+        env:
+          SHADOWNET_TEST_PG_DSN: postgres://postgres:postgres@localhost:5432/shadownet_test?sslmode=disable
+        run: go test -tags integration -race -count=1 ./...
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          check-latest: true
+          cache-dependency-path: |
+            core/go.sum
+            core/pgstore/go.sum
+
+      - name: install gofumpt
+        run: go install mvdan.cc/gofumpt@v0.10.0
+
+      - name: gofumpt — both modules
+        # `.` walks recursively, picking up pgstore/ via the filesystem.
+        run: diff <(gofumpt -l -extra .) <(printf '')
+
+      - name: staticcheck — main module
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: latest
+          install-go: false
+          working-directory: core
+
+      - name: staticcheck — pgstore module
+        working-directory: core/pgstore
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      - name: golangci-lint — main module
+        # v8 of the action defaults to golangci-lint v2.x; older actions ship
+        # v1 binaries that were built with Go 1.24 and can't read modules
+        # targeting Go 1.25. Pin the lint version explicitly so a future
+        # `latest` flip can't surprise us.
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.1
+          working-directory: core
+
+      - name: golangci-lint — pgstore module
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.1
+          working-directory: core/pgstore
+          args: --config=../.golangci.yml
+
+      - name: SPDX header check
+        run: ./tools/spdx-check.sh
+
+  vuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          check-latest: true
+          cache-dependency-path: |
+            core/go.sum
+            core/pgstore/go.sum
+      - name: install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: govulncheck — main module
+        run: govulncheck ./...
+      - name: govulncheck — pgstore module
+        working-directory: core/pgstore
+        run: govulncheck ./...

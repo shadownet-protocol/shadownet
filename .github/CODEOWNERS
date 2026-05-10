@@ -1,0 +1,10 @@
+# Default owners — required reviewers for any change.
+*                       @meghancampbel9 @mahdi13
+
+# Repo-config sensitivity — keep these reviewed by the core maintainer set
+# even when subtree-specific teams form later.
+/.github/               @meghancampbel9 @mahdi13
+/SECURITY.md            @meghancampbel9 @mahdi13
+/CODE_OF_CONDUCT.md     @meghancampbel9 @mahdi13
+/LICENSE                @meghancampbel9 @mahdi13
+/MIGRATION.md           @meghancampbel9 @mahdi13

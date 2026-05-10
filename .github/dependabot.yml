@@ -3,7 +3,7 @@ version: 2
 updates:
   # Go SDK — main module
   - package-ecosystem: gomod
-    directory: /go
+    directory: /core
     schedule:
       interval: weekly
       day: monday
@@ -23,7 +23,7 @@ updates:
 
   # Go SDK — pgstore submodule (separate go.mod)
   - package-ecosystem: gomod
-    directory: /go/pgstore
+    directory: /core/pgstore
     schedule:
       interval: weekly
       day: monday
@@ -44,7 +44,7 @@ updates:
 
   # Python SDK
   - package-ecosystem: pip
-    directory: /py
+    directory: /python-sdk
     schedule:
       interval: weekly
       day: monday
@@ -56,6 +56,59 @@ updates:
       prefix: "deps(py)"
     groups:
       py-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Conformance suite (Python)
+  - package-ecosystem: pip
+    directory: /conformance
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: conformance"
+    commit-message:
+      prefix: "deps(conformance)"
+    groups:
+      conformance-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Conformance: fixture-regen Go emitter (separate go.mod)
+  - package-ecosystem: gomod
+    directory: /conformance/fixtures/_regen/go-emit
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - "deps"
+      - "area: conformance"
+    commit-message:
+      prefix: "deps(conformance-go-emit)"
+
+  # OpenClaw plugin (TypeScript / npm)
+  - package-ecosystem: npm
+    directory: /integrations/plugins/openclaw
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: integrations"
+    commit-message:
+      prefix: "deps(openclaw)"
+    groups:
+      openclaw-deps:
         patterns:
           - "*"
         update-types:

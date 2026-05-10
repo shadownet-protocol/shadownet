@@ -21,9 +21,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: \.lock$|^py/uv\.lock$|^go/go\.sum$|^go/pgstore/go\.sum$
+        exclude: \.lock$|^python-sdk/uv\.lock$|^core/go\.sum$|^core/pgstore/go\.sum$
       - id: end-of-file-fixer
-        exclude: \.lock$|^py/uv\.lock$|^go/go\.sum$|^go/pgstore/go\.sum$
+        exclude: \.lock$|^python-sdk/uv\.lock$|^core/go\.sum$|^core/pgstore/go\.sum$
       - id: check-yaml
         # GitHub Actions YAML uses anchors and tag-style values that the
         # default check-yaml is fine with; nothing extra needed.
@@ -37,17 +37,17 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
 
-  # Python — ruff (lint + format) for the py/ subtree.
+  # Python — ruff (lint + format) for the python-sdk/ subtree.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.4
     hooks:
       - id: ruff
         name: ruff (lint, py)
         args: ["--fix"]
-        files: ^py/
+        files: ^python-sdk/
       - id: ruff-format
         name: ruff (format, py)
-        files: ^py/
+        files: ^python-sdk/
 
   # YAML — repo-wide formatter to keep workflow files tidy.
   - repo: https://github.com/google/yamlfmt
@@ -63,25 +63,25 @@ repos:
     hooks:
       - id: gofumpt
         name: gofumpt (go)
-        entry: bash -c 'cd go && gofumpt -l -extra -w "$@"' --
+        entry: bash -c 'cd core && gofumpt -l -extra -w "$@"' --
         language: system
         types_or: [go]
-        files: ^go/.+\.go$
+        files: ^core/.+\.go$
       - id: gofumpt-pgstore
-        name: gofumpt (go/pgstore)
-        entry: bash -c 'cd go/pgstore && gofumpt -l -extra -w "$@"' --
+        name: gofumpt (core/pgstore)
+        entry: bash -c 'cd core/pgstore && gofumpt -l -extra -w "$@"' --
         language: system
         types_or: [go]
-        files: ^go/pgstore/.+\.go$
+        files: ^core/pgstore/.+\.go$
       - id: go-vet
         name: go vet (go)
-        entry: bash -c 'cd go && go vet ./...'
+        entry: bash -c 'cd core && go vet ./...'
         pass_filenames: false
         language: system
-        files: ^go/(?!pgstore/).+\.go$
+        files: ^core/(?!pgstore/).+\.go$
       - id: go-vet-pgstore
-        name: go vet (go/pgstore)
-        entry: bash -c 'cd go/pgstore && go vet ./...'
+        name: go vet (core/pgstore)
+        entry: bash -c 'cd core/pgstore && go vet ./...'
         pass_filenames: false
         language: system
-        files: ^go/pgstore/.+\.go$
+        files: ^core/pgstore/.+\.go$

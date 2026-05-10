@@ -21,8 +21,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/core/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/core/pkg/did"
 )
 
 const (

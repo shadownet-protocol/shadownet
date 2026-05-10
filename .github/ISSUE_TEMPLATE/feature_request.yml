@@ -7,10 +7,12 @@ body:
     attributes:
       label: Affected area
       options:
-        - "go (Go SDK)"
-        - "go/pgstore (Postgres backend)"
-        - "go/cmd/* (reference binaries / CLI)"
-        - "py (Python SDK)"
+        - "core (Go reference impl)"
+        - "core/pgstore (Postgres backend)"
+        - "core/cmd/* (reference binaries / CLI)"
+        - "python-sdk (Python SDK)"
+        - "conformance (interop test suite)"
+        - "integrations (host-agent plugins)"
         - "CI / release workflows"
         - "Docs / examples"
         - "Other / not sure"

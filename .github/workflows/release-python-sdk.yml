@@ -1,0 +1,89 @@
+name: release (python-sdk)
+
+# Triggered by tags of the shape `python-sdk/vX.Y.Z` (or pre-release variants).
+# Publishes the `shadownet` distribution to PyPI via Trusted Publishing.
+
+on:
+  push:
+    tags:
+      - "python-sdk/v*"
+
+permissions:
+  id-token: write    # PyPI Trusted Publishing (OIDC)
+  contents: write    # creating the GitHub Release
+
+concurrency:
+  group: release-py-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: python-sdk
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/shadownet
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "python-sdk/uv.lock"
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy src/shadownet
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Verify tag matches package version
+        # The git tag `python-sdk/v0.2.0-rc.1` and the wheel version
+        # `0.2.0rc1` (PEP 440) compare equal once both pass through
+        # `packaging.version.Version`.
+        run: |
+          set -euo pipefail
+          tag_full="${GITHUB_REF#refs/tags/}"
+          tag_version="${tag_full#py/v}"
+          uv run python - "$tag_version" <<'PY'
+          import sys
+          from importlib.metadata import version
+          from packaging.version import Version
+          tag = Version(sys.argv[1])
+          pkg = Version(version("shadownet"))
+          if tag != pkg:
+              raise SystemExit(f"git tag {tag} does not match pyproject version {pkg}")
+          print(f"ok: git tag and pyproject both resolve to {tag}")
+          PY
+
+      - name: Verify py.typed marker is shipped
+        run: |
+          unzip -l dist/shadownet-*.whl | grep -q 'shadownet/python-sdk\.typed' \
+            || { echo "py.typed missing from wheel"; exit 1; }
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python-sdk/dist
+        # No `password:` — OIDC binding via the `pypi` environment.
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: python-sdk/dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}

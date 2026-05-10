@@ -1,9 +1,23 @@
 # integrations/
 
-Distributable artifacts that wire `shadownet-cloud` into specific host-agent ecosystems. The
-orchestrator's job is to publish a stable wire surface (RFC-0006 + RFC-0007 — MCP at
-`/u/<shadowname>/mcp`, HMAC-signed webhooks). This directory packages that surface for
-ecosystems whose users prefer a one-click install over copy-pasting config snippets.
+Distributable artifacts that wire host-agent ecosystems (Claude Code,
+Hermes Agent, OpenClaw, plus raw skill bundles) to **any** Shadownet
+Sidecar via the protocol's public surfaces. These are protocol-level
+artifacts, not vendor-specific — the same plugin works against
+[`hermes-social`](https://github.com/meghancampbel9/hermes-social)
+self-hosts, hosted multi-tenant Sidecars, or any other RFC-compliant
+Sidecar.
+
+What "wire to a Sidecar" means concretely is two RFC-defined surfaces:
+
+- **MCP endpoint** — `<sidecar-base>/u/<shadowname>/mcp` with
+  `Authorization: Bearer <token>` (RFC-0007).
+- **Webhook target** — registered via the `social_set_webhook` MCP tool;
+  HMAC-SHA256 signed, dual-header
+  (`X-Shadownet-Sidecar-Sig` + `X-Webhook-Signature`) (RFC-0007).
+
+Neither is operator-specific. Hosts implementing RFC-0007 expose them at
+the same paths.
 
 ## Layout
 
@@ -13,7 +27,7 @@ integrations/
 ├── README.md              you are here
 ├── scripts/
 │   └── sync_skills.py     materialise canonical SKILL.md files into both plugin trees
-├── skills/                canonical agentskills.io-shape SKILL.md (4 skills, dual-flavoured frontmatter)
+├── skills/                canonical agentskills.io-shape SKILL.md (dual-flavoured frontmatter)
 └── plugins/
     ├── claude-code/       Claude Code plugin — .claude-plugin/plugin.json + .mcp.json + skills/ + hooks/ + agents/
     ├── hermes-agent/      Hermes Agent bundle — config.yaml.snippet + skills/ (synced from ../../skills/)
@@ -29,60 +43,49 @@ integrations/
 | Subdirectory | Target ecosystem | Publish channel |
 | --- | --- | --- |
 | `plugins/claude-code/` | Claude Code | the repo-root `.claude-plugin/marketplace.json` (users `/plugin marketplace add github:owner/repo`) |
-| `plugins/hermes-agent/` | Hermes Agent (Nous Research) | served live by the cloud at `https://app.sh4dow.org/.well-known/skills/index.json` |
+| `plugins/hermes-agent/` | Hermes Agent (Nous Research) | a Sidecar's `/.well-known/skills/index.json` (some hosted Sidecars publish this for their tenants automatically) |
 | `plugins/openclaw/` | OpenClaw | npm (`@shadownet/openclaw-plugin`) + ClawHub |
 
 End-to-end publish guide: see [`PUBLISHING.md`](PUBLISHING.md).
 
-## Source-of-truth references
+## Configuration: the bundle endpoint is one option, not a requirement
 
-The artifacts here all consume shadownet-cloud's three public per-tenant surfaces:
+Some hosted Sidecars expose a
+`GET /v1/account/tenants/{id}/integration-bundle` endpoint as a
+convenience: it returns a tenant's DID, shadowname, MCP endpoint,
+tool/event names, and version in a single canonical payload. The plugin
+installers can fetch that bundle to skip manual configuration.
 
-- **MCP endpoint** — `<sidecar-base>/u/<shadowname>/mcp`, `Authorization: Bearer <token>`.
-- **Webhook target** — registered via the dashboard or the `social_set_webhook` MCP tool;
-  HMAC-SHA256 signed, dual-header (`X-Shadownet-Sidecar-Sig` + `X-Webhook-Signature`).
-- **Integration bundle** — `GET /v1/account/tenants/{id}/integration-bundle` returns the
-  canonical artifact set (DID, shadowname, endpoints, tool & event names, version) so per-
-  ecosystem installers and snippet builders never duplicate strings.
+This is **one** way to configure the integrations, not the way. Self-hosted
+Sidecars and other operators can ship the same artifact (or its values
+hand-rolled into the host agent's config). Everything in `plugins/` accepts
+its configuration as plain values; the bundle endpoint is sugar.
 
 ## Skill sync
 
-Skills are authored once at `skills/<name>/SKILL.md` with dual-flavoured YAML frontmatter
-(top-level `description` / `allowed-tools` for Claude Code; `metadata.hermes.*` for Hermes
-Agent). The sync script copies each canonical file into both plugin trees:
+Skills are authored once at `skills/<name>/SKILL.md` with dual-flavoured
+YAML frontmatter (top-level `description` / `allowed-tools` for Claude Code;
+`metadata.hermes.*` for Hermes Agent). The sync script copies each canonical
+file into both plugin trees:
 
 ```sh
-make sync-skills        # materialise canonical → plugins
-make check-skills       # CI: assert no drift
+python scripts/sync_skills.py        # materialise canonical → plugin trees
 ```
 
-## Eventual extraction
-
-The directory is structured to be extractable as a sibling repo once it earns its own
-release cadence. Cross-repo seams are documented in [`PUBLISHING.md` §Extracting](PUBLISHING.md#extracting-integrations-to-its-own-repo).
-
-Quick summary:
-
-- **Self-contained**: `scripts/`, `qa/`, `deploy/`, `tests/`, lockfiles, docker compose
-  manifests, vitest configs all live under `integrations/`.
-- **Cross-repo seams (4 of them)**:
-  1. `Settings.integrations_dir` (env-overridable in the cloud).
-  2. The Python drift sentinel (`backend/tests/integration/test_openclaw_plugin_drift.py`)
-     reads `integrations/plugins/openclaw/src/tools/tools.ts`. Becomes a submodule reference
-     or a JSON fixture after extraction.
-  3. `.claude-plugin/marketplace.json` lives at the repo root because the Claude Code
-     `/plugin marketplace add github:owner/repo` form expects it there. Travels with the
-     integrations to the new repo's root.
-  4. The frontend connect page references the cloud's `/.well-known/skills/index.json` URL
-     by host; only the source of truth for which skills get published moves out.
+CI verifies there's no drift between `skills/<name>/SKILL.md` and the copies
+under each plugin tree (see `.github/workflows/integrations.yml`).
 
 ## CI
 
-Each artifact has its own GitHub Actions workflow gated by `paths` filters:
+`.github/workflows/integrations.yml` at the repo root:
 
-- `.github/workflows/openclaw-plugin.yml` — lint + test + build the OpenClaw plugin
-- `.github/workflows/integrations.yml` — `check-skills` + drift sentinel
-- `.github/workflows/release-openclaw-plugin.yml` — npm + ClawHub publish on tag push
-- `.github/workflows/openclaw-e2e.yml` — opt-in Docker harness (workflow_dispatch)
+- **OpenClaw plugin**: pnpm install + `lint` (tsc --noEmit) + `build` (tsup) +
+  `test` (vitest). Runs on changes to `integrations/**`.
+- **Manifest sanity**: every JSON / YAML / `*.snippet` file under
+  `integrations/` is validated for parse-ability.
+- **Skill bundle structure**: every `skills/*/` directory MUST contain a
+  `SKILL.md` at its root.
 
-The existing `ci.yml` covers backend + frontend independently.
+A future `release-openclaw-plugin.yml` workflow (triggered by
+`integrations/openclaw/v*` tags) will publish the OpenClaw plugin to npm
+when its release cadence stabilizes; for now releases are manual.

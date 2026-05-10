@@ -31,9 +31,9 @@ mapping between the Python and Go APIs is obvious.
 ## Going further
 
 - **Talk to a real reference SCA / SNS.** Boot the Go reference servers
-  via [`go/deploy/docker-compose.yml`](../go/deploy/docker-compose.yml) and
+  via [`core/deploy/docker-compose.yml`](../core/deploy/docker-compose.yml) and
   point an SCA client at `http://127.0.0.1:8443`. The
-  [`go/README.md`](../go/README.md#as-an-operator--run-the-reference-servers)
+  [`core/README.md`](../core/README.md#as-an-operator--run-the-reference-servers)
   walkthrough has the operator path.
 - **Cross-implementation interop.** The
   [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance)

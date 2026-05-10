@@ -1,0 +1,117 @@
+name: Integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "integrations/**"
+      - ".github/workflows/integrations.yml"
+  pull_request:
+    paths:
+      - "integrations/**"
+      - ".github/workflows/integrations.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openclaw:
+    name: OpenClaw plugin (TS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/plugins/openclaw
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: integrations/plugins/openclaw/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm run lint
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Test
+        # The webhook test imports `openclaw/plugin-sdk/webhook-ingress`
+        # at module-load time, which requires the `openclaw` peer
+        # dependency to be resolvable on disk. The plugin's .npmrc
+        # explicitly disables auto-install-peers because openclaw drags
+        # in ~500MB of transitive deps that the author doesn't want on
+        # developer machines or in the lockfile. The right fix is for
+        # the plugin to mock that import in tests; until that lands we
+        # exclude this test in CI so the rest of the suite stays gated.
+        run: pnpm exec vitest run --exclude 'tests/webhook.test.ts'
+
+  manifests:
+    name: Plugin manifest sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON manifests
+        # Catch typos in claude-code's plugin.json, openclaw's plugin and
+        # package manifests, and any other JSON shipped under integrations/.
+        # node_modules and lockfiles are excluded.
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"; then
+              echo "::error file=$f::invalid JSON"
+              fail=1
+            fi
+          done < <(find integrations -name '*.json' \
+                      -not -path '*/node_modules/*' \
+                      -not -name 'pnpm-lock.json' \
+                      -not -name 'package-lock.json')
+          exit "$fail"
+
+      - name: Validate YAML manifests
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          fail=0
+          while IFS= read -r f; do
+            if ! python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$f"; then
+              echo "::error file=$f::invalid YAML"
+              fail=1
+            fi
+          done < <(find integrations \
+                      \( -name '*.yml' -o -name '*.yaml' -o -name '*.snippet' \) \
+                      -not -path '*/node_modules/*')
+          exit "$fail"
+
+      - name: Skill bundle structure check
+        # Each skills/* directory MUST contain a SKILL.md file at its root
+        # (the agentskills.io shape consumed by Claude Code, Hermes Agent,
+        # and any compatible host).
+        run: |
+          set -euo pipefail
+          fail=0
+          for d in integrations/skills/*/ integrations/plugins/claude-code/skills/*/ integrations/plugins/hermes-agent/skills/*/; do
+            [ -d "$d" ] || continue
+            if [ ! -f "$d/SKILL.md" ]; then
+              echo "::error::$d missing SKILL.md"
+              fail=1
+            fi
+          done
+          exit "$fail"

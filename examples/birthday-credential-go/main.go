@@ -16,9 +16,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet/go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet/go/pkg/did"
-	"github.com/shadownet-protocol/shadownet/go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/core/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/core/pkg/did"
+	"github.com/shadownet-protocol/shadownet/core/pkg/vc"
 )
 
 func main() {

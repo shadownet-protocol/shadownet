@@ -1,6 +1,6 @@
-"""Mock Shadownet cloud for the OpenClaw plugin Docker harness.
+"""Mock Shadownet Sidecar for the OpenClaw plugin Docker harness.
 
-Two surfaces mirror what the real shadownet-cloud exposes:
+Two surfaces mirror what an RFC-0006 / RFC-0007 Sidecar exposes:
 
 * ``POST /trigger-inbox-event`` — test seam. The pytest harness POSTs here
   with ``{"target_url": "...", "secret": "..."}``; the mock generates a
@@ -12,10 +12,10 @@ Two surfaces mirror what the real shadownet-cloud exposes:
   returns a canned message; everything else echoes the request. Records each
   call so the harness can assert what the plugin invoked.
 
-Headers exactly mirror what shadownet-cloud's webhook_worker emits:
+Headers mirror the RFC-0007 webhook contract:
 ``X-Shadownet-Sidecar-Sig`` (canonical) + ``X-Webhook-Signature`` (compat) +
-``X-Shadownet-Sidecar-Ts`` + ``X-Shadownet-Sidecar-Id``. This is the same
-HMAC-SHA256 of the body keyed on the shared secret.
+``X-Shadownet-Sidecar-Ts`` + ``X-Shadownet-Sidecar-Id``. The body is signed
+with HMAC-SHA256 keyed on the shared secret.
 """
 
 from __future__ import annotations

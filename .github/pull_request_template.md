@@ -6,9 +6,12 @@
 
 <!-- Tick the area(s) this PR touches. Don't tick more than is true. -->
 
-- [ ] `go/` — Go SDK / reference servers / CLI
-- [ ] `go/pgstore/` — Postgres backend submodule
-- [ ] `py/` — Python SDK
+- [ ] `core/` — Go SDK / reference servers / CLI
+- [ ] `core/pgstore/` — Postgres backend submodule
+- [ ] `python-sdk/` — Python SDK
+- [ ] `conformance/` — interop test suite / fixtures / Docker action
+- [ ] `integrations/` — host-agent plugins (Claude Code / Hermes Agent / OpenClaw / skills)
+- [ ] `examples/` — runnable end-to-end examples
 - [ ] CI / release workflows
 - [ ] Top-level docs (`README`, `CONTRIBUTING`, `MIGRATION`, …)
 - [ ] Other: <!-- describe -->
@@ -30,8 +33,9 @@ line(s) here, or note "n/a — non-shipping change".
 <!-- Tick the local gate for the subtree you touched (CONTRIBUTING.md). -->
 
 - [ ] Go: `go test -race -count=1 ./...`, `go vet`, `gofumpt`, `staticcheck`, `golangci-lint`, `govulncheck` all pass.
-- [ ] Python: `uv run ruff check .`, `ruff format --check .`, `mypy --strict`, `pytest` all pass.
-- [ ] Conformance impact considered (wire-level changes need a parallel `shadownet-specs` PR).
+- [ ] Python (`python-sdk/` and/or `conformance/`): `uv run ruff check .`, `ruff format --check .`, `mypy --strict`, `pytest` all pass.
+- [ ] Integrations (`integrations/plugins/openclaw/`): `pnpm run lint && pnpm run build && pnpm run test` pass.
+- [ ] Conformance impact considered: wire-level changes need a parallel `shadownet-specs` PR. If the conformance suite reports a failure, the implementation is wrong, not the test.
 
 ## Notes for reviewers
 

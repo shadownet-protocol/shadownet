@@ -31,7 +31,7 @@ dependencies = [
     "jsonschema>=4.23",
     "starlette>=0.40",
     "uvicorn>=0.32",
-    "shadownet>=0.1.3,<0.2",
+    "shadownet>=0.2.0,<0.3",
 ]
 
 [project.optional-dependencies]
@@ -39,8 +39,10 @@ mcp = [
     "mcp>=1.2",
 ]
 regen = [
-    # Path-dep to shadownet-py is provided via [tool.uv.sources] below; the
-    # runtime dep is the same `shadownet` distribution.
+    # The regen CLI shells out to the in-repo Go emitter and the in-repo
+    # Python emitter. Both are dev-time tooling, not part of the runtime
+    # surface; the optional-dependencies set is intentionally empty so the
+    # `[regen]` extra remains a pure marker for the CLI's existence.
 ]
 
 [project.scripts]
@@ -48,9 +50,19 @@ shadownet-conformance = "shadownet_conformance.cli:main"
 shadownet-conformance-fixtures = "shadownet_conformance.regen.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/shadownet-protocol/shadownet-conformance"
+Homepage = "https://github.com/shadownet-protocol/shadownet/tree/main/conformance"
+Repository = "https://github.com/shadownet-protocol/shadownet"
 Specifications = "https://github.com/shadownet-protocol/shadownet-specs"
-Issues = "https://github.com/shadownet-protocol/shadownet-conformance/issues"
+Changelog = "https://github.com/shadownet-protocol/shadownet/blob/main/conformance/CHANGELOG.md"
+Issues = "https://github.com/shadownet-protocol/shadownet/issues"
+
+# Resolve the `shadownet` runtime dependency from the in-repo Python SDK
+# during local dev / CI. The published distribution name is unchanged
+# (`shadownet`); this only affects how `uv sync` finds the package when
+# working inside the monorepo. External consumers ignore [tool.uv.sources]
+# and resolve from PyPI.
+[tool.uv.sources]
+shadownet = { path = "../python-sdk" }
 
 [dependency-groups]
 dev = [

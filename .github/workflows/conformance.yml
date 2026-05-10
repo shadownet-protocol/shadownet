@@ -1,26 +1,32 @@
 name: Conformance
 
-# Cross-implementation wire-level conformance. Boots the Go reference SCA
-# and SNS from this repo, then runs the published shadownet-conformance
-# action against them. The Python SDK is exercised separately by py.yml's
-# pytest run, which includes the conformance test files that validate every
-# Pydantic wire model against the JSON Schemas in shadownet-specs.
+# Cross-implementation wire-level conformance. Two jobs:
 #
-# This workflow is a required status check on PRs that touch wire-visible
-# surfaces. Implementations diverging from the spec should fail here before
-# merge.
+#   * `py-schemas` — runs the Python SDK's own JSON-Schema conformance tests
+#     against a pinned ref of shadownet-specs. Exists separately from
+#     py.yml's pytest run because that one relies on a sibling clone (or
+#     skips when absent); this one checks out the spec at a known ref so
+#     the gate is deterministic.
+#
+#   * `wire` — boots the in-tree Go reference SCA + SNS, runs the in-tree
+#     conformance suite (`conformance/`) against them. Replaces the
+#     external GH Action invocation that this workflow used before the
+#     suite came in-tree. Required check on PRs that touch wire-visible
+#     surfaces.
 
 on:
   push:
     branches: [main]
     paths:
-      - "go/**"
-      - "py/**"
+      - "core/**"
+      - "python-sdk/**"
+      - "conformance/**"
       - ".github/workflows/conformance.yml"
   pull_request:
     paths:
-      - "go/**"
-      - "py/**"
+      - "core/**"
+      - "python-sdk/**"
+      - "conformance/**"
       - ".github/workflows/conformance.yml"
 
 permissions:
@@ -30,18 +36,12 @@ concurrency:
   group: conformance-${{ github.ref }}
   cancel-in-progress: true
 
-# Pin to a tagged release of shadownet-specs so the suite runs deterministically.
-# Bump alongside spec releases; CI is the source of truth for which spec we
-# claim to implement.
+# Pin shadownet-specs at a tagged ref. Bump alongside spec releases; CI is
+# the source of truth for which spec we claim to implement.
 env:
   SPECS_REF: main
-  CONFORMANCE_ACTION_REF: v0.1
 
 jobs:
-  # The Python SDK's own conformance tests validate Pydantic models against
-  # the schemas in shadownet-specs. py.yml runs them inside the SDK suite,
-  # but it skips when shadownet-specs isn't checked out. This job runs them
-  # explicitly with the spec checked out at the pinned ref.
   py-schemas:
     name: Python SDK — schema conformance
     runs-on: ubuntu-latest
@@ -59,22 +59,20 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-          cache-dependency-glob: "py/uv.lock"
+          cache-dependency-glob: "python-sdk/uv.lock"
 
       - name: Sync Python SDK
-        working-directory: py
+        working-directory: python-sdk
         run: uv sync --all-extras
 
-      - name: Run schema conformance tests
-        working-directory: py
+      - name: Run Python SDK schema-conformance tests
+        working-directory: python-sdk
         env:
           SHADOWNET_SPECS_PATH: ${{ github.workspace }}/shadownet-specs
         run: uv run pytest tests/conformance/ -v
 
-  # End-to-end wire-level: boot the Go reference SCA + SNS, run the
-  # cross-impl conformance action against them.
   wire:
-    name: Wire-level — Go reference servers
+    name: Wire-level — Go reference vs in-tree conformance suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,102 +82,72 @@ jobs:
         with:
           go-version: "1.25.x"
           check-latest: true
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: core/go.sum
 
-      - name: Build reference servers and CLI
-        working-directory: go
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "conformance/uv.lock"
+
+      - name: Build in-tree reference servers + CLI
+        working-directory: core
         run: |
           go build -o /tmp/sca-server ./cmd/sca-server
           go build -o /tmp/sns-server ./cmd/sns-server
           go build -o /tmp/shadownet  ./cmd/shadownet
 
-      - name: Generate signing keys and capture their DIDs
-        id: keys
-        run: |
-          # `shadownet keygen --out FILE` writes the JWK and prints its
-          # did:key on stdout. Using did:key avoids the DNS / TLS setup
-          # that did:web requires, which is the right call for a
-          # self-contained CI run on 127.0.0.1.
-          sca_did=$(/tmp/shadownet keygen --out /tmp/sca-issuer.jwk | head -n1)
-          sns_did=$(/tmp/shadownet keygen --out /tmp/sns-provider.jwk | head -n1)
-          echo "sca_did=$sca_did" >> "$GITHUB_OUTPUT"
-          echo "sns_did=$sns_did" >> "$GITHUB_OUTPUT"
-          echo "SCA DID: $sca_did"
-          echo "SNS DID: $sns_did"
+      - name: Sync conformance suite
+        working-directory: conformance
+        run: uv sync --all-extras
 
-      - name: Compose minimal SCA + SNS configs
-        env:
-          SCA_DID: ${{ steps.keys.outputs.sca_did }}
-          SNS_DID: ${{ steps.keys.outputs.sns_did }}
+      - name: Provision keys + configs
         run: |
-          mkdir -p /tmp/shadownet-data
-          # Templated with the DIDs captured above. did:key is
-          # self-describing, so no TLS / well-known endpoint is needed.
-          # SHADOWNET_ALLOW_INSTANT_APPROVAL=1 unblocks the non-loopback
-          # guard at boot.
-          cat > /tmp/sca.yaml <<YAML
-          did: "${SCA_DID}"
-          listen: "127.0.0.1:8443"
-          signing:
-            keyfile: "/tmp/sca-issuer.jwk"
-          storage:
-            driver: sqlite
-            dsn: "/tmp/shadownet-data/sca.db"
-          policy:
-            freshnessWindowSeconds: 86400
-            statusListBase: "http://127.0.0.1:8443/status/"
-            levels:
-              - level: "urn:shadownet:level:L1"
-                method: "instant-approval"
-                credentialLifetimeDays: 90
-          YAML
-          cat > /tmp/sns.yaml <<YAML
-          did: "${SNS_DID}"
-          provider: "localhost"
-          listen: "127.0.0.1:8444"
-          signing:
-            keyfile: "/tmp/sns-provider.jwk"
-          storage:
-            driver: sqlite
-            dsn: "/tmp/shadownet-data/sns.db"
-          defaultTtl: 300
-          YAML
+          mkdir -p /tmp/sn-self
+          /tmp/shadownet keygen --out /tmp/sn-self/issuer.jwk
+          /tmp/shadownet keygen --out /tmp/sn-self/provider.jwk
+          # The pre-baked configs in conformance/ci/ pin loopback ports
+          # 18443 (SCA) / 18444 (SNS) and use did:web:127.0.0.1%3A<port>
+          # so the conformance suite's resolver can reach the loopback
+          # /.well-known/did.json without DNS or TLS.
 
-      - name: Boot SCA + SNS in the background
+      - name: Boot reference servers
+        working-directory: conformance
         run: |
           SHADOWNET_ALLOW_INSTANT_APPROVAL=1 \
-          SHADOWNET_LOG_FORMAT=text \
-            /tmp/sca-server -config /tmp/sca.yaml > /tmp/sca.log 2>&1 &
+            /tmp/sca-server -config ci/sca-server.yaml > /tmp/sca.log 2>&1 &
           echo $! > /tmp/sca.pid
-          SHADOWNET_LOG_FORMAT=text \
-            /tmp/sns-server -config /tmp/sns.yaml > /tmp/sns.log 2>&1 &
+          /tmp/sns-server -config ci/sns-server.yaml > /tmp/sns.log 2>&1 &
           echo $! > /tmp/sns.pid
 
-          # Wait for /readyz on both before handing off to the conformance action.
-          for url in http://127.0.0.1:8443/readyz http://127.0.0.1:8444/readyz; do
-            for i in $(seq 1 30); do
-              if curl -fsS "$url" > /dev/null; then
-                echo "ready: $url"; break
+          for url in http://127.0.0.1:18443/.well-known/did.json http://127.0.0.1:18444/.well-known/did.json; do
+            for _ in $(seq 1 30); do
+              if curl -fsS "$url" >/dev/null; then
+                echo "ready: $url"
+                break
               fi
-              sleep 1
+              sleep 0.5
             done
           done
 
-      - name: Run cross-impl conformance suite
-        # Continues even on failure so we can capture server logs for triage.
+      - name: Run conformance suite
         id: conformance
         continue-on-error: true
-        uses: shadownet-protocol/conformance-action@v0.1
-        with:
-          sca: http://127.0.0.1:8443
-          sns: http://127.0.0.1:8444
-          proof-method: instant-approval
+        working-directory: conformance
+        run: |
+          uv run shadownet-conformance \
+            --target sca=http://127.0.0.1:18443 \
+            --target sns=http://127.0.0.1:18444 \
+            --proof-method instant-approval \
+            --report-junit=conformance.xml \
+            --report-json=conformance.json \
+            --gha-summary=auto
 
-      - name: SCA + SNS server logs
+      - name: Tail server logs on failure
         if: always()
         run: |
-          echo '--- SCA log ---'; cat /tmp/sca.log || true
-          echo '--- SNS log ---'; cat /tmp/sns.log || true
+          echo '::group::sca-server log'; tail -200 /tmp/sca.log || true; echo '::endgroup::'
+          echo '::group::sns-server log'; tail -200 /tmp/sns.log || true; echo '::endgroup::'
 
       - name: Stop background servers
         if: always()
@@ -187,6 +155,17 @@ jobs:
           for pidfile in /tmp/sca.pid /tmp/sns.pid; do
             [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null || true
           done
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-reports
+          path: |
+            conformance/conformance.xml
+            conformance/conformance.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Fail the job if conformance failed
         if: steps.conformance.outcome == 'failure'
