@@ -72,7 +72,7 @@ jobs:
 
       - name: Verify py.typed marker is shipped
         run: |
-          unzip -l dist/shadownet-*.whl | grep -q 'shadownet/python-sdk\.typed' \
+          unzip -l dist/shadownet-*.whl | grep -q 'shadownet/py\.typed' \
             || { echo "py.typed missing from wheel"; exit 1; }
 
       - name: Publish to PyPI (Trusted Publishing)

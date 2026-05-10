@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/shadownet)](https://pypi.org/project/shadownet/)
 [![CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/python-sdk.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/python-sdk.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](../../LICENSE)
-[![Typed](https://img.shields.io/badge/typing-PEP%20561-blue)](./src/shadownet/python-sdk.typed)
+[![Typed](https://img.shields.io/badge/typing-PEP%20561-blue)](./src/shadownet/py.typed)
 
 Python SDK for the [Shadownet protocol](https://github.com/shadownet-protocol/shadownet-specs). Implements the v0.1 RFCs in idiomatic, async, fully-typed Python.
 
