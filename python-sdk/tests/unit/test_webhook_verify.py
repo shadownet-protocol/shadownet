@@ -63,6 +63,37 @@ def test_signature_helper_returns_hex() -> None:
     assert all(c in "0123456789abcdef" for c in sig)
 
 
+def test_compat_header_omitted_by_default() -> None:
+    """RFC-0007 §Compatibility headers — opt-in, canonical three unchanged."""
+    body = _body()
+    headers = build_webhook_headers(body, secret="topsecret", sidecar_id="sc-01")
+    assert set(headers) == {
+        "X-Shadownet-Sidecar-Sig",
+        "X-Shadownet-Sidecar-Ts",
+        "X-Shadownet-Sidecar-Id",
+    }
+    assert "X-Webhook-Signature" not in headers
+
+
+def test_compat_header_is_raw_hex_when_enabled() -> None:
+    """RFC-0007 §Compatibility headers — opt-in adds raw-hex X-Webhook-Signature."""
+    body = _body()
+    headers = build_webhook_headers(
+        body, secret="topsecret", sidecar_id="sc-01", include_generic_hmac=True
+    )
+    assert headers["X-Webhook-Signature"] == sign_webhook(body, secret="topsecret")
+
+
+def test_compat_header_matches_canonical_tail() -> None:
+    """The compat header digest matches the hex tail of the canonical sig."""
+    body = _body()
+    headers = build_webhook_headers(
+        body, secret="topsecret", sidecar_id="sc-01", include_generic_hmac=True
+    )
+    canonical_tail = headers["X-Shadownet-Sidecar-Sig"].removeprefix("sha256=")
+    assert headers["X-Webhook-Signature"] == canonical_tail
+
+
 @pytest.mark.parametrize(
     "url",
     [

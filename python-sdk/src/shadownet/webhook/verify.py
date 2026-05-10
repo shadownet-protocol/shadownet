@@ -56,13 +56,34 @@ def build_webhook_headers(
     secret: str | bytes,
     sidecar_id: str,
     timestamp: int | None = None,
+    include_generic_hmac: bool = False,
 ) -> dict[str, str]:
+    """Return the wire headers for an outbound RFC-0007 webhook delivery.
+
+    The canonical three headers — ``X-Shadownet-Sidecar-Sig``, ``-Ts``,
+    ``-Id`` — are always emitted. When ``include_generic_hmac`` is ``True``,
+    a fourth header ``X-Webhook-Signature`` is also emitted: the same
+    HMAC-SHA256 as the canonical signature but as raw hex with no
+    ``sha256=`` prefix, matching the pattern used by Hermes Agent webhooks,
+    OpenClaw plugins, and similar generic-HMAC adapters
+    (RFC-0007 §Compatibility headers).
+
+    The default is ``False``. Senders opt in deliberately — receivers that
+    validate only the compatibility header lose the ``Ts``-bound replay
+    defense (RFC-0007 §Compatibility headers requires those receivers to
+    still check ``X-Shadownet-Sidecar-Ts`` or document the loss). Making
+    it explicit at the call site keeps the trade-off visible.
+    """
     ts = timestamp if timestamp is not None else int(time.time())
-    return {
+    headers = {
         "X-Shadownet-Sidecar-Sig": f"sha256={sign_webhook(body, secret=secret)}",
         "X-Shadownet-Sidecar-Ts": str(ts),
         "X-Shadownet-Sidecar-Id": sidecar_id,
     }
+    if include_generic_hmac:
+        # RFC-0007 §Compatibility headers — raw hex, no `sha256=` prefix.
+        headers["X-Webhook-Signature"] = sign_webhook(body, secret=secret)
+    return headers
 
 
 def verify_webhook(
