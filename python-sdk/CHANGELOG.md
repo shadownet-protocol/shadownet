@@ -10,6 +10,19 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Added
+
+- `webhook.build_webhook_headers` gains an `include_generic_hmac: bool = False`
+  kwarg (RFC-0007 §Compatibility headers). When set, the builder also emits
+  `X-Webhook-Signature: <raw hex HMAC-SHA256>` alongside the canonical
+  `X-Shadownet-Sidecar-Sig`/`-Ts`/`-Id` headers. This matches the pattern used
+  by Hermes Agent webhooks, OpenClaw plugins, and similar generic-HMAC
+  adapters. Default is `False` — opting in is one kwarg, fully
+  backwards-compatible. Receivers validating only the compatibility header
+  lose the `Ts`-bound replay defense (RFC-0007 still requires they check
+  `X-Shadownet-Sidecar-Ts` or document the loss); the explicit kwarg keeps
+  that trade-off visible at the call site.
+
 ## [0.2.0] — 2026-05-10
 
 ### Changed
