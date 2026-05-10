@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "shadownet": {
+      "type": "http",
+      "url": "${SHADOWNET_ENDPOINT}",
+      "headers": {
+        "Authorization": "Bearer ${SHADOWNET_TOKEN}"
+      }
+    }
+  }
+}
