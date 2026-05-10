@@ -1,12 +1,12 @@
 name: release (Python SDK)
 
-# Triggered by tags of the shape `sdks/py/vX.Y.Z` (or pre-release variants).
+# Triggered by tags of the shape `py/vX.Y.Z` (or pre-release variants).
 # Publishes the `shadownet` distribution to PyPI via Trusted Publishing.
 
 on:
   push:
     tags:
-      - "sdks/py/v*"
+      - "py/v*"
 
 permissions:
   id-token: write    # PyPI Trusted Publishing (OIDC)
@@ -18,7 +18,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: sdks/py
+    working-directory: py
 
 jobs:
   publish:
@@ -34,7 +34,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-          cache-dependency-glob: "sdks/py/uv.lock"
+          cache-dependency-glob: "py/uv.lock"
 
       - name: Sync dependencies
         run: uv sync --all-extras
@@ -52,13 +52,13 @@ jobs:
         run: uv build
 
       - name: Verify tag matches package version
-        # The git tag `sdks/py/v0.2.0-rc.1` and the wheel version
+        # The git tag `py/v0.2.0-rc.1` and the wheel version
         # `0.2.0rc1` (PEP 440) compare equal once both pass through
         # `packaging.version.Version`.
         run: |
           set -euo pipefail
           tag_full="${GITHUB_REF#refs/tags/}"
-          tag_version="${tag_full#sdks/py/v}"
+          tag_version="${tag_full#py/v}"
           uv run python - "$tag_version" <<'PY'
           import sys
           from importlib.metadata import version
@@ -78,12 +78,12 @@ jobs:
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: sdks/py/dist
+          packages-dir: py/dist
         # No `password:` — OIDC binding via the `pypi` environment.
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: sdks/py/dist/*
+          files: py/dist/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}

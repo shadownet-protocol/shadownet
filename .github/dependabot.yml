@@ -3,7 +3,7 @@ version: 2
 updates:
   # Go SDK — main module
   - package-ecosystem: gomod
-    directory: /sdks/go
+    directory: /go
     schedule:
       interval: weekly
       day: monday
@@ -23,7 +23,7 @@ updates:
 
   # Go SDK — pgstore submodule (separate go.mod)
   - package-ecosystem: gomod
-    directory: /sdks/go/pgstore
+    directory: /go/pgstore
     schedule:
       interval: weekly
       day: monday
@@ -44,7 +44,7 @@ updates:
 
   # Python SDK
   - package-ecosystem: pip
-    directory: /sdks/py
+    directory: /py
     schedule:
       interval: weekly
       day: monday

@@ -14,13 +14,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "sdks/go/**"
-      - "sdks/py/**"
+      - "go/**"
+      - "py/**"
       - ".github/workflows/conformance.yml"
   pull_request:
     paths:
-      - "sdks/go/**"
-      - "sdks/py/**"
+      - "go/**"
+      - "py/**"
       - ".github/workflows/conformance.yml"
 
 permissions:
@@ -59,14 +59,14 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-          cache-dependency-glob: "sdks/py/uv.lock"
+          cache-dependency-glob: "py/uv.lock"
 
       - name: Sync Python SDK
-        working-directory: sdks/py
+        working-directory: py
         run: uv sync --all-extras
 
       - name: Run schema conformance tests
-        working-directory: sdks/py
+        working-directory: py
         env:
           SHADOWNET_SPECS_PATH: ${{ github.workspace }}/shadownet-specs
         run: uv run pytest tests/conformance/ -v
@@ -84,10 +84,10 @@ jobs:
         with:
           go-version: "1.25.x"
           check-latest: true
-          cache-dependency-path: sdks/go/go.sum
+          cache-dependency-path: go/go.sum
 
       - name: Build reference servers and CLI
-        working-directory: sdks/go
+        working-directory: go
         run: |
           go build -o /tmp/sca-server ./cmd/sca-server
           go build -o /tmp/sns-server ./cmd/sns-server

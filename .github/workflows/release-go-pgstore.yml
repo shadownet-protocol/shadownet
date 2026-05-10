@@ -1,13 +1,13 @@
 name: release (Go SDK pgstore)
 
-# Triggered by tags of the shape `sdks/go/pgstore/vX.Y.Z`. The pgstore
+# Triggered by tags of the shape `go/pgstore/vX.Y.Z`. The pgstore
 # submodule has its own go.mod and ships the `-pg` reference images
 # (sca-server-pg, sns-server-pg).
 
 on:
   push:
     tags:
-      - "sdks/go/pgstore/v*"
+      - "go/pgstore/v*"
 
 permissions:
   contents: write
@@ -25,9 +25,9 @@ jobs:
       - id: parse
         run: |
           tag="${GITHUB_REF_NAME}"
-          version="${tag#sdks/go/pgstore/}"
+          version="${tag#go/pgstore/}"
           if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.+-]+)?$ ]]; then
-            echo "::error::tag $tag does not look like sdks/go/pgstore/vX.Y.Z[-pre]"
+            echo "::error::tag $tag does not look like go/pgstore/vX.Y.Z[-pre]"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -88,11 +88,11 @@ jobs:
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v6
         with:
-          # Dockerfile is in sdks/go/build/ and copies both the parent
+          # Dockerfile is in go/build/ and copies both the parent
           # module's go.mod and pgstore/go.mod; the build context must
           # therefore be the parent module root.
-          context: sdks/go
-          file: sdks/go/${{ matrix.dockerfile }}
+          context: go
+          file: go/${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: true

@@ -1,4 +1,4 @@
-# Per-language ignores live in sdks/<lang>/.gitignore.
+# Per-language ignores live in impls/<lang>/.gitignore.
 # This file covers cross-cutting OS / IDE / scratch artifacts only.
 
 # OS

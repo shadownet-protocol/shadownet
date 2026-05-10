@@ -10,9 +10,9 @@ Security fixes target the latest released minor of each subtree:
 
 | Subtree | Currently supported |
 | --- | --- |
-| `sdks/go/` (Go SDK + reference servers) | `v0.2.x` |
-| `sdks/go/pgstore/` (Postgres backend) | `v0.2.x` |
-| `sdks/py/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
+| `go/` (Go SDK + reference servers) | `v0.2.x` |
+| `go/pgstore/` (Postgres backend) | `v0.2.x` |
+| `py/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
 
 Older `v0.1.x` releases — published from the legacy
 [`shadownet-go`](https://github.com/shadownet-protocol/shadownet-go) and
@@ -58,7 +58,7 @@ We do not currently run a bug bounty.
 
 **In scope:**
 
-- Code in this repository (`sdks/`, top-level configs).
+- Code in this repository (`go/`, `py/`, top-level configs).
 - Cryptographic correctness against the
   [v0.1 RFCs](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
 - Issues that allow forging Verifiable Credentials, bypassing freshness or

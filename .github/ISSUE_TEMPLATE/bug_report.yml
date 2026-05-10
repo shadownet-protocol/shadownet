@@ -8,12 +8,12 @@ body:
       label: Affected area
       description: Which part of the repo does this bug live in?
       options:
-        - "sdks/go (Go SDK)"
-        - "sdks/go/pgstore (Postgres backend)"
-        - "sdks/go/cmd/sca-server (reference SCA binary)"
-        - "sdks/go/cmd/sns-server (reference SNS binary)"
-        - "sdks/go/cmd/shadownet (CLI)"
-        - "sdks/py (Python SDK)"
+        - "go (Go SDK)"
+        - "go/pgstore (Postgres backend)"
+        - "go/cmd/sca-server (reference SCA binary)"
+        - "go/cmd/sns-server (reference SNS binary)"
+        - "go/cmd/shadownet (CLI)"
+        - "py (Python SDK)"
         - "CI / release workflows"
         - "Docs"
         - "Other / not sure"
@@ -25,7 +25,7 @@ body:
     attributes:
       label: Version
       description: SDK version, container tag, or commit SHA you reproduced against.
-      placeholder: "sdks/go/v0.2.0  /  shadownet 0.2.0  /  ghcr.io/.../sca-server:v0.2.0"
+      placeholder: "go/v0.2.0  /  shadownet 0.2.0  /  ghcr.io/.../sca-server:v0.2.0"
     validations:
       required: true
 

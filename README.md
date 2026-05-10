@@ -42,12 +42,18 @@ or the [end-to-end wire walkthrough](https://github.com/shadownet-protocol/shado
 
 ```
 shadownet/
-├── sdks/
-│   ├── go/         Go SDK + reference SCA, SNS, CLI binaries; Postgres backend in pgstore/
-│   └── py/         Python SDK (PyPI: shadownet); consumed by hermes-social and shadownet-cloud
+├── go/             Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
+├── py/             Python SDK (PyPI: shadownet); consumed by hermes-social and shadownet-cloud
 ├── CONTRIBUTING.md, SECURITY.md, MIGRATION.md, …
 └── .github/        Workflows, issue templates, Dependabot config
 ```
+
+The Go subtree is the protocol's **reference implementation** — it bundles the
+client SDK, the reference SCA + SNS server binaries, and the operator CLI as
+one Go module, which is idiomatic for Go projects that ship `pkg/` + `cmd/`
+together. The Python subtree is a **client SDK port** — it does not ship
+servers; cloud / sidecar deployments compose it with `hermes-social` or
+`shadownet-cloud`.
 
 The protocol RFCs and JSON Schemas live in
 [`shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs);
@@ -60,11 +66,11 @@ which runs against this repo's reference servers in CI.
 ### Go developers
 
 ```sh
-go get github.com/shadownet-protocol/shadownet/sdks/go
+go get github.com/shadownet-protocol/shadownet/go
 ```
 
-Quickstart and API surface: [`sdks/go/README.md`](./sdks/go/README.md) ·
-[`pkg.go.dev`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/sdks/go)
+Quickstart and API surface: [`go/README.md`](./go/README.md) ·
+[`pkg.go.dev`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/go)
 
 ### Python developers
 
@@ -73,15 +79,15 @@ pip install shadownet
 # or: uv add shadownet
 ```
 
-Quickstart and API surface: [`sdks/py/README.md`](./sdks/py/README.md) ·
+Quickstart and API surface: [`py/README.md`](./py/README.md) ·
 [PyPI](https://pypi.org/project/shadownet/)
 
 ### Operators (run an SCA / SNS)
 
 The Go SDK ships container images for the reference SCA + SNS servers and a
 sample `docker-compose.yml`. See the
-[operator quickstart](./sdks/go/README.md#as-an-operator--run-the-reference-servers)
-and [`sdks/go/deploy/`](./sdks/go/deploy/).
+[operator quickstart](./go/README.md#as-an-operator--run-the-reference-servers)
+and [`go/deploy/`](./go/deploy/).
 
 ## Architecture at a glance
 
@@ -132,9 +138,9 @@ subtree's tags with its directory:
 
 | Tag pattern | Subject |
 | --- | --- |
-| `sdks/go/vX.Y.Z` | Go SDK + reference binaries |
-| `sdks/go/pgstore/vX.Y.Z` | Postgres backend submodule |
-| `sdks/py/vX.Y.Z` | Python SDK (PyPI: `shadownet`) |
+| `go/vX.Y.Z` | Go SDK + reference binaries |
+| `go/pgstore/vX.Y.Z` | Postgres backend submodule |
+| `py/vX.Y.Z` | Python SDK (PyPI: `shadownet`) |
 
 Each subtree maintains its own `CHANGELOG.md`. The protocol version
 (currently `v0.1`) is independent of SDK versions.

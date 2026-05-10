@@ -4,8 +4,8 @@
 *                       @shadownet-protocol/maintainers
 
 # Per-subtree owners. Uncomment / adjust once subtree-specific teams exist.
-# /sdks/go/             @shadownet-protocol/go-maintainers
-# /sdks/py/             @shadownet-protocol/py-maintainers
+# /go/             @shadownet-protocol/go-maintainers
+# /py/             @shadownet-protocol/py-maintainers
 
 # Repo-config sensitivity — keep these owned by the core maintainer set even
 # if subtree teams are added above.

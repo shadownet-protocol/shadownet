@@ -6,9 +6,9 @@
 
 <!-- Tick the area(s) this PR touches. Don't tick more than is true. -->
 
-- [ ] `sdks/go/` — Go SDK / reference servers / CLI
-- [ ] `sdks/go/pgstore/` — Postgres backend submodule
-- [ ] `sdks/py/` — Python SDK
+- [ ] `go/` — Go SDK / reference servers / CLI
+- [ ] `go/pgstore/` — Postgres backend submodule
+- [ ] `py/` — Python SDK
 - [ ] CI / release workflows
 - [ ] Top-level docs (`README`, `CONTRIBUTING`, `MIGRATION`, …)
 - [ ] Other: <!-- describe -->

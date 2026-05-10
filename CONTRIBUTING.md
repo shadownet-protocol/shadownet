@@ -8,11 +8,14 @@ surface that interests you and read the matching section.
 
 ```
 shadownet/
-├── sdks/
-│   ├── go/         Go SDK + reference SCA / SNS / CLI; pgstore/ submodule
-│   └── py/         Python SDK (PyPI: shadownet)
+├── go/             Go reference implementation: SDK + reference SCA / SNS servers + operator CLI; pgstore/ submodule
+├── py/             Python SDK (PyPI: shadownet)
 └── (top level)     cross-cutting docs, CI, license, security policy
 ```
+
+The two subtrees are intentionally not symmetrical. The Go subtree is the
+protocol's reference implementation — it bundles library, server binaries,
+and CLI in one Go module. The Python subtree is a client SDK port only.
 
 Each subtree owns its own `CHANGELOG.md`, lockfile (`go.sum` / `uv.lock`),
 linter config, and language-specific tooling. Cross-cutting concerns
@@ -54,10 +57,10 @@ public issue.
 
 ## Local pre-merge gate
 
-### Go SDK — `sdks/go/`
+### Go SDK — `go/`
 
 ```sh
-cd sdks/go
+cd go
 
 # Main module
 go build ./...
@@ -82,10 +85,10 @@ go vet ./...
 Required toolchain: Go 1.25+; `gofumpt`, `staticcheck`, `golangci-lint`,
 `govulncheck` available on `$PATH`.
 
-### Python SDK — `sdks/py/`
+### Python SDK — `py/`
 
 ```sh
-cd sdks/py
+cd py
 uv sync --all-extras
 uv run ruff check .
 uv run ruff format --check .
@@ -127,13 +130,13 @@ Maintainers tag from `main`. Tags use the monorepo subtree-prefix scheme:
 
 | Tag pattern | Triggers |
 | --- | --- |
-| `sdks/go/vX.Y.Z` | Go SDK release: cross-compiled CLI binaries + container images for `sca-server` / `sns-server` |
-| `sdks/go/pgstore/vX.Y.Z` | pgstore submodule release: container images for `sca-server-pg` / `sns-server-pg` |
-| `sdks/py/vX.Y.Z` | PyPI publish (Trusted Publishing) for the `shadownet` distribution |
+| `go/vX.Y.Z` | Go SDK release: cross-compiled CLI binaries + container images for `sca-server` / `sns-server` |
+| `go/pgstore/vX.Y.Z` | pgstore submodule release: container images for `sca-server-pg` / `sns-server-pg` |
+| `py/vX.Y.Z` | PyPI publish (Trusted Publishing) for the `shadownet` distribution |
 
 Bump the matching `CHANGELOG.md`, ensure CI is green on `main`, then push the
 tag. The release workflow handles the rest. Pre-releases use the matching
-PEP-440 / semver suffixes (`sdks/py/v0.2.0-rc.1`, `sdks/go/v0.2.0-rc.1`).
+PEP-440 / semver suffixes (`py/v0.2.0-rc.1`, `go/v0.2.0-rc.1`).
 
 ## Code of Conduct
 
