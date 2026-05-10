@@ -1,0 +1,74 @@
+name: Bug report
+description: Something is broken in one of the SDKs or the reference binaries.
+labels: ["type: bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of the repo does this bug live in?
+      options:
+        - "sdks/go (Go SDK)"
+        - "sdks/go/pgstore (Postgres backend)"
+        - "sdks/go/cmd/sca-server (reference SCA binary)"
+        - "sdks/go/cmd/sns-server (reference SNS binary)"
+        - "sdks/go/cmd/shadownet (CLI)"
+        - "sdks/py (Python SDK)"
+        - "CI / release workflows"
+        - "Docs"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: SDK version, container tag, or commit SHA you reproduced against.
+      placeholder: "sdks/go/v0.2.0  /  shadownet 0.2.0  /  ghcr.io/.../sca-server:v0.2.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior you saw.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe what you expected to happen instead. Cite an RFC section if the bug is wire-level.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps, a minimal code snippet, or a failing test. The smaller the better.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, architecture, Go version (if Go), Python version (if Python), and anything else relevant.
+      placeholder: "macOS 15.0 arm64; Go 1.25.0; Python 3.13.1; Postgres 16.4"
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I'm using a supported version (see SECURITY.md → Supported versions).
+          required: true
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go via private advisory — see SECURITY.md).
+          required: true

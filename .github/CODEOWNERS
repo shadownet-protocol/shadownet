@@ -1,0 +1,15 @@
+# Default owners for everything in the repo.
+# Replace with concrete usernames or a maintainer-team handle on the
+# shadownet-protocol GitHub org once that team is set up.
+*                       @shadownet-protocol/maintainers
+
+# Per-subtree owners. Uncomment / adjust once subtree-specific teams exist.
+# /sdks/go/             @shadownet-protocol/go-maintainers
+# /sdks/py/             @shadownet-protocol/py-maintainers
+
+# Repo-config sensitivity — keep these owned by the core maintainer set even
+# if subtree teams are added above.
+/.github/               @shadownet-protocol/maintainers
+/SECURITY.md            @shadownet-protocol/maintainers
+/CODE_OF_CONDUCT.md     @shadownet-protocol/maintainers
+/LICENSE                @shadownet-protocol/maintainers

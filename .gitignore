@@ -1,0 +1,25 @@
+# Per-language ignores live in sdks/<lang>/.gitignore.
+# This file covers cross-cutting OS / IDE / scratch artifacts only.
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Editor backup files
+*.bak
+*.orig
+
+# Local scratch / consolidation artifacts
+/.consolidation-scratch/
+
+# Top-level build / coverage outputs (per-SDK ignores cover their own subtrees)
+/dist/
+/build/
+/coverage/

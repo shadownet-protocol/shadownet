@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose an addition or improvement to one of the SDKs or the reference binaries.
+labels: ["type: enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - "sdks/go (Go SDK)"
+        - "sdks/go/pgstore (Postgres backend)"
+        - "sdks/go/cmd/* (reference binaries / CLI)"
+        - "sdks/py (Python SDK)"
+        - "CI / release workflows"
+        - "Docs / examples"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why does this matter? What problem are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How should it work? Sketch the API surface, the new flag, the new endpoint, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other shapes did you think about? Why is this one preferable?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is an SDK / reference-binary feature, not a protocol change. (Protocol changes go to shadownet-specs.)
+          required: true
+        - label: I searched existing issues and discussions for prior art.
+          required: true

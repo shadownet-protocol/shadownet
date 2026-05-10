@@ -1,0 +1,80 @@
+version: 2
+
+updates:
+  # Go SDK — main module
+  - package-ecosystem: gomod
+    directory: /sdks/go
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: go-sdk"
+    commit-message:
+      prefix: "deps(go)"
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Go SDK — pgstore submodule (separate go.mod)
+  - package-ecosystem: gomod
+    directory: /sdks/go/pgstore
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: go-sdk"
+      - "area: pgstore"
+    commit-message:
+      prefix: "deps(go-pgstore)"
+    groups:
+      go-pgstore-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Python SDK
+  - package-ecosystem: pip
+    directory: /sdks/py
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: py-sdk"
+    commit-message:
+      prefix: "deps(py)"
+    groups:
+      py-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions used by workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "area: ci"
+    commit-message:
+      prefix: "deps(ci)"
+    groups:
+      ci-actions:
+        patterns:
+          - "*"
