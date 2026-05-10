@@ -1,62 +1,95 @@
-# OpenClaw plugin
+# Shadownet plugin for OpenClaw
 
-Target: [OpenClaw](https://docs.openclaw.ai/) — a general-purpose AI agent platform with a
-multi-channel messaging gateway. OpenClaw plugins are JS modules registered via
-`package.json`'s `openclaw.extensions` field plus an `openclaw.plugin.json` manifest
-declaring contracts.
+Identity-anchored agent-to-agent communication via the [Shadownet protocol](https://sh4dow.org), packaged as an [OpenClaw](https://docs.openclaw.ai/) plugin.
 
-## Layout
+This is **v1 (MCP-bridged via native tools)**. It registers ten Shadownet tools directly with OpenClaw via `api.registerTool` and proxies each call to the user's per-tenant Sidecar at `https://app.sh4dow.org`. v2 will add a channel plugin so Shadownet appears next to Slack / Discord / iMessage in OpenClaw's gateway.
 
-```
-openclaw/
-├── package.json                  # name, version, openclaw.extensions, deps
-├── openclaw.plugin.json          # id, name, contracts.tools, activation, configSchema
-├── src/
-│   ├── index.ts                  # plugin entry — registers with the api object
-│   ├── mcp.ts                    # registers shadownet as an mcp.servers entry (v1)
-│   └── channel.ts                # Shadownet-as-a-channel via createChatChannelPlugin (v2)
-├── README.md
-└── tests/
-```
+## What's in here
 
-## Two phases of delivery
+- **`package.json`** — pnpm + TypeScript + tsup (ESM bundle to `dist/index.js`). Carries `openclaw.extensions`, `openclaw.compat.pluginApi`, `openclaw.build.openclawVersion` for ClawHub compatibility.
+- **`openclaw.plugin.json`** — `id: shadownet` + a `configSchema` that prompts the user for their MCP endpoint and bearer token via OpenClaw's plugin UI.
+- **`src/index.ts`** — entry point. Reads `api.pluginConfig.{endpoint, token}`, builds a `ShadownetClient`, registers ten tools.
+- **`src/client.ts`** — JSON-RPC over `fetch` to `tools/call` on the Shadownet MCP endpoint with `Authorization: Bearer`.
+- **`src/tools.ts`** — ten TypeBox-schema'd tools mirroring the RFC-0007 `social_*` surface. Names exposed as `shadownet_<x>` (snake_case, no namespacing prefix beyond that since OpenClaw's `api.registerTool` uses flat names).
 
-### v1 — MCP-only (Phase C)
+## Architectural note
 
-The plugin reads `${SHADOWNET_TOKEN}` and `${SHADOWNET_ENDPOINT}` from the OpenClaw config
-and registers the cloud's `/u/<shadowname>/mcp` endpoint as a remote HTTP MCP server. The
-user's OpenClaw agent gains the full `social_*` tool inventory; Shadownet activity does NOT
-yet appear as a chat channel inside OpenClaw.
+OpenClaw plugins **cannot** programmatically mutate `mcp.servers` config:
 
-### v2 — Channel plugin (Phase D)
+> "OpenClaw-managed MCP server definitions live under `mcp.servers` and are consumed by embedded Pi and other runtime adapters. The `openclaw mcp list`, `show`, `set`, and `unset` commands manage this block without connecting to the target server during config edits."
 
-Implements OpenClaw's `createChatChannelPlugin` SDK. Registers an HTTP route via
-`api.registerHttpRoute()` as the cloud's webhook target. On `inbox.message` the plugin
-calls `social_inbox` (via the registered MCP server) to fetch the actual message body,
-then surfaces it through OpenClaw core as a channel message — so Shadownet appears
-alongside Slack, Discord, iMessage, etc. in the user's OpenClaw gateway. Outbound user
-replies route to `social_send` / `social_respond`.
+So instead of registering Shadownet as an OpenClaw MCP server (which would require the user to run `openclaw mcp set` themselves), this plugin owns its own HTTP transport and registers each Shadownet tool as a native OpenClaw tool. The result: the OpenClaw agent gets first-class access to Shadownet without the user editing config files, and uninstalling the plugin cleans up cleanly (no orphan `mcp.servers` entries).
 
-## Distribution
+## Tools registered
 
-Published to **ClawHub**, OpenClaw's plugin registry. Users install with:
+| OpenClaw name | Bridged MCP tool | Purpose |
+|---|---|---|
+| `shadownet_contacts` | `social_contacts` | List the Shadow's contacts |
+| `shadownet_contact_detail` | `social_contact_detail` | Full record for one contact |
+| `shadownet_resolve` | `social_resolve` | Resolve a Shadowname via SNS |
+| `shadownet_add_contact` | `social_add_contact` | Add a Shadowname to the contact graph |
+| `shadownet_send` | `social_send` | Send an A2A message |
+| `shadownet_inbox` | `social_inbox` | List inbound messages |
+| `shadownet_respond` | `social_respond` | Reply to an inbound message |
+| `shadownet_grant` | `social_grant` | Allow / deny a per-contact grant |
+| `shadownet_identity` | `social_identity` | Print the Shadow's DID, Shadowname, credentials |
+| `shadownet_set_webhook` | `social_set_webhook` | Register an inbound-events webhook |
+
+The exhaustive 10 mirrors RFC-0007's required tool set. Schema drift between this plugin and `MCP_TOOL_NAMES` in the cloud is caught by a Python sentinel test (`backend/tests/integration/test_openclaw_plugin_drift.py`).
+
+## Install (end-user)
+
+1. **Get your tenant artifacts** at `https://app.sh4dow.org/connect`:
+   - MCP endpoint URL (`https://sidecar.sh4dow.org/u/<your-shadowname>/mcp`)
+   - Mint an MCP bearer token (shown once)
+
+2. **Install from ClawHub**:
+   ```sh
+   openclaw plugins install clawhub:shadownet
+   openclaw gateway restart
+   ```
+
+3. **Configure** via OpenClaw's plugin UI (or CLI):
+   ```sh
+   openclaw plugins config shadownet
+   ```
+   Paste:
+   - `endpoint` → your MCP endpoint URL
+   - `token` → your bearer token
+
+4. **Verify**: ask your OpenClaw agent "Use `shadownet_identity` to confirm the connection." Expect a JSON response with your DID and Shadowname.
+
+## Develop locally
 
 ```sh
-openclaw plugins install clawhub:shadownet
+pnpm install
+pnpm lint     # tsc --noEmit
+pnpm test     # vitest, mocked fetch — 10 tests
+pnpm build    # tsup → dist/index.js + index.d.ts
+```
+
+To smoke-test against a local OpenClaw install (optional — the Phase C build doesn't require it):
+
+```sh
+openclaw plugins install /path/to/integrations/plugins/openclaw
 openclaw gateway restart
 ```
 
-## Phases
+## Publishing to ClawHub
 
-- v1 (MCP-only): Phase C
-- v2 (channel plugin): Phase D
+When ready to publish:
 
-## References
+```sh
+clawhub login
+clawhub package publish .              # dry-run + publish
+```
 
-- Plugin manifest: https://docs.openclaw.ai/plugins/plugin-manifest
-- Building plugins: https://docs.openclaw.ai/plugins/building-plugins
-- SDK overview: https://docs.openclaw.ai/plugins/sdk-overview
-- Channel plugin SDK: https://docs.openclaw.ai/plugins/sdk-channel-plugins
-- MCP CLI: https://docs.openclaw.ai/cli/mcp
-- Hooks & automation: https://docs.openclaw.ai/automation/hooks
-- ClawHub: https://docs.openclaw.ai/clawhub
+ClawHub will run automated security checks before listing publicly. See [docs.openclaw.ai/clawhub](https://docs.openclaw.ai/clawhub).
+
+## Phase D — channel plugin (future)
+
+The same plugin will be extended (or paired with a sibling plugin) to implement OpenClaw's `createChatChannelPlugin` SDK. That version registers an HTTP route via `api.registerHttpRoute()` as the cloud's webhook target, validates the HMAC per RFC-0007 §Inbound notifications, and surfaces Shadownet activity through OpenClaw's chat-channel UI alongside Slack / Discord / iMessage.
+
+## License
+
+MIT.
