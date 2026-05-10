@@ -153,7 +153,9 @@ jobs:
         if: always()
         run: |
           for pidfile in /tmp/sca.pid /tmp/sns.pid; do
-            [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null || true
+            if [ -f "$pidfile" ]; then
+              kill "$(cat "$pidfile")" 2>/dev/null || true
+            fi
           done
 
       - name: Upload reports

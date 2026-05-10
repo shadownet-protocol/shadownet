@@ -71,7 +71,7 @@ jobs:
             tar -czf "../../dist/shadownet_${VERSION}_${goos}_${goarch}.tar.gz" "$outdir"
             rm -rf "$outdir"
           done
-          ( cd ../../dist && sha256sum *.tar.gz > SHA256SUMS )
+          ( cd ../../dist && sha256sum ./*.tar.gz > SHA256SUMS )
           ls -la ../../dist
 
       - name: Create GitHub Release and upload binaries
