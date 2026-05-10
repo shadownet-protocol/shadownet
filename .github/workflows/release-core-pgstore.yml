@@ -25,7 +25,7 @@ jobs:
       - id: parse
         run: |
           tag="${GITHUB_REF_NAME}"
-          version="${tag#go/pgstore/}"
+          version="${tag#core/pgstore/}"
           if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.+-]+)?$ ]]; then
             echo "::error::tag $tag does not look like core/pgstore/vX.Y.Z[-pre]"
             exit 1

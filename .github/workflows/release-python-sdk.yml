@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           tag_full="${GITHUB_REF#refs/tags/}"
-          tag_version="${tag_full#py/v}"
+          tag_version="${tag_full#python-sdk/v}"
           uv run python - "$tag_version" <<'PY'
           import sys
           from importlib.metadata import version
