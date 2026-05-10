@@ -1,0 +1,21 @@
+{
+  "id": "shadownet",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["endpoint", "token"],
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "format": "uri",
+        "description": "MCP endpoint URL for your Shadow. Get from https://app.sh4dow.org/connect."
+      },
+      "token": {
+        "type": "string",
+        "minLength": 16,
+        "writeOnly": true,
+        "description": "Bearer token for the MCP endpoint. Mint at https://app.sh4dow.org/connect."
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Shadownet plugin hooks: SessionStart context note, PreToolUse confirmation reminder for outbound messages.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh",
+            "statusMessage": "Loading Shadownet plugin",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__shadownet__social_send|mcp__shadownet__social_respond",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pretool-confirm.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

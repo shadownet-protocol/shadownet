@@ -1,0 +1,13 @@
+{
+  "name": "shadownet",
+  "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Shadownet",
+    "email": "hello@sh4dow.org"
+  },
+  "homepage": "https://sh4dow.org",
+  "repository": "https://github.com/shadownet-protocol/shadownet-cloud",
+  "license": "MIT",
+  "keywords": ["mcp", "a2a", "agent", "messaging", "shadownet"]
+}
