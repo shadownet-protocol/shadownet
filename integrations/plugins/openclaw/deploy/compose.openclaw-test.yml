@@ -1,0 +1,58 @@
+# Phase D OpenClaw integration harness.
+#
+# Brings up two services on an isolated bridge network:
+#
+#   shadownet-mock   FastAPI mock cloud — see ../qa/openclaw-shadownet-mock/main.py.
+#                    Exposes POST /trigger-inbox-event (signed inbox.message
+#                    webhook → target URL) and POST /u/<shadow>/mcp (canned
+#                    social_* tool responses, recorded for assertions).
+#
+#   openclaw-test    Currently a stub. To complete the harness, replace
+#                    the placeholder image + command with a real OpenClaw
+#                    container that mounts our plugin's `dist/` under
+#                    ~/.openclaw/plugins/shadownet/, ships an `openclaw.json`
+#                    that activates `channels.shadownet` pointing at
+#                    shadownet-mock:8000, and starts the gateway. The exact
+#                    OpenClaw startup command is the open detail blocking
+#                    full e2e — synology-chat documents `openclaw gateway
+#                    start` but the Docker entrypoint we'd want needs a real
+#                    OpenClaw image to validate against.
+#
+# Run via: `make test-openclaw-e2e` (root Makefile). Default `pytest -x` does
+# NOT bring this stack up.
+
+name: shadownet-openclaw-e2e
+
+services:
+  shadownet-mock:
+    build:
+      context: ../qa/openclaw-shadownet-mock
+      dockerfile: Dockerfile
+    container_name: shadownet-mock
+    networks:
+      - openclaw-e2e
+    ports:
+      - "127.0.0.1:18500:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Placeholder. To finish the harness, configure this against a known-good
+  # OpenClaw image. See header comment.
+  openclaw-test:
+    image: alpine:3
+    container_name: openclaw-test
+    command: ["sh", "-c", "echo 'OpenClaw container is a placeholder — see compose header.' && sleep infinity"]
+    networks:
+      - openclaw-e2e
+    depends_on:
+      shadownet-mock:
+        condition: service_healthy
+
+networks:
+  openclaw-e2e:
+    name: shadownet-openclaw-e2e
+    driver: bridge
+    internal: false
