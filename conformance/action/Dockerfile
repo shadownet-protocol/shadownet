@@ -25,7 +25,13 @@ COPY src ./src
 COPY tests ./tests
 COPY fixtures ./fixtures
 
-RUN uv sync --frozen --no-dev
+# `--no-sources` ignores pyproject.toml's `[tool.uv.sources]` block, which
+# points `shadownet` at `../python-sdk` for in-repo dev. The Docker build
+# context is just `conformance/`, so that path doesn't exist here — resolve
+# `shadownet>=0.2.0,<0.3` from PyPI like external consumers do. `uv.lock`
+# in the image is regenerated transiently; it does not affect the
+# committed lockfile (which keeps the local override for dev).
+RUN uv sync --no-dev --no-sources
 
 ENTRYPOINT ["uv", "run", "shadownet-conformance"]
 CMD ["--help"]
