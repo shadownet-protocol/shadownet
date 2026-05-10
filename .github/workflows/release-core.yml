@@ -58,7 +58,9 @@ jobs:
         working-directory: core
         run: |
           set -euo pipefail
-          mkdir -p ../../dist
+          # ../ from core/ is the repo root. The upload step below runs at
+          # the repo root and references `dist/*` relative to there.
+          mkdir -p ../dist
           for tuple in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             goos="${tuple%/*}"
             goarch="${tuple#*/}"
@@ -68,11 +70,11 @@ jobs:
               go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
                 -o "$outdir/shadownet" ./cmd/shadownet
             cp LICENSE README.md "$outdir/"
-            tar -czf "../../dist/shadownet_${VERSION}_${goos}_${goarch}.tar.gz" "$outdir"
+            tar -czf "../dist/shadownet_${VERSION}_${goos}_${goarch}.tar.gz" "$outdir"
             rm -rf "$outdir"
           done
-          ( cd ../../dist && sha256sum ./*.tar.gz > SHA256SUMS )
-          ls -la ../../dist
+          ( cd ../dist && sha256sum ./*.tar.gz > SHA256SUMS )
+          ls -la ../dist
 
       - name: Create GitHub Release and upload binaries
         env:
