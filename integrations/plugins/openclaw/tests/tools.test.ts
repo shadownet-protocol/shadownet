@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ShadownetClient } from "../src/client";
-import { tools } from "../src/tools";
+import { tools } from "../src/tools/tools";
 
 const EXPECTED_NAMES = [
   "shadownet_contacts",

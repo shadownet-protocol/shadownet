@@ -1,10 +1,10 @@
 {
   "name": "@shadownet/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "license": "MIT",
-  "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol — OpenClaw plugin.",
+  "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol — OpenClaw plugin (tools + channel).",
   "homepage": "https://sh4dow.org",
   "repository": {
     "type": "git",
@@ -29,8 +29,12 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.0"
   },
+  "peerDependencies": {
+    "openclaw": "^2026.5.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "openclaw": "^2026.5.0",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
@@ -39,6 +43,15 @@
     "extensions": [
       "./dist/index.js"
     ],
+    "channelPlugin": {
+      "specifier": "./dist/channel-plugin-api.js",
+      "exportName": "shadownetPlugin"
+    },
+    "runtime": {
+      "specifier": "./dist/runtime-setter-api.js",
+      "exportName": "setShadownetRuntime"
+    },
+    "setupEntry": "./dist/setup-entry.js",
     "compat": {
       "pluginApi": "^1"
     },
