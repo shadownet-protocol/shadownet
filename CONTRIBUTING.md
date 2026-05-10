@@ -141,5 +141,7 @@ PEP-440 / semver suffixes (`py/v0.2.0-rc.1`, `go/v0.2.0-rc.1`).
 ## Code of Conduct
 
 Participation in this project is governed by the
-[Code of Conduct](./CODE_OF_CONDUCT.md). Report violations privately to
-`security@sh4dow.org`.
+[Code of Conduct](./CODE_OF_CONDUCT.md). Report concerns privately via
+[GitHub Security Advisories](https://github.com/shadownet-protocol/shadownet/security/advisories/new) —
+the same channel handles both security disclosures and Code of Conduct
+reports while the project is in early-stage solo-maintainer mode.

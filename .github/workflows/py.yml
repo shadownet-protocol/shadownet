@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "py/**"
+      - "examples/birthday-credential-py/**"
       - ".github/workflows/py.yml"
   pull_request:
     paths:
       - "py/**"
+      - "examples/birthday-credential-py/**"
       - ".github/workflows/py.yml"
 
 permissions:
@@ -54,6 +56,12 @@ jobs:
 
       - name: Test (with coverage)
         run: uv run pytest --cov-report=xml --cov-report=term
+
+      - name: examples — run birthday-credential-py
+        # Catches API drift between the SDK and the example without needing
+        # a separate workflow. The example only uses public APIs, so a
+        # successful run is a smoke-test of the SDK's exported surface.
+        run: uv run python ../examples/birthday-credential-py/birthday_credential.py
 
       - name: Upload coverage to Codecov
         if: matrix.python == '3.12' && matrix.os == 'ubuntu-latest'

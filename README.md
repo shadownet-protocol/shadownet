@@ -36,7 +36,11 @@ Shadownet is the protocol layer that fixes that, built on open standards
 The full picture is in the spec repo: the
 [philosophy](https://github.com/shadownet-protocol/shadownet-specs#philosophy),
 the [v0.1 RFC set](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs),
-or the [end-to-end wire walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/birthday-flow.md).
+the
+[typed (birthday-flow) wire walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/birthday-flow.md),
+or the
+[free-form coordination walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/free-form-coordination.md)
+(the v0.1.4+ default envelope shape).
 
 ## What's in this repo
 
@@ -44,6 +48,7 @@ or the [end-to-end wire walkthrough](https://github.com/shadownet-protocol/shado
 shadownet/
 ├── go/             Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
 ├── py/             Python SDK (PyPI: shadownet); consumed by hermes-social and shadownet-cloud
+├── examples/       Runnable end-to-end examples (one per language)
 ├── CONTRIBUTING.md, SECURITY.md, MIGRATION.md, …
 └── .github/        Workflows, issue templates, Dependabot config
 ```

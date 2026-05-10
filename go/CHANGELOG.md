@@ -12,8 +12,6 @@ sub-module subtrees. The main module is tagged `go/vX.Y.Z`.
 
 ## [Unreleased]
 
-## [v0.2.0] — TBD
-
 ### Changed
 
 - **BREAKING:** the project moved from

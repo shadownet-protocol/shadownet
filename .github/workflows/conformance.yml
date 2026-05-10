@@ -93,18 +93,32 @@ jobs:
           go build -o /tmp/sns-server ./cmd/sns-server
           go build -o /tmp/shadownet  ./cmd/shadownet
 
-      - name: Generate fixture-fresh signing keys
+      - name: Generate signing keys and capture their DIDs
+        id: keys
         run: |
-          /tmp/shadownet keygen --out /tmp/sca-issuer.jwk
-          /tmp/shadownet keygen --out /tmp/sns-provider.jwk
+          # `shadownet keygen --out FILE` writes the JWK and prints its
+          # did:key on stdout. Using did:key avoids the DNS / TLS setup
+          # that did:web requires, which is the right call for a
+          # self-contained CI run on 127.0.0.1.
+          sca_did=$(/tmp/shadownet keygen --out /tmp/sca-issuer.jwk | head -n1)
+          sns_did=$(/tmp/shadownet keygen --out /tmp/sns-provider.jwk | head -n1)
+          echo "sca_did=$sca_did" >> "$GITHUB_OUTPUT"
+          echo "sns_did=$sns_did" >> "$GITHUB_OUTPUT"
+          echo "SCA DID: $sca_did"
+          echo "SNS DID: $sns_did"
 
       - name: Compose minimal SCA + SNS configs
+        env:
+          SCA_DID: ${{ steps.keys.outputs.sca_did }}
+          SNS_DID: ${{ steps.keys.outputs.sns_did }}
         run: |
           mkdir -p /tmp/shadownet-data
-          cat > /tmp/sca.yaml <<'YAML'
-          # CI-only config: instant-approval proof method, sqlite storage.
-          # SHADOWNET_ALLOW_INSTANT_APPROVAL=1 unblocks the non-loopback guard.
-          did: "did:web:sca.localhost"
+          # Templated with the DIDs captured above. did:key is
+          # self-describing, so no TLS / well-known endpoint is needed.
+          # SHADOWNET_ALLOW_INSTANT_APPROVAL=1 unblocks the non-loopback
+          # guard at boot.
+          cat > /tmp/sca.yaml <<YAML
+          did: "${SCA_DID}"
           listen: "127.0.0.1:8443"
           signing:
             keyfile: "/tmp/sca-issuer.jwk"
@@ -119,8 +133,8 @@ jobs:
                 method: "instant-approval"
                 credentialLifetimeDays: 90
           YAML
-          cat > /tmp/sns.yaml <<'YAML'
-          did: "did:web:sns.localhost"
+          cat > /tmp/sns.yaml <<YAML
+          did: "${SNS_DID}"
           provider: "localhost"
           listen: "127.0.0.1:8444"
           signing:

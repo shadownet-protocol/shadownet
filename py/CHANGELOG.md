@@ -10,8 +10,6 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
-## [0.2.0] — TBD
-
 ### Changed
 
 - Project moved from

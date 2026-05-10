@@ -1,14 +1,19 @@
 # Code of Conduct
 
-This project follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
-The full text is published and maintained at the link above; we adopt it
-verbatim rather than copying it here so that the canonical version applies.
+This project follows the
+[Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
+The full text is published and maintained at the link above; we adopt it by
+reference rather than vendoring a copy here so that the canonical version
+always applies.
 
-## Reporting
+## Reporting concerns
 
-To report a concern under this Code of Conduct, contact the maintainers
-privately at `security@sh4dow.org`. Reports are handled confidentially and
-acknowledged within 3 business days.
+To report behavior that may violate this Code of Conduct, open a private
+report via GitHub Security Advisories at
+[`/security/advisories/new`](https://github.com/shadownet-protocol/shadownet/security/advisories/new)
+and label the advisory `code-of-conduct` in the title. The same private
+channel handles both security disclosures and Code of Conduct reports while
+the project is in early-stage solo-maintainer mode; a dedicated channel will
+be set up if and when a multi-person maintainer team forms.
 
-For security vulnerabilities, see [`SECURITY.md`](./SECURITY.md) for the
-preferred private-disclosure channel.
+Reports are handled confidentially.

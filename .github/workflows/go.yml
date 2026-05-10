@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "go/**"
+      - "examples/birthday-credential-go/**"
       - ".github/workflows/go.yml"
   pull_request:
     paths:
       - "go/**"
+      - "examples/birthday-credential-go/**"
       - ".github/workflows/go.yml"
 
 permissions:
@@ -58,6 +60,16 @@ jobs:
       - name: pgstore module — vet
         working-directory: go/pgstore
         run: go vet ./...
+
+      - name: examples — build & run birthday-credential-go
+        # Catches API drift between the SDK and the example without needing
+        # a separate workflow. The example uses a replace directive against
+        # the in-repo SDK, so this is also an integration sanity check.
+        working-directory: examples/birthday-credential-go
+        run: |
+          go build ./...
+          go vet ./...
+          go run .
 
   integration:
     name: integration (pgstore + Postgres)
