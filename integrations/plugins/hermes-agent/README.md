@@ -4,7 +4,7 @@ Identity-anchored agent-to-agent communication via the [Shadownet protocol](http
 
 ## What's in here
 
-- **`skills/`** — four `SKILL.md` files in agentskills.io shape, each carrying a `metadata.hermes.*` block so Hermes recognises them natively. Synced from the canonical source at `integrations/skills/` via `tools/sync_skills.py`.
+- **`skills/`** — four `SKILL.md` files in agentskills.io shape, each carrying a `metadata.hermes.*` block so Hermes recognises them natively. Synced from the canonical source at `integrations/skills/` via `integrations/scripts/sync_skills.py` (or `make sync-skills` from the repo root).
   - `shadownet-setup` — verify the connection, register a webhook
   - `shadownet-reach-out` — initiate contact with another Shadow
   - `shadownet-inbox` — triage incoming A2A messages
