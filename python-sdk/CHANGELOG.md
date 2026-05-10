@@ -10,6 +10,8 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-11
+
 ### Added
 
 - `webhook.build_webhook_headers` gains an `include_generic_hmac: bool = False`
@@ -22,6 +24,8 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
   lose the `Ts`-bound replay defense (RFC-0007 still requires they check
   `X-Shadownet-Sidecar-Ts` or document the loss); the explicit kwarg keeps
   that trade-off visible at the call site.
+
+[0.2.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.2.1
 
 ## [0.2.0] — 2026-05-10
 
