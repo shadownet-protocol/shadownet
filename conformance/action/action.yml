@@ -1,0 +1,55 @@
+name: "Shadownet conformance"
+description: "Run the wire-level conformance suite against an SCA / SNS / Sidecar."
+author: "Shadownet contributors"
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  sca:
+    description: "SCA target URL."
+    required: false
+  sns:
+    description: "SNS target URL."
+    required: false
+  sidecar:
+    description: "Sidecar target URL."
+    required: false
+  peer-sca:
+    description: "Second SCA URL for round-trip tests."
+    required: false
+  peer-sns:
+    description: "Second SNS URL for round-trip tests."
+    required: false
+  proof-method:
+    description: "Operator-defined URI for the SCA's instant-approval proof method."
+    required: false
+    default: "instant-approval"
+  sns-test-shadowname:
+    description: "Pre-registered shadowname against the SNS target (for resolve happy-path tests)."
+    required: false
+  report-junit:
+    description: "Path to write the JUnit XML report to (relative to the workspace)."
+    required: false
+    default: "shadownet-conformance.xml"
+  report-json:
+    description: "Path to write the RFC-keyed JSON report to."
+    required: false
+    default: "shadownet-conformance.json"
+
+runs:
+  using: docker
+  image: docker://ghcr.io/shadownet-protocol/conformance:latest
+  args:
+    - --report-junit=${{ inputs.report-junit }}
+    - --report-json=${{ inputs.report-json }}
+    - --gha-summary=auto
+  env:
+    SHADOWNET_CONFORMANCE_TARGET: >-
+      ${{ inputs.sca && format('sca={0}', inputs.sca) || '' }}${{ inputs.sca && (inputs.sns || inputs.sidecar) && ',' || '' }}${{ inputs.sns && format('sns={0}', inputs.sns) || '' }}${{ inputs.sns && inputs.sidecar && ',' || '' }}${{ inputs.sidecar && format('sidecar={0}', inputs.sidecar) || '' }}
+    SHADOWNET_CONFORMANCE_PEER_TARGET: >-
+      ${{ inputs.peer-sca && format('sca={0}', inputs.peer-sca) || '' }}${{ inputs.peer-sca && inputs.peer-sns && ',' || '' }}${{ inputs.peer-sns && format('sns={0}', inputs.peer-sns) || '' }}
+    SHADOWNET_CONFORMANCE_PROOF_METHOD: ${{ inputs.proof-method }}
+    SHADOWNET_CONFORMANCE_SNS_TEST_SHADOWNAME: ${{ inputs.sns-test-shadowname }}
+    SHADOWNET_CONFORMANCE_GHA_SUMMARY: auto

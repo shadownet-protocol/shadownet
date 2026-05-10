@@ -1,0 +1,38 @@
+# Versioned seed manifest for shadownet-conformance fixtures.
+#
+# Each seed is 32 bytes (Ed25519 seed length per RFC 8032 §5.1.5).
+# Seeds are committed and clearly non-secret — they exist to make fixtures
+# reproducible. Changing a seed is a deliberate, reviewed event: it forces a
+# regeneration of every fixture derived from it and updates every committed
+# byte. See fixtures/README.md for the regen procedure.
+#
+# Seed naming follows the role the keypair plays in the fixture set, not
+# (e.g.) "key1" — this keeps cross-references in the manifest readable.
+
+schema_version = 1
+
+[seeds.subject_alice]
+# Holder of the canonical L2 credential used in most fixtures.
+hex = "0101010101010101010101010101010101010101010101010101010101010101"
+
+[seeds.subject_bob]
+# Holder of the L1 credential used in negative-path tests.
+hex = "0202020202020202020202020202020202020202020202020202020202020202"
+
+[seeds.subject_acme]
+# Organization subject (did:web). Used for the O1 credential.
+hex = "0303030303030303030303030303030303030303030303030303030303030303"
+
+[seeds.sca_issuer]
+# Canonical SCA signing key. Issuer DID is operator-defined; the manifest
+# fills it in (typically did:web:sca.sh4dow.org).
+hex = "1010101010101010101010101010101010101010101010101010101010101010"
+
+[seeds.sns_provider]
+# Canonical SNS provider signing key.
+hex = "2020202020202020202020202020202020202020202020202020202020202020"
+
+[seeds.peer_holder]
+# The in-process A2A test peer's identity (RFC-0006 handshakes against a
+# Sidecar-under-test).
+hex = "3030303030303030303030303030303030303030303030303030303030303030"

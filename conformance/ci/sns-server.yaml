@@ -1,0 +1,9 @@
+# Conformance self-test SNS config. Used by .github/workflows/self-test.yml.
+did: did:web:127.0.0.1%3A18444
+provider: 127.0.0.1
+listen: 127.0.0.1:18444
+signing:
+  keyfile: /tmp/sn-self/provider.jwk
+storage:
+  driver: memory
+defaultTtl: 300
