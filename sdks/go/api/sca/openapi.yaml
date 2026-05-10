@@ -1,0 +1,211 @@
+# OpenAPI specification for the Shadow Certificate Authority (SCA), RFC-0004.
+# Mirrors the endpoints implemented by `pkg/sca` and served by `cmd/sca-server`.
+openapi: 3.1.0
+info:
+  title: Shadownet SCA
+  version: "0.1"
+  description: |
+    Shadow Certificate Authority — issues Verifiable Credentials about
+    Shadow subjects. Specified by RFC-0004 in the shadownet-specs repo.
+  license:
+    name: MIT
+servers:
+  - url: https://sca.sh4dow.org
+    description: Reference deployment placeholder
+security:
+  - subjectAuth: []
+components:
+  securitySchemes:
+    subjectAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Shadownet subject-auth JWT (RFC-0004 §Common)"
+  schemas:
+    Error:
+      type: object
+      required: [error, "shadownet:v"]
+      properties:
+        error: { type: string }
+        detail: { type: string }
+        "shadownet:v": { const: "0.1" }
+    NextStep:
+      type: object
+      required: [kind]
+      properties:
+        kind: { enum: [redirect, embed, email-link, in-person] }
+        url: { type: string, format: uri }
+        ttl: { type: integer }
+    ProofStartRequest:
+      type: object
+      required: ["shadownet:v", subject, level]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        subject: { type: string, pattern: "^did:" }
+        level: { type: string, format: uri }
+        callbackUrl: { type: string, format: uri }
+    ProofStartResponse:
+      type: object
+      required: ["shadownet:v", sessionId, expiresAt, method, next]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        sessionId: { type: string }
+        expiresAt: { type: integer, format: int64 }
+        method: { type: string }
+        next: { $ref: "#/components/schemas/NextStep" }
+    ProofStatusRequest:
+      type: object
+      required: ["shadownet:v", sessionId]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        sessionId: { type: string }
+    ProofStatusResponse:
+      type: object
+      required: ["shadownet:v", sessionId, status]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        sessionId: { type: string }
+        status: { enum: [pending, ready, consumed, failed, expired] }
+    IssuanceRequest:
+      type: object
+      required: ["shadownet:v", csr, sessionId]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        csr: { type: string, description: "compact JWS — CSR JWT signed by the subject" }
+        sessionId: { type: string }
+    IssuanceResponse:
+      type: object
+      required: ["shadownet:v", credential]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        credential: { type: string, description: "compact JWS — credential JWT (typ: vc+jwt)" }
+    FreshnessRequest:
+      type: object
+      required: ["shadownet:v", credentialJti]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        credentialJti: { type: string, format: uri }
+    FreshnessResponse:
+      type: object
+      required: ["shadownet:v", freshnessProof]
+      properties:
+        "shadownet:v": { const: "0.1" }
+        freshnessProof: { type: string }
+    Policy:
+      type: object
+      required: [issuer, "shadownet:v", levels, freshnessWindowSeconds, statusListBase]
+      properties:
+        issuer: { type: string, pattern: "^did:" }
+        "shadownet:v": { const: "0.1" }
+        levels:
+          type: array
+          items:
+            type: object
+            required: [level, method, credentialLifetimeDays]
+            properties:
+              level: { type: string, format: uri }
+              method: { type: string }
+              rateLimit: { type: string }
+              credentialLifetimeDays: { type: integer, minimum: 1 }
+        freshnessWindowSeconds: { type: integer, minimum: 1 }
+        statusListBase: { type: string, format: uri }
+paths:
+  /.well-known/did.json:
+    get:
+      summary: SCA DID document
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/did+json:
+              schema: { type: object }
+  /.well-known/sca/policy.json:
+    get:
+      summary: SCA issuance policy
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Policy" }
+  /proof/start:
+    post:
+      summary: Open a proof session for a credential level
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProofStartRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProofStartResponse" }
+        "400": { description: invalid_level | csr_invalid, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: subject_blocked,           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: rate_limited,              content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /proof/status:
+    post:
+      summary: Poll a proof session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProofStatusRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProofStatusResponse" }
+        "404": { description: unknown session, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /issuance:
+    post:
+      summary: Submit a CSR backed by a ready proof session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssuanceRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IssuanceResponse" }
+        "400": { description: csr_invalid | session_mismatch, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: session_not_ready,              content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "410": { description: session_consumed,               content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /freshness:
+    post:
+      summary: Mint a freshness proof for a credential jti
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FreshnessRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreshnessResponse" }
+        "403": { description: revoked | not_holder,    content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: unknown_jti,             content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /status/{listID}:
+    get:
+      summary: Fetch a BitstringStatusList credential
+      security: []
+      parameters:
+        - in: path
+          name: listID
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/jwt:
+              schema: { type: string }

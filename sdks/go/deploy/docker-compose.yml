@@ -1,0 +1,51 @@
+# Local-development Docker Compose for the Shadownet reference servers.
+#
+# Brings up an SCA and SNS on adjacent ports, both with SQLite storage and
+# both bound to localhost (plaintext HTTP — acceptable for local dev). For
+# any deployment beyond a developer's laptop, terminate TLS in front of the
+# binaries (or set tls.cert/tls.key in their YAML) and put them on real DIDs.
+#
+# Quickstart:
+#   1) Generate the issuer/provider signing keys on the host:
+#        shadownet keygen --out ./sca-issuer.jwk
+#        shadownet keygen --out ./sns-provider.jwk
+#   2) docker compose up
+#   3) curl http://127.0.0.1:8443/.well-known/sca/policy.json
+#      curl 'http://127.0.0.1:8444/.well-known/sns/v1/resolve?name=alice@localhost'
+#
+# Note on InstantApprovalProofMethod: cmd/sca-server refuses to start when it
+# sees this method on a non-loopback listener. Inside the container the
+# listener is 0.0.0.0:8443, so the dev stack opts in via
+# SHADOWNET_ALLOW_INSTANT_APPROVAL=1; the compose file then publishes the
+# port only on 127.0.0.1 of the host so it never reaches the network.
+services:
+  sca-server:
+    image: ghcr.io/shadownet-protocol/sca-server:latest
+    container_name: shadownet-sca
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ./sca-server.yaml:/etc/shadownet/sca-server.yaml:ro
+      - ./sca-issuer.jwk:/etc/shadownet/issuer.jwk:ro
+      - sca-data:/var/lib/shadownet
+    environment:
+      SHADOWNET_LOG_LEVEL: info
+      SHADOWNET_ALLOW_INSTANT_APPROVAL: "1"
+
+  sns-server:
+    image: ghcr.io/shadownet-protocol/sns-server:latest
+    container_name: shadownet-sns
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8444:8443"
+    volumes:
+      - ./sns-server.yaml:/etc/shadownet/sns-server.yaml:ro
+      - ./sns-provider.jwk:/etc/shadownet/provider.jwk:ro
+      - sns-data:/var/lib/shadownet
+    environment:
+      SHADOWNET_LOG_LEVEL: info
+
+volumes:
+  sca-data:
+  sns-data:
