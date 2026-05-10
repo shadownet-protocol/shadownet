@@ -12,6 +12,8 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
+## [v0.2.0] — 2026-05-10
+
 ### Changed
 
 - **BREAKING:** the project moved from
@@ -23,6 +25,10 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
   Update imports accordingly. The `v0.1.x` releases on the previous repo
   remain reachable to existing consumers via the old import path. See
   [`MIGRATION.md`](../../MIGRATION.md) for the full migration notes.
+- Tag scheme in the monorepo: main module is tagged `core/vX.Y.Z`,
+  pgstore submodule is tagged `core/pgstore/vX.Y.Z`.
+
+[v0.2.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/core%2Fv0.2.0
 
 ## [v0.1.7] — 2026-05-09
 
