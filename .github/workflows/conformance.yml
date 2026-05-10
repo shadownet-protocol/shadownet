@@ -46,17 +46,17 @@ jobs:
     name: Python SDK — schema conformance
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Checkout shadownet-specs
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: shadownet-protocol/shadownet-specs
           ref: ${{ env.SPECS_REF }}
           path: shadownet-specs
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "py/uv.lock"
@@ -77,10 +77,10 @@ jobs:
     name: Wire-level — Go reference servers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25.x"
           check-latest: true

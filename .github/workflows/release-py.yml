@@ -28,10 +28,10 @@ jobs:
       name: pypi
       url: https://pypi.org/p/shadownet
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "py/uv.lock"
@@ -82,7 +82,7 @@ jobs:
         # No `password:` — OIDC binding via the `pypi` environment.
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: py/dist/*
           generate_release_notes: true
