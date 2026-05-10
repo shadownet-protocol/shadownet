@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 // issuerSetup creates an issuer keypair and a did:key DID for it. While

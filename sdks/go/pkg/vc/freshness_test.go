@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 func TestFreshnessRoundtrip(t *testing.T) {

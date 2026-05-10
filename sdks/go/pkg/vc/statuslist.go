@@ -14,8 +14,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 // StatusList is a bit-indexed revocation list per the W3C BitstringStatusList

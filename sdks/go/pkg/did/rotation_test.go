@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 func TestRotationIssueVerifyRoundtrip(t *testing.T) {

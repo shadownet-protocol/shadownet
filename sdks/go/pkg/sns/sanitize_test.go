@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
 )
 
 // failingStore is a RecordStore that always returns an error containing a

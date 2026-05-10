@@ -20,17 +20,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/internal/config"
-	"github.com/shadownet-protocol/shadownet-go/pgstore"
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
-	"github.com/shadownet-protocol/shadownet-go/pkg/keyguard"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/scaserver"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storesqlite"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/internal/config"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pgstore"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/keyguard"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/scaserver"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storemem"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storesqlite"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 type fileConfig struct {

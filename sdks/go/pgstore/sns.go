@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // SNSRecordStore implements sns.RecordStore against Postgres. Local keys are

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storemem"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // instantMethod is a synchronous ProofMethod for tests: every Start returns

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 // VerificationMethod is one Ed25519 key embedded in a DID document.

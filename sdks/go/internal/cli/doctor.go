@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 // Doctor implements `shadownet doctor`. It performs a few sanity checks

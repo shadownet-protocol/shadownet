@@ -1,4 +1,4 @@
-module github.com/shadownet-protocol/shadownet-go
+module github.com/shadownet-protocol/shadownet/sdks/go
 
 go 1.25.0
 

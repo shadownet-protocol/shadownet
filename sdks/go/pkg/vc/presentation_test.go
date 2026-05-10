@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 func TestPresentationRoundtrip(t *testing.T) {

@@ -1,19 +1,21 @@
-# shadownet-go
+# Shadownet — Go SDK
 
 Go SDK and reference server binaries for the [Shadownet protocol](https://github.com/shadownet-protocol/shadownet-specs).
+
+> **Note (`v0.2.0` — module path change).** This SDK was previously published as `github.com/shadownet-protocol/shadownet-go`. Starting with `v0.2.0` it is published as `github.com/shadownet-protocol/shadownet/sdks/go` from the [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet) monorepo. See [`MIGRATION.md`](../../MIGRATION.md) for the full set of changes for existing consumers; the older `v0.1.x` releases stay reachable on the previous repo.
 
 ## Status
 
 v0.1 protocol implementation: SDK, reference SCA + SNS servers, and CLI. Implements [RFC-0001 through RFC-0006](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs). RFC-0007 (MCP) is intentionally out of scope — that's the Sidecar surface, owned by the Python implementation in `hermes-social`.
 
-## What this repo is
+## What this is
 
-Two Go modules in one repository:
+Two Go modules in this directory:
 
-- **`github.com/shadownet-protocol/shadownet-go`** — the SDK (`pkg/*`) plus reference SCA + SNS server binaries (`cmd/*-server`) and the operator CLI (`cmd/shadownet`). Memory + SQLite storage drivers; zero pgx in the dependency graph.
-- **`github.com/shadownet-protocol/shadownet-go/pgstore`** — a separate submodule that adds the Postgres backend. Operators who want PG depend on it explicitly; everyone else stays clean of `github.com/jackc/pgx/v5`.
+- **`github.com/shadownet-protocol/shadownet/sdks/go`** — the SDK (`pkg/*`) plus reference SCA + SNS server binaries (`cmd/*-server`) and the operator CLI (`cmd/shadownet`). Memory + SQLite storage drivers; zero pgx in the dependency graph.
+- **`github.com/shadownet-protocol/shadownet/sdks/go/pgstore`** — a separate submodule that adds the Postgres backend. Operators who want PG depend on it explicitly; everyone else stays clean of `github.com/jackc/pgx/v5`.
 
-It is not "the" Shadownet implementation. It is one of several language SDKs (alongside `shadownet-py` and `shadownet-ts`); cross-implementation interop is verified by [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-specs/blob/main/DEVELOPMENT.md).
+It is not "the" Shadownet implementation — it is one of several language SDKs. The Python SDK lives at [`../py/`](../py/) in this same repo; cross-implementation interop is verified by [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance).
 
 ## Quickstart
 
@@ -22,7 +24,7 @@ It is not "the" Shadownet implementation. It is one of several language SDKs (al
 The published container images and a sample [`docker-compose.yml`](./deploy/docker-compose.yml) bring an SCA and SNS up on loopback in one command:
 
 ```sh
-go install github.com/shadownet-protocol/shadownet-go/cmd/shadownet@latest
+go install github.com/shadownet-protocol/shadownet/sdks/go/cmd/shadownet@latest
 cd deploy
 shadownet keygen --out ./sca-issuer.jwk
 shadownet keygen --out ./sns-provider.jwk
@@ -39,14 +41,14 @@ The compose stack uses `InstantApprovalProofMethod` (see warning below) and bind
 
 ```go
 import (
-    "github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-    "github.com/shadownet-protocol/shadownet-go/pkg/did"
-    "github.com/shadownet-protocol/shadownet-go/pkg/vc"
-    "github.com/shadownet-protocol/shadownet-go/pkg/a2a"
+    "github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+    "github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+    "github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
+    "github.com/shadownet-protocol/shadownet/sdks/go/pkg/a2a"
 )
 ```
 
-API documentation: [pkg.go.dev/github.com/shadownet-protocol/shadownet-go](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go).
+API documentation: [pkg.go.dev/github.com/shadownet-protocol/shadownet/sdks/go](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/sdks/go).
 
 ### CLI
 
@@ -65,8 +67,7 @@ shadownet doctor --sca https://sca.example --sns https://sns.example
 ## Layout
 
 ```
-shadownet-go/                          # main module — no pgx
-├── go.work                            # links pgstore for local builds
+sdks/go/                               # main module — no pgx
 ├── pkg/                               # public, importable; semver-stable
 │   ├── crypto/                        Ed25519, JWS sign/verify (EdDSA only via go-jose v4)
 │   ├── did/                           did:key, did:web (TLS 1.3, 16 KiB cap, Cache-Control)
@@ -93,7 +94,7 @@ shadownet-go/                          # main module — no pgx
 ├── build/                             Dockerfiles for all four reference binaries
 └── deploy/                            sample docker-compose stack + YAML configs
 
-pgstore/                               # github.com/shadownet-protocol/shadownet-go/pgstore
+pgstore/                               # github.com/shadownet-protocol/shadownet/sdks/go/pgstore
 ├── go.mod                             depends on parent + jackc/pgx/v5
 ├── schema.sql + sca.go + sns.go       Postgres-backed Store impls
 └── cmd/{sca,sns}-server/              -pg binary variants (memory + sqlite + postgres drivers)
@@ -118,11 +119,11 @@ Configuration is YAML with `SHADOWNET_<SECTION>_<KEY>` env-var overrides. See [`
 
 ## Distribution
 
-Tagged releases (`v0.1.x` while the spec is at v0.1) publish:
+Tagged releases publish:
 
-- **Go modules** — both auto-indexed at pkg.go.dev on tag:
-  - [`github.com/shadownet-protocol/shadownet-go`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go) — SDK + default binaries.
-  - [`github.com/shadownet-protocol/shadownet-go/pgstore`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet-go/pgstore) — Postgres backend; tagged `pgstore/v0.1.x`.
+- **Go modules** — both auto-indexed at pkg.go.dev on tag. Monorepo tag scheme: the main module is tagged `sdks/go/vX.Y.Z`, and the pgstore submodule is tagged `sdks/go/pgstore/vX.Y.Z` (Go requires the directory prefix on tags from sub-module subtrees).
+  - [`github.com/shadownet-protocol/shadownet/sdks/go`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/sdks/go) — SDK + default binaries.
+  - [`github.com/shadownet-protocol/shadownet/sdks/go/pgstore`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/sdks/go/pgstore) — Postgres backend.
 - **Container images** (linux/amd64 + linux/arm64; `:latest` tracks the highest non-pre-release tag):
   - `ghcr.io/shadownet-protocol/sca-server:<tag>` — SCA, memory + sqlite drivers. Self-host default.
   - `ghcr.io/shadownet-protocol/sns-server:<tag>` — SNS, memory + sqlite drivers. Self-host default.
@@ -162,7 +163,7 @@ Teams that need any of these as part of the binary itself should fork `cmd/{sca,
 
 ## Contributing
 
-Development conventions live in [`CLAUDE.md`](./CLAUDE.md). Quick gate before sending a PR:
+See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) at the repo root for the full contributor guide. Quick gate before sending a PR (run from this directory):
 
 ```sh
 go test -race -count=1 ./...

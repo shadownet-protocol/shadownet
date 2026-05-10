@@ -3,7 +3,7 @@
 package a2a
 
 import (
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 // AgentCardPath is the well-known location for an A2A agent card.

@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // MaxCSRLifetime caps the (exp - iat) window of a CSR JWT. RFC-0004 does not

@@ -1,14 +1,27 @@
 # Changelog
 
-All notable changes to `shadownet-py` are recorded here. The format follows
+All notable changes to the Shadownet Python SDK (`shadownet` on PyPI) are
+recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [PEP 440](https://peps.python.org/pep-0440/) versioning. Releases
 track the protocol version they implement; while the spec is at `v0.1` the
-SDK ships as `0.1.x`.
+SDK ships as `0.x.y`. In the monorepo, tags use the
+`sdks/py/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
-_Nothing yet — track changes here as they land on `main`._
+## [0.2.0] — TBD
+
+### Changed
+
+- Project moved from
+  [`shadownet-protocol/shadownet-py`](https://github.com/shadownet-protocol/shadownet-py)
+  into the [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet)
+  monorepo at `sdks/py/`. The PyPI distribution name (`shadownet`), the
+  importable module (`shadownet`), and the public API are unchanged —
+  `pip install shadownet` and existing imports continue to work without
+  modification. Repository URLs in package metadata now point at the new
+  monorepo. See [`MIGRATION.md`](../../MIGRATION.md) for the full notes.
 
 ## [0.1.3] — 2026-05-03
 

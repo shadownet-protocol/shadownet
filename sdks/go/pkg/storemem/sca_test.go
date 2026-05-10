@@ -5,9 +5,9 @@ package storemem_test
 import (
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca/storetest"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca/storetest"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storemem"
 )
 
 func TestSCASessionStore(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pgstore"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pgstore"
 )
 
 // TestOpenConcurrentSchemaApply exercises the same-database co-tenant race:

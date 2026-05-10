@@ -8,8 +8,8 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
 )
 
 // RunConfig wires a configured *sca.Issuer to a hardened HTTP listener.

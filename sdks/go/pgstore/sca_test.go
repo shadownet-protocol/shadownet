@@ -9,9 +9,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pgstore"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca/storetest"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pgstore"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca/storetest"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // Version stamped on every wire artifact this package emits.

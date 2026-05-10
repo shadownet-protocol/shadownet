@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-DEFAULT_SPECS_PATH = Path(__file__).resolve().parents[2] / "shadownet-specs"
+# Default assumes shadownet-specs is cloned alongside the shadownet monorepo
+# (i.e. <workspace>/shadownet/sdks/py/tests/conftest.py and
+# <workspace>/shadownet-specs/). CI overrides via SHADOWNET_SPECS_PATH.
+DEFAULT_SPECS_PATH = Path(__file__).resolve().parents[4] / "shadownet-specs"
 
 
 @pytest.fixture(scope="session")

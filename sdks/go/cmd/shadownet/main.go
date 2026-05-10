@@ -8,7 +8,7 @@ package main
 import (
 	"os"
 
-	"github.com/shadownet-protocol/shadownet-go/internal/cli"
+	"github.com/shadownet-protocol/shadownet/sdks/go/internal/cli"
 )
 
 // version is stamped at build time by the release pipeline via

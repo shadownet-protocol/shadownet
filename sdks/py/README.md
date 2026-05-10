@@ -1,12 +1,14 @@
-# shadownet-py
+# Shadownet — Python SDK
 
 [![PyPI](https://img.shields.io/pypi/v/shadownet)](https://pypi.org/project/shadownet/)
 [![Python](https://img.shields.io/pypi/pyversions/shadownet)](https://pypi.org/project/shadownet/)
-[![CI](https://github.com/shadownet-protocol/shadownet-py/actions/workflows/ci.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet-py/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
+[![CI](https://github.com/shadownet-protocol/shadownet/actions/workflows/py.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/py.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](../../LICENSE)
 [![Typed](https://img.shields.io/badge/typing-PEP%20561-blue)](./src/shadownet/py.typed)
 
 Python SDK for the [Shadownet protocol](https://github.com/shadownet-protocol/shadownet-specs). Implements the v0.1 RFCs in idiomatic, async, fully-typed Python.
+
+> **Note (`0.2.0` — repository move).** This SDK previously lived at [`shadownet-protocol/shadownet-py`](https://github.com/shadownet-protocol/shadownet-py). Starting with `0.2.0` it ships from the [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet) monorepo at `sdks/py/`. The PyPI package name (`shadownet`) is unchanged — `pip install shadownet` and existing imports continue to work. See [`MIGRATION.md`](../../MIGRATION.md) for details.
 
 ## What this is
 
@@ -25,7 +27,7 @@ It is consumed by:
 - [`hermes-social`](https://github.com/meghancampbel9/hermes-social) — the Sidecar reference implementation.
 - `shadownet-cloud` — the multi-tenant Sidecar host (forthcoming).
 
-Interop with `shadownet-go` and `shadownet-ts` is verified at the wire level by `shadownet-conformance`.
+Interop with the [Go SDK](../go/) (in this same repo) and a planned TypeScript SDK is verified at the wire level by [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance).
 
 ## Install
 
@@ -139,7 +141,7 @@ uv run ruff format .           # format
 uv run mypy src/shadownet      # strict typing
 ```
 
-Engineering conventions and contribution rules live in [`CLAUDE.md`](./CLAUDE.md).
+See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) at the repo root for the full contributor guide.
 
 ## Specifications
 
@@ -149,7 +151,7 @@ Engineering conventions and contribution rules live in [`CLAUDE.md`](./CLAUDE.md
 
 ## Versioning
 
-Releases track the protocol version they implement (`0.1.x` while the spec is at v0.1). Pre-releases use the PEP 440 form (`0.1.0rc1`) and the matching git tag (`v0.1.0-rc.1`). Per-release changes are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
+Releases track the protocol version they implement (`0.x.y` while the spec is at v0.1). Pre-releases use the PEP 440 form (`0.2.0rc1`) and the matching git tag (`sdks/py/v0.2.0-rc.1`). The monorepo tag scheme prefixes each subtree's tags with its directory: `sdks/py/vX.Y.Z` for the Python SDK, `sdks/go/vX.Y.Z` for the Go SDK, `sdks/go/pgstore/vX.Y.Z` for the Postgres backend. Per-release changes are recorded in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## License
 

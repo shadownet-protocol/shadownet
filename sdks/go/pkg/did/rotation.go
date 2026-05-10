@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 // KeyRotationStatement is the JWT defined in RFC-0002 §Key rotation: a signed

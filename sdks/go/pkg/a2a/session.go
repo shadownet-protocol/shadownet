@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 // MaxSessionTokenLifetime is the cap from RFC-0006 §Session token: a

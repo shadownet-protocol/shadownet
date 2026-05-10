@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
 )
 
 // SNSRecordStore is an in-memory sns.RecordStore. Local keys are

@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
 )
 
 // InstantApproval is the method name advertised in policy.json for

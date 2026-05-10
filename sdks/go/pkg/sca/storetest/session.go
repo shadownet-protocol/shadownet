@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
 )
 
 // SessionStoreFactory returns a fresh, empty SessionStore per call.

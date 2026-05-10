@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 func TestKeyResolverProducesEd25519Document(t *testing.T) {

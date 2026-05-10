@@ -1,8 +1,8 @@
-# shadownet-go/pgstore
+# Shadownet — Go SDK / pgstore
 
 Postgres-backed `Store` implementations for the Shadownet reference SCA and SNS servers, plus the `-pg` binary variants that ship them.
 
-This is a **separate Go module** from the parent [`shadownet-go`](https://github.com/shadownet-protocol/shadownet-go) repo. Importing `pkg/sca`, `pkg/sns`, or anything else from the parent does **not** pull `github.com/jackc/pgx/v5` into your dependency graph; only deployments that need Postgres add this submodule explicitly.
+This is a **separate Go module** from the parent SDK at [`../`](../). Importing `pkg/sca`, `pkg/sns`, or anything else from the parent does **not** pull `github.com/jackc/pgx/v5` into your dependency graph; only deployments that need Postgres add this submodule explicitly.
 
 ## Use cases
 
@@ -17,7 +17,7 @@ For everything else, the default `cmd/{sca,sns}-server` binaries with their buil
 As a library (operators wiring their own binary):
 
 ```sh
-go get github.com/shadownet-protocol/shadownet-go/pgstore
+go get github.com/shadownet-protocol/shadownet/sdks/go/pgstore
 ```
 
 As container images (operators using the reference binaries):

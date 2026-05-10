@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // SessionStore persists proof sessions through their RFC-0004 lifecycle.

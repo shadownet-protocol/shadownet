@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
 )
 
 // MaxClientResponseBytes caps the size of a JSON-RPC response body.

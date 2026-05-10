@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/crypto"
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 // MaxSubjectAuthLifetime is the (exp - iat) cap from RFC-0004 §Common.

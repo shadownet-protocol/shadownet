@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
 )
 
 // RevocationStoreFactory returns a fresh, empty RevocationStore per call.

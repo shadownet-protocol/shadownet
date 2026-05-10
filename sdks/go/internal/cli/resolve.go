@@ -11,8 +11,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
 )
 
 // Resolve implements `shadownet resolve <shadowname>`.

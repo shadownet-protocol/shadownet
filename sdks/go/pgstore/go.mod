@@ -1,10 +1,10 @@
-module github.com/shadownet-protocol/shadownet-go/pgstore
+module github.com/shadownet-protocol/shadownet/sdks/go/pgstore
 
 go 1.25.0
 
 require (
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/shadownet-protocol/shadownet-go v0.1.7
+	github.com/shadownet-protocol/shadownet/sdks/go v0.2.0
 )
 
 require (
@@ -34,4 +34,4 @@ require (
 // dev, and `go test ./...` from this directory). Consumers ignore replace
 // directives in required modules and resolve the version pinned in `require`
 // above from the proxy.
-replace github.com/shadownet-protocol/shadownet-go => ../
+replace github.com/shadownet-protocol/shadownet/sdks/go => ../

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/did"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/did"
 )
 
 // DefaultMaxRecordBytes caps a single record body. Records are tens of bytes

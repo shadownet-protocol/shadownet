@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // IssuanceStoreFactory returns a fresh, empty IssuanceStore per call.

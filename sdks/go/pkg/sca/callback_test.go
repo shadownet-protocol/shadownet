@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
 )
 
 // fastBackoff is the test schedule: 5 zero-delay attempts so the retry path

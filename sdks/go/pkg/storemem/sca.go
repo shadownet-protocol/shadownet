@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sca"
-	"github.com/shadownet-protocol/shadownet-go/pkg/vc"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sca"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/vc"
 )
 
 // SCASessionStore is an in-memory sca.SessionStore.

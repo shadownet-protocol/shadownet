@@ -8,8 +8,8 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/httpx"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/httpx"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
 )
 
 // RunConfig wires a configured *sns.Server to a hardened HTTP listener.

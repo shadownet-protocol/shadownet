@@ -6,9 +6,9 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns/storetest"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storesqlite"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns/storetest"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storesqlite"
 )
 
 func TestSNSRecordStore(t *testing.T) {

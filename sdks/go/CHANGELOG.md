@@ -1,12 +1,30 @@
 # Changelog
 
-All notable changes to `shadownet-go` are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
-follows semantic versioning (`vMAJOR.MINOR.PATCH`). Pre-1.0, breaking changes
-land in minor bumps.
+All notable changes to the Shadownet Go SDK are documented here. The format
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
+project follows semantic versioning (`vMAJOR.MINOR.PATCH`). Pre-1.0, breaking
+changes land in minor bumps.
 
-The `pgstore` submodule is versioned in lockstep with the main module
-(`pgstore/vX.Y.Z`).
+The `pgstore` submodule is versioned in lockstep with the main module:
+historically tagged `pgstore/vX.Y.Z`; in the monorepo it is tagged
+`sdks/go/pgstore/vX.Y.Z` to satisfy Go's directory-prefix tag requirement for
+sub-module subtrees. The main module is tagged `sdks/go/vX.Y.Z`.
+
+## [Unreleased]
+
+## [v0.2.0] — TBD
+
+### Changed
+
+- **BREAKING:** the project moved from
+  [`shadownet-protocol/shadownet-go`](https://github.com/shadownet-protocol/shadownet-go)
+  into the [`shadownet-protocol/shadownet`](https://github.com/shadownet-protocol/shadownet)
+  monorepo at `sdks/go/`. The Go module path is now
+  `github.com/shadownet-protocol/shadownet/sdks/go`; the `pgstore` submodule
+  path is now `github.com/shadownet-protocol/shadownet/sdks/go/pgstore`.
+  Update imports accordingly. The `v0.1.x` releases on the previous repo
+  remain reachable to existing consumers via the old import path. See
+  [`MIGRATION.md`](../../MIGRATION.md) for the full migration notes.
 
 ## [v0.1.7] — 2026-05-09
 

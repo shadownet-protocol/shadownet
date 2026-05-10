@@ -5,9 +5,9 @@ package storemem_test
 import (
 	"testing"
 
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns"
-	"github.com/shadownet-protocol/shadownet-go/pkg/sns/storetest"
-	"github.com/shadownet-protocol/shadownet-go/pkg/storemem"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/sns/storetest"
+	"github.com/shadownet-protocol/shadownet/sdks/go/pkg/storemem"
 )
 
 func TestSNSRecordStore(t *testing.T) {
