@@ -117,7 +117,12 @@ class SendInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     contact_id: str = Field(alias="contactId")
-    interaction: str = Field(pattern=r"^urn:")
+    # RFC-0006 / RFC-0007: `interaction` is OPTIONAL. Default envelope is
+    # free-form text (payload = {"text": "...", "hints"?: {...}}); typed
+    # Interaction Profiles become an opt-in for cases where structure
+    # prevents ambiguity. When present, the value MUST be a URN per
+    # RFC-0006 § Interaction Profiles.
+    interaction: str | None = Field(default=None, pattern=r"^urn:")
     intent_id: str | None = Field(default=None, alias="intentId")
     payload: dict[str, Any]
 

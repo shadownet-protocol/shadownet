@@ -100,10 +100,12 @@ def register_shadownet_tools(
     @server.tool(name="social_send", description="Send a Shadownet-enveloped message over A2A.")
     async def _send(
         contactId: str,
-        interaction: str,
         payload: dict[str, Any],
+        interaction: str | None = None,
         intentId: str | None = None,
     ) -> SendOutput:
+        # RFC-0006 / RFC-0007: interaction is optional; omit for the
+        # default free-form envelope (payload = {"text": ..., "hints"?: ...}).
         return await sidecar.social_send(
             SendInput.model_validate(
                 {

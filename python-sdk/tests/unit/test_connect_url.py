@@ -21,11 +21,50 @@ def test_inline_round_trip() -> None:
 
 
 def test_handoff_round_trip() -> None:
-    url = format_connect_url(base_url="https://app.example", handoff="ABC123")
+    # RFC-0008 grammar requires 16-128 chars; the well-known example is
+    # ``8K3J9-W2L1Q-Y5R7T`` (17 chars).
+    handoff = "8K3J9-W2L1Q-Y5R7T"
+    url = format_connect_url(base_url="https://app.example", handoff=handoff)
     parsed = parse_connect_url(url)
-    assert parsed == ConnectURL(base_url="https://app.example", handoff="ABC123")
+    assert parsed == ConnectURL(base_url="https://app.example", handoff=handoff)
     assert parsed.is_handoff is True
     assert parsed.is_inline is False
+
+
+def test_rejects_short_handoff() -> None:
+    """RFC-0008 grammar: handoff MUST match [A-Za-z0-9._~-]{16,128}."""
+    with pytest.raises(ConnectURLInvalid, match=r"\[A-Za-z0-9\._~-\]"):
+        parse_connect_url("shadownet://connect?base=https://x.example&handoff=tooshort")
+
+
+def test_rejects_handoff_with_disallowed_chars() -> None:
+    """RFC-0008 grammar restricts handoff to URL-safe characters."""
+    bad = "A" * 16 + "@bad"  # 20 chars but '@' isn't in the allowed set
+    with pytest.raises(ConnectURLInvalid, match=r"\[A-Za-z0-9\._~-\]"):
+        parse_connect_url(f"shadownet://connect?base=https://x.example&handoff={bad}")
+
+
+def test_rejects_fragment() -> None:
+    """RFC-0008: fragment MUST NOT be present."""
+    with pytest.raises(ConnectURLInvalid, match="fragment is not permitted"):
+        parse_connect_url("shadownet://connect?base=https://x.example&token=t#frag")
+
+
+def test_rejects_http_for_non_loopback() -> None:
+    """RFC-0008: http:// allowed only for loopback hosts."""
+    with pytest.raises(ConnectURLInvalid, match="loopback"):
+        parse_connect_url("shadownet://connect?base=http://example.com&token=t")
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["localhost", "127.0.0.1", "[::1]"],
+)
+def test_accepts_http_for_loopback(host: str) -> None:
+    """RFC-0007 § URL constraints + RFC-0008: localhost/127.0.0.1/::1 allowed."""
+    url = f"shadownet://connect?base=http://{host}:8080&token=t"
+    parsed = parse_connect_url(url)
+    assert parsed.base_url == f"http://{host}:8080"
 
 
 def test_strips_trailing_slash_from_base() -> None:

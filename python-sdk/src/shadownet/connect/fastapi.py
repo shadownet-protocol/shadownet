@@ -6,8 +6,11 @@ the caller's signal that they want this module loaded. Importing without
 the extra raises :class:`ImportError`, not a Shadownet error, so the
 misconfiguration is obvious.
 
-RFC-0007 amendments A, B (handoff), and C are implemented here. Amendment D
-is an MCP tool, registered separately via :mod:`shadownet.mcp.register`.
+Implements the server-side surfaces from RFC-0008 (Sidecar Onboarding
+Surface): integration-bundle endpoint, ``shadownet://connect`` handoff
+resolver, and content-negotiated ``<base>/connect/<host>`` install pages.
+The long-poll MCP tool ``social_inbox_wait`` (RFC-0007) is registered
+separately via :mod:`shadownet.mcp.register`.
 
 Sidecar operators mount this router on their FastAPI app, supplying a
 ``bundle_builder`` callable that resolves a bearer token to an
@@ -16,7 +19,8 @@ Sidecar operators mount this router on their FastAPI app, supplying a
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+import contextlib
+from typing import TYPE_CHECKING, Any, Protocol
 
 try:
     from fastapi import APIRouter, Header, HTTPException, Path, Request, Response
@@ -34,20 +38,32 @@ if TYPE_CHECKING:
     from shadownet.connect.bundle import IntegrationBundle
 
 __all__ = [
+    "DEFAULT_HANDOFF_TTL_SECONDS",
     "DEFAULT_HOST_TEMPLATES",
-    "HandoffPayload",
+    "RESERVED_HOST_SLUGS",
     "HostTemplate",
     "build_connect_router",
 ]
 
 _log = get_logger(__name__)
 
+# RFC-0008 § Connect URL scheme recommends 15-minute handoff TTL.
+DEFAULT_HANDOFF_TTL_SECONDS = 15 * 60
+
+# `raw` is the universal escape hatch slug, owned by the spec; operators
+# MUST NOT register their own template under this name per
+# examples/well-known-hosts.md.
+RESERVED_HOST_SLUGS: frozenset[str] = frozenset({"raw"})
+
 
 class HostTemplate(Protocol):
     """Renders an :class:`IntegrationBundle` into per-host install copy.
 
-    Implementations live next to the sidecar operator (or use the
-    :data:`DEFAULT_HOST_TEMPLATES` we ship for the well-known hosts).
+    Three content-negotiation paths per RFC-0008 § Content negotiation:
+    HTML for browsers, plain text for ``curl``/``wget``, JSON for
+    automation. Every JSON response MUST carry a top-level
+    ``"shadownet:v": "0.1"`` marker — implementations using
+    :func:`build_connect_router` get this enforced.
     """
 
     def render_text(self, bundle: IntegrationBundle) -> str:
@@ -56,30 +72,117 @@ class HostTemplate(Protocol):
     def render_html(self, bundle: IntegrationBundle) -> str:
         """Self-contained HTML install page (for browser flows)."""
 
+    def render_json(self, bundle: IntegrationBundle) -> dict[str, Any]:
+        """Host-specific JSON. Top-level keys per ``well-known-hosts.md``.
+
+        Implementations MUST omit the ``shadownet:v`` field — the router
+        injects it after this returns so the marker is uniform across hosts.
+        """
+
 
 class _HermesAgentTemplate:
-    """Default `hermes-agent` host snippet — generic Hermes plugin install."""
+    """`hermes-agent` snippet — Hermes plugin install incantation + env vars.
+
+    Per ``examples/well-known-hosts.md`` the JSON form is
+    ``{ "shadownet:v": "0.1", "configSchema": {...} }``; ``configSchema``
+    is the shape the plugin's ``requires_env`` prompts expect.
+    """
 
     def render_text(self, bundle: IntegrationBundle) -> str:
         return _HERMES_TEXT_TEMPLATE.format(
-            base_url=bundle.mcp_endpoint.rsplit("/u/", 1)[0],
+            base_url=_strip_user_path(bundle.mcp_endpoint),
             shadowname=bundle.shadowname,
         )
 
     def render_html(self, bundle: IntegrationBundle) -> str:
         return _HTML_WRAPPER.format(
-            title=f"Install Shadownet for Hermes Agent — {bundle.shadowname}",
+            title=f"Install Shadownet for Hermes Agent - {bundle.shadowname}",
             heading=f"Hermes Agent install for {bundle.shadowname}",
             snippet=self.render_text(bundle),
         )
 
+    def render_json(self, bundle: IntegrationBundle) -> dict[str, Any]:
+        return {
+            "configSchema": {
+                "SHADOWNET_TOKEN": {
+                    "prompt": "Shadownet account bearer token",
+                    "required": True,
+                },
+                "SHADOWNET_SIDECAR_BASE_URL": {
+                    "prompt": "Sidecar base URL",
+                    "default": _strip_user_path(bundle.mcp_endpoint),
+                },
+            },
+            "install_command": "hermes plugins install shadownet-protocol/shadownet --enable",
+            "shadowname": bundle.shadowname,
+        }
+
+
+class _ClaudeCodeTemplate:
+    """`claude-code` snippet — marketplace install + .mcp.json block.
+
+    Per ``examples/well-known-hosts.md`` the JSON form is
+    ``{ "shadownet:v": "0.1", "mcpServerConfig": {...} }`` — a single MCP
+    server entry the host can drop into its settings file.
+    """
+
+    def render_text(self, bundle: IntegrationBundle) -> str:
+        return _CLAUDE_CODE_TEXT_TEMPLATE.format(
+            mcp_endpoint=bundle.mcp_endpoint,
+            shadowname=bundle.shadowname,
+        )
+
+    def render_html(self, bundle: IntegrationBundle) -> str:
+        return _HTML_WRAPPER.format(
+            title=f"Install Shadownet for Claude Code - {bundle.shadowname}",
+            heading=f"Claude Code install for {bundle.shadowname}",
+            snippet=self.render_text(bundle),
+        )
+
+    def render_json(self, bundle: IntegrationBundle) -> dict[str, Any]:
+        return {
+            "mcpServerConfig": {
+                "shadownet": {
+                    "type": "http",
+                    "url": bundle.mcp_endpoint,
+                    "headers": {"Authorization": "Bearer ${SHADOWNET_TOKEN}"},
+                }
+            },
+            "marketplace": "github:shadownet-protocol/shadownet",
+            "shadowname": bundle.shadowname,
+        }
+
+
+class _CursorTemplate:
+    """`cursor` snippet — same MCP server block shape as Claude Code."""
+
+    def render_text(self, bundle: IntegrationBundle) -> str:
+        return _CURSOR_TEXT_TEMPLATE.format(mcp_endpoint=bundle.mcp_endpoint)
+
+    def render_html(self, bundle: IntegrationBundle) -> str:
+        return _HTML_WRAPPER.format(
+            title=f"Install Shadownet for Cursor - {bundle.shadowname}",
+            heading=f"Cursor install for {bundle.shadowname}",
+            snippet=self.render_text(bundle),
+        )
+
+    def render_json(self, bundle: IntegrationBundle) -> dict[str, Any]:
+        return {
+            "mcpServerConfig": {
+                "shadownet": {
+                    "url": bundle.mcp_endpoint,
+                    "headers": {"Authorization": "Bearer <paste-token>"},
+                }
+            },
+        }
+
 
 class _RawBundleTemplate:
-    """The universal escape hatch — returns the bundle JSON unchanged.
+    """The universal escape hatch — returns the integration bundle JSON.
 
-    ``render_text`` returns the JSON; ``render_html`` wraps it in a viewer
-    page. Sidecars typically short-circuit ``/connect/raw`` to skip HTML
-    entirely and return JSON directly.
+    Per RFC-0008 § Content negotiation, ``/connect/raw`` with
+    ``Accept: application/json`` returns the canonical bundle (already
+    carrying ``shadownet:v``).
     """
 
     def render_text(self, bundle: IntegrationBundle) -> str:
@@ -87,71 +190,82 @@ class _RawBundleTemplate:
 
     def render_html(self, bundle: IntegrationBundle) -> str:
         return _HTML_WRAPPER.format(
-            title=f"Shadownet integration bundle — {bundle.shadowname}",
+            title=f"Shadownet integration bundle - {bundle.shadowname}",
             heading=f"Integration bundle for {bundle.shadowname}",
             snippet=self.render_text(bundle),
         )
 
+    def render_json(self, bundle: IntegrationBundle) -> dict[str, Any]:
+        # The bundle already carries `shadownet:v`; the router merges below
+        # using setdefault so the bundle's value wins.
+        return bundle.model_dump(by_alias=True, mode="json")
+
 
 DEFAULT_HOST_TEMPLATES: dict[str, HostTemplate] = {
     "hermes-agent": _HermesAgentTemplate(),
+    "claude-code": _ClaudeCodeTemplate(),
+    "cursor": _CursorTemplate(),
     "raw": _RawBundleTemplate(),
 }
-"""Default per-host snippet renderers.
+"""Default per-host snippet renderers covering the well-known slugs that
+have a stable JSON shape today (hermes-agent, claude-code, cursor, raw).
 
-The bundled set is intentionally minimal — operators add more (Claude Code,
-OpenClaw, Cursor, Continue, …) by passing their own dict to
-:func:`build_connect_router`. ``raw`` is always present unless explicitly
-overridden, since it's the universal fallback any plugin can call.
+Operators add more (OpenClaw, Continue, …) by passing their own dict to
+:func:`build_connect_router`. The ``raw`` slug is reserved and cannot be
+overridden — operator-supplied entries under the reserved name are
+ignored.
 """
-
-
-class HandoffPayload(Protocol):
-    """The body of a ``POST /v1/account/connect/handoff/{code}`` call."""
-
-    client_nonce: str
 
 
 def build_connect_router(
     *,
     bundle_builder: Callable[[str], Awaitable[IntegrationBundle | None]],
     host_templates: dict[str, HostTemplate] | None = None,
-    handoff_resolver: Callable[[str, str], Awaitable[str | None]] | None = None,
+    handoff_resolver: Callable[[str], Awaitable[str | None]] | None = None,
+    handoff_ttl_seconds: int = DEFAULT_HANDOFF_TTL_SECONDS,
 ) -> APIRouter:
-    """Build a FastAPI router exposing the bundle + connect endpoints.
+    """Build a FastAPI router exposing the RFC-0008 onboarding surface.
 
     Args:
         bundle_builder: callable the router invokes on every authenticated
             request. Receives the raw bearer token (without ``Bearer``
             prefix) and returns the tenant's :class:`IntegrationBundle`,
             or ``None`` if the token is invalid (router maps to 401).
-        host_templates: per-host snippet renderers. Defaults to
-            :data:`DEFAULT_HOST_TEMPLATES` (`hermes-agent` + `raw`).
-            Pass an override dict to ship more hosts.
-        handoff_resolver: callable for the RFC-0007 amendment B handoff
-            flow. Receives the handoff short-code and the client's nonce;
-            returns the resolved bearer token (or ``None`` if the code
-            is invalid / expired / already consumed). When ``None``
-            (default), the handoff endpoint returns 501 Not Implemented.
+        host_templates: per-host snippet renderers. The router starts from
+            :data:`DEFAULT_HOST_TEMPLATES` and merges in this dict, with
+            one exception: keys in :data:`RESERVED_HOST_SLUGS` (today:
+            ``raw``) MUST NOT be overridden — operator entries under
+            reserved names are ignored and a warning is logged.
+        handoff_resolver: callable for the RFC-0008 handoff flow.
+            Receives the handoff short-code and returns the resolved
+            bearer token (or ``None`` if the code is invalid, expired,
+            or already consumed). When ``None`` (default), the handoff
+            endpoint is not mounted.
+        handoff_ttl_seconds: TTL advertised in the handoff response's
+            ``expires_in`` field. Defaults to 15 minutes per RFC-0008.
 
     The router mounts:
 
-    - ``GET /v1/account/me/integration-bundle`` → JSON bundle
-    - ``GET /v1/account/tenants/me/integration-bundle`` → deprecated alias
-      for the same; logged at WARNING for operators to spot stale clients
-    - ``GET /connect`` → HTML index of available hosts
-    - ``GET /connect/{host}`` → templated install snippet
-    - ``GET /connect/raw`` → bundle JSON (same as the first endpoint, but
-      reachable via the connect-pages URL family for symmetry)
-    - ``POST /v1/account/connect/handoff/{code}`` → handoff resolver
+    - ``GET /v1/account/me/integration-bundle`` -> JSON bundle
+    - ``GET /v1/account/tenants/me/integration-bundle`` -> deprecated alias
+    - ``GET /connect`` -> HTML index / JSON list of available hosts
+    - ``GET /connect/{host}`` -> templated install snippet
+      (Accept: text/html, text/plain, or application/json)
+    - ``GET /connect/raw`` -> canonical bundle JSON
+    - ``POST /v1/account/connect/handoff/{code}`` -> handoff resolver
       (only if ``handoff_resolver`` was provided)
     """
-    templates = dict(DEFAULT_HOST_TEMPLATES)
+    templates: dict[str, HostTemplate] = dict(DEFAULT_HOST_TEMPLATES)
     if host_templates is not None:
-        templates.update(host_templates)
-    if "raw" not in templates:
-        # Always keep raw as the universal escape hatch.
-        templates["raw"] = _RawBundleTemplate()
+        for name, tmpl in host_templates.items():
+            if name in RESERVED_HOST_SLUGS:
+                _log.warning(
+                    "ignoring operator-supplied template for reserved host slug %r "
+                    "(RFC-0008 examples/well-known-hosts.md reserves this name)",
+                    name,
+                )
+                continue
+            templates[name] = tmpl
 
     router = APIRouter()
 
@@ -196,15 +310,21 @@ def build_connect_router(
     ) -> Response:
         bundle = await _resolve_bundle(authorization)
         host_list = sorted(templates.keys())
-        wants_html = "text/html" in (request.headers.get("accept") or "")
-        if wants_html:
+        accept = request.headers.get("accept") or ""
+        if "text/html" in accept:
             items = "\n".join(f'  <li><a href="/connect/{h}">{h}</a></li>' for h in host_list)
             return _html_response(
-                title=f"Shadownet connect — {bundle.shadowname}",
+                title=f"Shadownet connect - {bundle.shadowname}",
                 heading="Available hosts",
                 snippet=f"<ul>\n{items}\n</ul>",
             )
-        return JSONResponse(content={"hosts": host_list, "shadowname": bundle.shadowname})
+        return JSONResponse(
+            content={
+                "shadownet:v": "0.1",
+                "hosts": host_list,
+                "shadowname": bundle.shadowname,
+            }
+        )
 
     @router.get("/connect/raw")
     async def _connect_raw(authorization: str | None = Header(default=None)) -> Response:
@@ -217,14 +337,10 @@ def build_connect_router(
         host: str = Path(..., min_length=1, max_length=64),
         authorization: str | None = Header(default=None),
     ) -> Response:
-        # Reject host slugs that contain path traversal characters before
-        # they reach the registry lookup. FastAPI's path converter already
-        # rejects `/`, but anything else permitted in a path segment
-        # (including `.`, `..`) reaches us here.
-        if host in {".", ".."} or host == "raw":
-            # `raw` is handled by the dedicated route above; falling here
-            # means the dedicated route did not match (shouldn't happen)
-            # so reject.
+        # Path-traversal guard before registry lookup. FastAPI's path
+        # converter already rejects literal `/`; `.` and `..` and the
+        # reserved `raw` slug land here.
+        if host in {".", "..", "raw"}:
             raise HTTPException(status_code=404, detail={"error": "unknown_host", "host": host})
         template = templates.get(host)
         if template is None:
@@ -239,6 +355,13 @@ def build_connect_router(
             )
         bundle = await _resolve_bundle(authorization)
         accept = request.headers.get("accept") or ""
+        if "application/json" in accept:
+            payload = dict(template.render_json(bundle))
+            # RFC-0008: every application/json response from a connect
+            # route MUST carry top-level "shadownet:v": "0.1". Inject if
+            # the template didn't already include it.
+            payload.setdefault("shadownet:v", "0.1")
+            return JSONResponse(content=payload)
         if "text/html" in accept:
             return _html_response_raw(template.render_html(bundle))
         return PlainTextResponse(content=template.render_text(bundle))
@@ -248,19 +371,14 @@ def build_connect_router(
         @router.post("/v1/account/connect/handoff/{code}")
         async def _handoff(
             request: Request,
-            code: str = Path(..., min_length=8, max_length=128),
+            code: str = Path(..., min_length=16, max_length=128),
         ) -> Response:
-            body = await request.json()
-            client_nonce = body.get("client_nonce") if isinstance(body, dict) else None
-            if not isinstance(client_nonce, str) or len(client_nonce) < 16:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "missing_or_short_client_nonce",
-                        "shadownet:v": "0.1",
-                    },
-                )
-            token = await handoff_resolver(code, client_nonce)
+            # RFC-0008 § Connect URL scheme: v0.1 servers MUST IGNORE
+            # client_nonce if present (the field is RESERVED for future
+            # use). The request body MAY be empty; we parse leniently.
+            with contextlib.suppress(ValueError):
+                _ = await request.json()
+            token = await handoff_resolver(code)
             if token is None:
                 raise HTTPException(
                     status_code=404,
@@ -270,7 +388,7 @@ def build_connect_router(
                 content={
                     "shadownet:v": "0.1",
                     "token": token,
-                    "expires_in": 600,
+                    "expires_in": handoff_ttl_seconds,
                 }
             )
 
@@ -285,9 +403,19 @@ def _html_response_raw(html: str) -> Response:
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
+def _strip_user_path(mcp_endpoint: str) -> str:
+    """Derive the sidecar base URL from a per-tenant MCP endpoint.
+
+    ``https://app.sh4dow.org/u/alice/mcp`` -> ``https://app.sh4dow.org``.
+    Used by snippet templates so the user gets the base URL pre-filled.
+    """
+    if "/u/" in mcp_endpoint:
+        return mcp_endpoint.rsplit("/u/", 1)[0]
+    return mcp_endpoint
+
+
 _HERMES_TEXT_TEMPLATE = """\
 # Hermes Agent - Shadownet install for {shadowname}
-# (RFC-0007 amendments A-D)
 
 # 1. Install the plugin (one-time):
 hermes plugins install shadownet-protocol/shadownet --enable
@@ -296,8 +424,39 @@ hermes plugins install shadownet-protocol/shadownet --enable
 export SHADOWNET_TOKEN="<paste the token shown on your account page>"
 export SHADOWNET_SIDECAR_BASE_URL="{base_url}"
 
-# 3. Start (or restart) Hermes. The plugin will wire up MCP, skills,
-#    and the long-poll inbox automatically.
+# 3. Start (or restart) Hermes. The plugin wires up MCP, skills, and
+#    the long-poll inbox automatically.
+"""
+
+_CLAUDE_CODE_TEXT_TEMPLATE = """\
+# Claude Code - Shadownet install for {shadowname}
+
+# 1. Add the marketplace and install the plugin:
+/plugin marketplace add github:shadownet-protocol/shadownet
+/plugin install shadownet@shadownet-protocol
+
+# 2. Add this MCP server entry to your settings (.mcp.json snippet):
+# {{
+#   "mcpServers": {{
+#     "shadownet": {{
+#       "type": "http",
+#       "url": "{mcp_endpoint}",
+#       "headers": {{ "Authorization": "Bearer ${{SHADOWNET_TOKEN}}" }}
+#     }}
+#   }}
+# }}
+
+# 3. Export SHADOWNET_TOKEN in your shell, then restart Claude Code.
+"""
+
+_CURSOR_TEXT_TEMPLATE = """\
+# Cursor - paste this MCP server entry in Cursor settings:
+# {{
+#   "shadownet": {{
+#     "url": "{mcp_endpoint}",
+#     "headers": {{ "Authorization": "Bearer <paste-token>" }}
+#   }}
+# }}
 """
 
 _HTML_WRAPPER = """\

@@ -29,21 +29,27 @@ class IntegrationBundle(BaseModel):
     """Per-tenant bootstrap payload returned by the integration-bundle endpoint.
 
     Plugins fetch this once at install time using the user's account bearer
-    token. ``webhook_secret`` is nullable (only set when a webhook subscriber
-    is registered). All other fields are REQUIRED.
+    token. Patterns mirror ``schemas/onboarding/integration-bundle.schema.json``
+    in shadownet-specs.
 
     Capability discovery is via ``supported_features`` — plugins SHOULD check
     ``supports_inbox_wait`` before opening the long-poll loop and
     ``supports_webhook`` before issuing ``social_set_webhook``.
     """
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
+    # RFC-0008 schema sets ``additionalProperties: false``. Mirror that here:
+    # an unexpected field signals a malformed response, not a forward-compat
+    # extension. (Forward-compat for the *values* — supported_features,
+    # tool_names, event_names — is handled at the array level.)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, frozen=True)
 
     shadownet_v: Literal["0.1"] = Field(alias="shadownet:v")
-    did: str = Field(min_length=1)
-    shadowname: str = Field(min_length=1)
-    mcp_endpoint: str = Field(min_length=1)
-    webhook_secret: str | None = None
+    # RFC-0002 + RFC-0008: did:key for individuals, did:web for organizations.
+    did: str = Field(pattern=r"^did:(key|web):")
+    # RFC-0005: local@provider form.
+    shadowname: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,63}@[A-Za-z0-9.-]+$")
+    mcp_endpoint: str = Field(pattern=r"^https://")
+    webhook_secret: str | None
     supported_features: list[str] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
     event_names: list[str] = Field(default_factory=list)

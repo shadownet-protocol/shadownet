@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from shadownet.connect.errors import ConnectURLInvalid
 
-# RFC-0007 amendment B — shadownet://connect URL scheme.
+# RFC-0008 § Connect URL scheme.
 #
 # Two forms, both supported:
 #   shadownet://connect?base=<https-url>&token=<jwt>       (inline)
@@ -19,6 +20,12 @@ from shadownet.connect.errors import ConnectURLInvalid
 
 CONNECT_SCHEME = "shadownet"
 CONNECT_HOST = "connect"
+
+# RFC-0008 grammar: Handoff = <opaque short-code, [A-Za-z0-9._~-]{16,128}>.
+_HANDOFF_PATTERN = re.compile(r"^[A-Za-z0-9._~-]{16,128}$")
+
+# RFC-0008 + RFC-0007 § URL constraints: http:// allowed only for loopback.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 __all__ = [
     "CONNECT_HOST",
@@ -53,19 +60,24 @@ class ConnectURL:
 def parse_connect_url(url: str) -> ConnectURL:
     """Parse a ``shadownet://connect?...`` URL into a :class:`ConnectURL`.
 
-    Raises :class:`ConnectURLInvalid` on any deviation from RFC-0007
-    amendment B (wrong scheme, wrong host, missing/duplicate ``base``,
-    both/neither of ``token`` and ``handoff``, malformed ``base``).
+    Raises :class:`ConnectURLInvalid` on any deviation from RFC-0008
+    § Connect URL scheme (wrong scheme, wrong host, missing/duplicate
+    ``base``, both/neither of ``token`` and ``handoff``, malformed
+    ``base``, fragment present, handoff not matching the documented
+    grammar, http base with a non-loopback host).
     """
     parsed = urlparse(url)
     if parsed.scheme != CONNECT_SCHEME:
         raise ConnectURLInvalid(f"scheme must be {CONNECT_SCHEME!r}, got {parsed.scheme!r}")
     if parsed.netloc != CONNECT_HOST:
         raise ConnectURLInvalid(f"host must be {CONNECT_HOST!r}, got {parsed.netloc!r}")
-    # Path is permitted but must be empty or "/" — anything else is ambiguous
-    # versus future amendments that might add path segments.
+    # RFC-0008: path MUST be empty or "/". Future revisions MAY define
+    # path segments; v0.1 clients reject anything else.
     if parsed.path not in ("", "/"):
         raise ConnectURLInvalid(f"unexpected path component: {parsed.path!r}")
+    # RFC-0008: fragment MUST NOT be present.
+    if parsed.fragment:
+        raise ConnectURLInvalid("fragment is not permitted on shadownet://connect URLs")
 
     query = parse_qs(parsed.query, keep_blank_values=False)
     base_values = query.get("base") or []
@@ -78,6 +90,13 @@ def parse_connect_url(url: str) -> ConnectURL:
         raise ConnectURLInvalid(f"base must use http(s) scheme, got {base_parsed.scheme!r}")
     if not base_parsed.netloc:
         raise ConnectURLInvalid("base URL missing host")
+    if base_parsed.scheme == "http":
+        # RFC-0008 + RFC-0007 § URL constraints: http allowed only for loopback.
+        host = (base_parsed.hostname or "").lower()
+        if host not in _LOOPBACK_HOSTS:
+            raise ConnectURLInvalid(
+                f"http:// base allowed only for loopback hosts; got {host!r}"
+            )
 
     token_values = query.get("token") or []
     handoff_values = query.get("handoff") or []
@@ -86,10 +105,16 @@ def parse_connect_url(url: str) -> ConnectURL:
     if bool(token_values) == bool(handoff_values):
         raise ConnectURLInvalid("exactly one of 'token' or 'handoff' must be set")
 
+    handoff_value = handoff_values[0] if handoff_values else None
+    if handoff_value is not None and not _HANDOFF_PATTERN.match(handoff_value):
+        raise ConnectURLInvalid(
+            "handoff code must match [A-Za-z0-9._~-]{16,128} (RFC-0008 grammar)"
+        )
+
     return ConnectURL(
         base_url=base.rstrip("/"),
         token=token_values[0] if token_values else None,
-        handoff=handoff_values[0] if handoff_values else None,
+        handoff=handoff_value,
     )
 
 
@@ -110,6 +135,16 @@ def format_connect_url(
     parsed = urlparse(base_url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise ConnectURLInvalid(f"invalid base URL: {base_url!r}")
+    if parsed.scheme == "http":
+        host = (parsed.hostname or "").lower()
+        if host not in _LOOPBACK_HOSTS:
+            raise ConnectURLInvalid(
+                f"http:// base allowed only for loopback hosts; got {host!r}"
+            )
+    if handoff is not None and not _HANDOFF_PATTERN.match(handoff):
+        raise ConnectURLInvalid(
+            "handoff code must match [A-Za-z0-9._~-]{16,128} (RFC-0008 grammar)"
+        )
 
     params: dict[str, str] = {"base": base_url.rstrip("/")}
     if token is not None:

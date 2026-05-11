@@ -143,3 +143,46 @@ def test_bundle_is_frozen() -> None:
     bundle = IntegrationBundle.model_validate(_bundle_payload())
     with pytest.raises(ValidationError):
         bundle.shadowname = "mallory@evil.example"  # type: ignore[misc]
+
+
+def test_bundle_rejects_unknown_did_method() -> None:
+    """RFC-0008: did MUST start with did:key: or did:web:."""
+    payload = _bundle_payload(did="did:example:custom")
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_rejects_non_https_mcp_endpoint() -> None:
+    """RFC-0008 schema requires mcp_endpoint to start with https://."""
+    payload = _bundle_payload(mcp_endpoint="http://app.example/u/alice/mcp")
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_rejects_malformed_shadowname() -> None:
+    """RFC-0005: shadowname is local@provider."""
+    payload = _bundle_payload(shadowname="not-an-shadowname")
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_rejects_extra_fields() -> None:
+    """RFC-0008 schema sets additionalProperties: false."""
+    payload = _bundle_payload()
+    payload["unexpected"] = "field"
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_accepts_did_key_for_individuals() -> None:
+    """RFC-0002 + RFC-0008: did:key for individuals."""
+    payload = _bundle_payload(did="did:key:z6MkSubjectPubkey")
+    bundle = IntegrationBundle.model_validate(payload)
+    assert bundle.did.startswith("did:key:")
+
+
+def test_bundle_accepts_explicit_null_webhook_secret() -> None:
+    """webhook_secret is REQUIRED but MAY be null when no subscriber exists."""
+    payload = _bundle_payload(webhook_secret=None)
+    bundle = IntegrationBundle.model_validate(payload)
+    assert bundle.webhook_secret is None

@@ -196,60 +196,189 @@ def test_custom_host_template_can_be_registered() -> None:
     assert f"user-of-{VALID_TOKEN}" in r.text
 
 
-def test_default_host_templates_contains_raw() -> None:
-    """Sanity: any caller depending on DEFAULT_HOST_TEMPLATES gets 'raw' for free."""
-    assert "raw" in DEFAULT_HOST_TEMPLATES
-    assert "hermes-agent" in DEFAULT_HOST_TEMPLATES
+def test_default_host_templates_contains_well_known_slugs() -> None:
+    """Sanity: defaults include the slugs RFC-0008 examples ship with."""
+    for slug in ("hermes-agent", "claude-code", "cursor", "raw"):
+        assert slug in DEFAULT_HOST_TEMPLATES
 
 
-def test_handoff_endpoint_returns_501_when_not_configured() -> None:
+def test_connect_host_json_carries_shadownet_v_marker() -> None:
+    """RFC-0008: every application/json response on /connect/<host> MUST
+    carry a top-level ``shadownet:v: 0.1`` field."""
+    client = TestClient(_build_app())
+    for slug in ("hermes-agent", "claude-code", "cursor"):
+        r = client.get(
+            f"/connect/{slug}",
+            headers={
+                "Authorization": f"Bearer {VALID_TOKEN}",
+                "Accept": "application/json",
+            },
+        )
+        assert r.status_code == 200, slug
+        assert r.json()["shadownet:v"] == "0.1", slug
+
+
+def test_connect_raw_json_is_the_bundle() -> None:
+    client = TestClient(_build_app())
+    r = client.get(
+        "/connect/raw",
+        headers={"Authorization": f"Bearer {VALID_TOKEN}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["shadownet:v"] == "0.1"
+    assert "mcp_endpoint" in body
+
+
+def test_connect_index_json_carries_marker() -> None:
+    """The index endpoint's JSON form also carries the universal marker."""
+    client = TestClient(_build_app())
+    r = client.get("/connect", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["shadownet:v"] == "0.1"
+    assert "hermes-agent" in body["hosts"]
+
+
+def test_claude_code_json_has_mcp_server_config() -> None:
+    """RFC-0008 well-known-hosts.md: claude-code JSON form returns
+    ``{ "shadownet:v": "0.1", "mcpServerConfig": {...} }``."""
+    client = TestClient(_build_app())
+    r = client.get(
+        "/connect/claude-code",
+        headers={"Authorization": f"Bearer {VALID_TOKEN}", "Accept": "application/json"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["shadownet:v"] == "0.1"
+    assert "mcpServerConfig" in body
+    assert "shadownet" in body["mcpServerConfig"]
+    assert body["mcpServerConfig"]["shadownet"]["url"].startswith("https://")
+
+
+def test_hermes_agent_json_has_config_schema() -> None:
+    """RFC-0008 well-known-hosts.md: hermes-agent JSON form returns
+    ``{ "shadownet:v": "0.1", "configSchema": {...} }``."""
+    client = TestClient(_build_app())
+    r = client.get(
+        "/connect/hermes-agent",
+        headers={"Authorization": f"Bearer {VALID_TOKEN}", "Accept": "application/json"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["shadownet:v"] == "0.1"
+    assert "configSchema" in body
+    assert "SHADOWNET_TOKEN" in body["configSchema"]
+
+
+def test_raw_slug_cannot_be_overridden() -> None:
+    """RFC-0008 examples/well-known-hosts.md reserves ``raw`` — operator
+    templates supplied under this slug MUST be ignored."""
+
+    class _Hijack:
+        def render_text(self, bundle):
+            return "MALICIOUS"
+
+        def render_html(self, bundle):
+            return "<p>malicious</p>"
+
+        def render_json(self, bundle):
+            return {"malicious": True}
+
+    client = TestClient(_build_app(extra_hosts={"raw": _Hijack()}))
+    r = client.get(
+        "/connect/raw", headers={"Authorization": f"Bearer {VALID_TOKEN}"}
+    )
+    assert r.status_code == 200
+    # The default raw template (canonical bundle JSON) is what we get,
+    # not the operator-supplied template.
+    body = r.json()
+    assert "mcp_endpoint" in body
+    assert "malicious" not in body
+
+
+def test_handoff_endpoint_not_mounted_when_unconfigured() -> None:
     """Without a handoff_resolver, the endpoint is not mounted at all (404)."""
     client = TestClient(_build_app())
-    r = client.post(
-        "/v1/account/connect/handoff/SHORT-CODE-123",
-        json={"client_nonce": "n" * 32},
-    )
+    r = client.post("/v1/account/connect/handoff/SHORT-CODE-123456", json={})
     assert r.status_code == 404
 
 
 def test_handoff_endpoint_resolves_valid_code() -> None:
-    async def resolver(code: str, nonce: str) -> str | None:
-        if code == "GOOD-CODE-1234" and len(nonce) >= 16:
+    """RFC-0008: server takes only the code; request body MAY be empty."""
+
+    async def resolver(code: str) -> str | None:
+        if code == "GOOD-CODE-12345678":
             return "minted-token"
         return None
 
     client = TestClient(_build_app(handoff_resolver=resolver))
-    r = client.post(
-        "/v1/account/connect/handoff/GOOD-CODE-1234",
-        json={"client_nonce": "n" * 32},
-    )
+    r = client.post("/v1/account/connect/handoff/GOOD-CODE-12345678", json={})
     assert r.status_code == 200
     body = r.json()
+    assert body["shadownet:v"] == "0.1"
     assert body["token"] == "minted-token"
-    assert body["expires_in"] == 600
+    # RFC-0008 RECOMMENDED TTL is 15 minutes; that's the default our
+    # router advertises in expires_in.
+    assert body["expires_in"] == 15 * 60
 
 
-def test_handoff_rejects_short_nonce() -> None:
-    async def resolver(code: str, nonce: str) -> str | None:
+def test_handoff_ignores_client_nonce_per_spec() -> None:
+    """RFC-0008: v0.1 servers MUST IGNORE the reserved field ``client_nonce``
+    if present. (Before the spec landed, our router REQUIRED it and
+    rejected absences with 400 — that's the bug this test guards
+    against regressing.)
+    """
+
+    async def resolver(code: str) -> str | None:
         return "minted-token"
 
     client = TestClient(_build_app(handoff_resolver=resolver))
-    r = client.post(
-        "/v1/account/connect/handoff/GOOD-CODE-1234",
-        json={"client_nonce": "short"},
+    # Whether the client sends client_nonce or not, the server resolves
+    # the code identically.
+    r1 = client.post(
+        "/v1/account/connect/handoff/GOOD-CODE-12345678", json={"client_nonce": "n" * 32}
     )
-    assert r.status_code == 400
-    assert r.json()["detail"]["error"] == "missing_or_short_client_nonce"
+    r2 = client.post("/v1/account/connect/handoff/GOOD-CODE-12345678", json={})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json()["token"] == r2.json()["token"]
 
 
 def test_handoff_invalid_code_returns_404() -> None:
-    async def resolver(code: str, nonce: str) -> str | None:
+    async def resolver(code: str) -> str | None:
         return None
 
     client = TestClient(_build_app(handoff_resolver=resolver))
-    r = client.post(
-        "/v1/account/connect/handoff/BAD-CODE-1234",
-        json={"client_nonce": "n" * 32},
-    )
+    r = client.post("/v1/account/connect/handoff/BAD-CODE-12345678", json={})
     assert r.status_code == 404
     assert r.json()["detail"]["error"] == "handoff_invalid_or_expired"
+
+
+def test_handoff_custom_ttl() -> None:
+    """Operators may override the advertised TTL."""
+
+    async def resolver(code: str) -> str | None:
+        return "minted-token"
+
+    app = _build_app(handoff_resolver=resolver)
+    # Rebuild router with custom TTL by calling build_connect_router directly.
+    from shadownet.connect.fastapi import build_connect_router
+
+    custom_app = FastAPI()
+    accepted = {VALID_TOKEN}
+
+    async def bb(token: str):
+        return _bundle_for(token) if token in accepted else None
+
+    custom_app.include_router(
+        build_connect_router(
+            bundle_builder=bb, handoff_resolver=resolver, handoff_ttl_seconds=300
+        )
+    )
+    client = TestClient(custom_app)
+    r = client.post("/v1/account/connect/handoff/GOOD-CODE-12345678", json={})
+    assert r.status_code == 200
+    assert r.json()["expires_in"] == 300
+    # Reference the unused fixture so ruff doesn't complain.
+    _ = app
