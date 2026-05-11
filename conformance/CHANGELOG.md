@@ -8,6 +8,24 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-11
+
+### Added
+
+- New `tests/sidecar/test_0008_connect_url.py` — 12 wire-level conformance
+  tests for the `shadownet://connect` URL scheme (RFC-0008, draft).
+  Tests run pure against the python-sdk reference implementation (no
+  sidecar target required); marked `@pytest.mark.draft` so they're
+  skipped on the default CI lane until RFC-0008 graduates.
+
+### Changed
+
+- Runtime SDK pin bumped to `shadownet>=0.3.0,<0.4` to track the
+  python-sdk 0.3.0 release that introduces the `shadownet.connect`
+  module (integration-bundle, connect-url, MCP-session helpers).
+
+[0.3.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/conformance%2Fv0.3.0
+
 ## [0.2.0] — 2026-05-11
 
 ### Changed
