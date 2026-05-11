@@ -135,9 +135,7 @@ def test_supports_inbox_wait_keys_off_feature_flag() -> None:
     )
     assert with_feature.supports_inbox_wait is True
 
-    without_feature = IntegrationBundle.model_validate(
-        _bundle_payload(supported_features=["mcp"])
-    )
+    without_feature = IntegrationBundle.model_validate(_bundle_payload(supported_features=["mcp"]))
     assert without_feature.supports_inbox_wait is False
 
 
