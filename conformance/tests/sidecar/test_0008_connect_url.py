@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import pytest
-
 from shadownet.connect.url import (
     ConnectURL,
     ConnectURLInvalid,
@@ -55,9 +54,7 @@ def test_rejects_wrong_scheme():
 def test_rejects_both_token_and_handoff():
     """Exactly one of token or handoff MUST be set."""
     with pytest.raises(ConnectURLInvalid):
-        parse_connect_url(
-            f"shadownet://connect?base=https://x&token=t&handoff={VALID_HANDOFF}"
-        )
+        parse_connect_url(f"shadownet://connect?base=https://x&token=t&handoff={VALID_HANDOFF}")
 
 
 @pytest.mark.rfc("0008", section="connect-url", requirement="reject_neither")
