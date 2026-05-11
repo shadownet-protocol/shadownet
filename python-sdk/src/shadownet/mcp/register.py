@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from shadownet.logging import get_logger
 from shadownet.mcp.tools import (
+    INBOX_WAIT_MAX_TIMEOUT_SECONDS,
     AddContactInput,
     AddContactOutput,
     AuditOutput,
@@ -15,6 +16,8 @@ from shadownet.mcp.tools import (
     IdentityOutput,
     InboxInput,
     InboxOutput,
+    InboxWaitInput,
+    InboxWaitOutput,
     PresentInput,
     PresentOutput,
     ResolveInput,
@@ -39,7 +42,7 @@ if TYPE_CHECKING:
 # are normative for required arguments. Optional tools (`social_present`,
 # `social_audit`) are off by default.
 
-OPTIONAL_TOOLS = frozenset({"present", "audit"})
+OPTIONAL_TOOLS = frozenset({"present", "audit", "inbox_wait"})
 
 _log = get_logger(__name__)
 
@@ -97,10 +100,12 @@ def register_shadownet_tools(
     @server.tool(name="social_send", description="Send a Shadownet-enveloped message over A2A.")
     async def _send(
         contactId: str,
-        interaction: str,
         payload: dict[str, Any],
+        interaction: str | None = None,
         intentId: str | None = None,
     ) -> SendOutput:
+        # RFC-0006 / RFC-0007: interaction is optional; omit for the
+        # default free-form envelope (payload = {"text": ..., "hints"?: ...}).
         return await sidecar.social_send(
             SendInput.model_validate(
                 {
@@ -160,6 +165,29 @@ def register_shadownet_tools(
         return await sidecar.social_set_webhook(
             SetWebhookInput(url=url, secret=secret, events=events)
         )
+
+    if "inbox_wait" in optional:
+
+        @server.tool(
+            name="social_inbox_wait",
+            description=(
+                "Long-poll for inbox events (RFC-0007 amendment D). Holds the call "
+                "open until events arrive or the timeout elapses. Background "
+                "workers only — do not invoke from an LLM reasoning loop."
+            ),
+        )
+        async def _inbox_wait(
+            timeout_seconds: int = 30,
+            lastEventId: str | None = None,
+        ) -> InboxWaitOutput:
+            # Clamp server-side per RFC-0007 amendment D so misbehaving clients
+            # can't pin a connection beyond the documented limit.
+            clamped = max(0, min(timeout_seconds, INBOX_WAIT_MAX_TIMEOUT_SECONDS))
+            return await sidecar.social_inbox_wait(
+                InboxWaitInput.model_validate(
+                    {"timeout_seconds": clamped, "lastEventId": lastEventId}
+                )
+            )
 
     if "present" in optional:
 

@@ -10,6 +10,65 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-11
+
+### Added
+
+- New module `shadownet.connect` for one-token install bootstrap
+  (RFC-0007 amendments A–D, draft) — CLIENT side helpers:
+  - `fetch_integration_bundle(http, base_url, token) -> IntegrationBundle`
+    — fetches the per-tenant `/v1/account/me/integration-bundle` endpoint
+    (RFC-0007 amendment A), returning the canonical bootstrap payload
+    (DID, shadowname, MCP endpoint, supported features, tool/event
+    names, version) plus the optional webhook secret.
+  - `parse_connect_url(url) -> ConnectURL` and `format_connect_url(...)`
+    — symmetric helpers for the standardized `shadownet://connect?…` URL
+    scheme (RFC-0007 amendment B). Supports both inline (`?token=`) and
+    handoff (`?handoff=`) forms.
+  - `ShadownetMCPSession(base_url, shadowname, token)` — async-context
+    wrapper around `mcp.ClientSession` for a Shadownet sidecar's MCP
+    endpoint. Provides `call_tool(name, args)` proxying and
+    `inbox_loop(handler, *, timeout_seconds, on_error)` — a long-poll
+    loop over the new `social_inbox_wait` MCP tool (RFC-0007 amendment
+    D). Handles `last_event_id` cursor advancement and exponential
+    backoff on transient errors. Used by the Hermes plugin and the
+    Claude Code background monitor for NAT-free inbound delivery on
+    hosts whose MCP SDK can't dispatch custom notifications.
+- `shadownet.connect.errors` adds `ConnectError`, `BundleFetchError`,
+  `BundleSchemaError`, `ConnectURLInvalid`, `MCPSessionError`.
+- New module `shadownet.connect.fastapi` (behind the `[fastapi]` extra)
+  — SERVER side helpers for sidecar implementations (hermes-social,
+  shadownet-cloud, …):
+  - `build_connect_router(*, bundle_builder, host_templates, handoff_resolver)`
+    returns a `fastapi.APIRouter` exposing the bundle endpoint
+    (`GET /v1/account/me/integration-bundle`, with a legacy alias for
+    the previous `/tenants/me/` path), `<base>/connect/<host>` content-
+    negotiated install pages, `<base>/connect/raw` JSON, and an optional
+    `POST /v1/account/connect/handoff/{code}` resolver.
+  - `DEFAULT_HOST_TEMPLATES` ships with `hermes-agent` and `raw` out of
+    the box; operators add `claude-code`, `openclaw`, `cursor`,
+    `continue`, … by passing their own `HostTemplate` instances.
+- `shadownet.mcp.tools` adds `InboxWaitInput`, `InboxWaitEvent`,
+  `InboxWaitOutput` and the `INBOX_WAIT_MAX_TIMEOUT_SECONDS` (90) clamp
+  constant (RFC-0007 amendment D).
+- `shadownet.mcp.protocol.Sidecar` Protocol gains
+  `social_inbox_wait(input) -> InboxWaitOutput` for sidecar implementors.
+- `shadownet.mcp.register.register_shadownet_tools` now accepts
+  `"inbox_wait"` in `include_optional`. When opted in, the tool is
+  registered with server-side timeout clamping at 90 seconds, dispatching
+  to `sidecar.social_inbox_wait`.
+
+### Notes
+
+- All additions are additive. No breaking changes to the 0.2.x public
+  API. Existing webhook signing (`X-Shadownet-Sidecar-Sig` +
+  `X-Webhook-Signature` compatibility header) and `verify_webhook` are
+  unchanged — webhooks remain the canonical transport for
+  sidecar-to-sidecar delivery, OpenClaw plugins, and any non-MCP
+  integration.
+
+[0.3.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.0
+
 ## [0.2.1] — 2026-05-11
 
 ### Added

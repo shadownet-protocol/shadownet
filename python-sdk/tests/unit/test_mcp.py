@@ -21,6 +21,9 @@ from shadownet.mcp.tools import (
     IdentityOutput,
     InboxInput,
     InboxOutput,
+    InboxWaitEvent,
+    InboxWaitInput,
+    InboxWaitOutput,
     PresentInput,
     PresentOutput,
     ResolveInput,
@@ -100,6 +103,20 @@ class FakeSidecar:
     async def social_set_webhook(self, input: SetWebhookInput) -> SetWebhookOutput:
         self.calls.append(("social_set_webhook", input))
         return SetWebhookOutput()
+
+    async def social_inbox_wait(self, input: InboxWaitInput) -> InboxWaitOutput:
+        self.calls.append(("social_inbox_wait", input))
+        return InboxWaitOutput(
+            events=[
+                InboxWaitEvent(
+                    eventId="evt-1",
+                    event="inbox.message",
+                    occurredAt=1,
+                    data={"from": "alice@x.example", "body": "hi"},
+                )
+            ],
+            nextEventId="evt-1",
+        )
 
     async def social_present(self, input: PresentInput) -> PresentOutput:
         self.calls.append(("social_present", input))
@@ -196,3 +213,62 @@ async def test_set_webhook_unregister_with_empty_url() -> None:
     register_shadownet_tools(server, sidecar)
     await server.call_tool("social_set_webhook", {"url": "", "secret": "x" * 32})
     assert any(name == "social_set_webhook" for name, _ in sidecar.calls)
+
+
+# --- social_inbox_wait (RFC-0007 amendment D) -------------------------------
+
+
+async def test_inbox_wait_not_registered_without_optional() -> None:
+    """The long-poll tool is opt-in via include_optional={'inbox_wait'}."""
+    server = FastMCP(name="test")
+    register_shadownet_tools(server, FakeSidecar())
+    tools = await server.list_tools()
+    names = {t.name for t in tools}
+    assert "social_inbox_wait" not in names
+
+
+async def test_inbox_wait_registered_with_optional() -> None:
+    server = FastMCP(name="test")
+    register_shadownet_tools(server, FakeSidecar(), include_optional={"inbox_wait"})
+    tools = await server.list_tools()
+    names = {t.name for t in tools}
+    assert "social_inbox_wait" in names
+
+
+async def test_inbox_wait_dispatches_to_sidecar() -> None:
+    server = FastMCP(name="test")
+    sidecar = FakeSidecar()
+    register_shadownet_tools(server, sidecar, include_optional={"inbox_wait"})
+    result = await server.call_tool(
+        "social_inbox_wait", {"timeout_seconds": 5, "lastEventId": "evt-0"}
+    )
+    body = result[0][0].text
+    parsed = json.loads(body)
+    assert parsed["events"][0]["eventId"] == "evt-1"
+    assert parsed["nextEventId"] == "evt-1"
+    # The sidecar received the InboxWaitInput with the cursor we passed.
+    inbox_wait_calls = [c for c in sidecar.calls if c[0] == "social_inbox_wait"]
+    assert len(inbox_wait_calls) == 1
+    received_input: InboxWaitInput = inbox_wait_calls[0][1]  # type: ignore[assignment]
+    assert received_input.last_event_id == "evt-0"
+    assert received_input.timeout_seconds == 5
+
+
+async def test_inbox_wait_clamps_oversized_timeout() -> None:
+    """Per RFC-0007 amendment D, server clamps timeout_seconds to ≤90."""
+    server = FastMCP(name="test")
+    sidecar = FakeSidecar()
+    register_shadownet_tools(server, sidecar, include_optional={"inbox_wait"})
+    await server.call_tool("social_inbox_wait", {"timeout_seconds": 600})
+    received: InboxWaitInput = sidecar.calls[-1][1]  # type: ignore[assignment]
+    assert received.timeout_seconds == 90
+
+
+async def test_inbox_wait_clamps_negative_timeout() -> None:
+    """Negative client values are clamped to 0 (server returns immediately)."""
+    server = FastMCP(name="test")
+    sidecar = FakeSidecar()
+    register_shadownet_tools(server, sidecar, include_optional={"inbox_wait"})
+    await server.call_tool("social_inbox_wait", {"timeout_seconds": -5})
+    received: InboxWaitInput = sidecar.calls[-1][1]  # type: ignore[assignment]
+    assert received.timeout_seconds == 0

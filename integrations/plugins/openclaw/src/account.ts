@@ -18,7 +18,8 @@ export const ShadownetChannelConfigSchema = Type.Object(
       // FormatRegistry doesn't include it, and we validate the URL at
       // request time via fetch() in src/client.ts.
       minLength: 1,
-      description: "MCP endpoint URL for your Shadow. Get from https://app.sh4dow.org/connect.",
+      description:
+        "Per-tenant MCP endpoint, e.g. https://<your-sidecar>/u/<your-shadowname>/mcp. RFC-0008-compliant Sidecars serve a copy-pasteable snippet at https://<your-sidecar>/connect/openclaw.",
     }),
     token: Type.String({
       minLength: 16,
