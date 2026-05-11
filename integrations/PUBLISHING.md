@@ -77,34 +77,62 @@ claude --plugin-dir integrations/plugins/claude-code
 /shadownet:shadownet-setup              # confirm MCP wiring
 ```
 
-## Hermes Agent skill bundle
+## Hermes Agent plugin
 
-The bundle is **served**, not published — the cloud backend exposes
-`GET /.well-known/skills/index.json` and per-skill SKILL.md endpoints. Updates
-ship as part of any backend deploy.
+Ships as a real Python plugin to PyPI under the distribution name
+`shadownet-hermes-plugin` (entry point group `hermes_agent.plugins`).
+Users install via Hermes's documented plugin install command — no
+well-known-URL skill installation step, no manual MCP config editing.
 
 ### How users install
 
 ```sh
-hermes skills install well-known:https://app.sh4dow.org/.well-known/skills/index.json
+hermes plugins install shadownet-protocol/shadownet --enable
 ```
 
-Hermes resolves the index, fetches each `SKILL.md`, and installs them under
-`~/.hermes/skills/shadownet-*`. Subsequent `hermes skills check` / `hermes
-skills update` invocations compare content hashes against the index's
-`sha256` field.
+Hermes prompts once for `SHADOWNET_TOKEN` (per the plugin's
+`requires_env`), then loads `register(ctx)` at startup. The plugin
+registers the four canonical skills via `ctx.register_skill` and a
+`shadownet` platform adapter via `ctx.register_platform`. Inbound A2A
+messages flow over the `social_inbox_wait` long-poll tool (RFC-0007
+amendment D) — no `hermes webhook subscribe` step needed.
 
-### Updating the published bundle
+Alternative one-string install (RFC-0007 amendment B):
+
+```sh
+SHADOWNET_CONNECT_URL='shadownet://connect?base=https://app.sh4dow.org&token=...' \
+  hermes plugins install shadownet-protocol/shadownet --enable
+```
+
+The plugin's `_resolve_config()` parses the connect URL and derives
+both `SHADOWNET_TOKEN` and `SHADOWNET_SIDECAR_BASE_URL` from it.
+
+### Updating the published plugin
 
 1. Edit canonical SKILL.md files at `integrations/skills/<name>/SKILL.md`.
 2. Run `make sync-skills` (or `python3 integrations/scripts/sync_skills.py`)
    to mirror them into the Claude Code + Hermes Agent plugin trees.
-3. Commit. The next backend deploy automatically serves the new bundle.
+3. Bump `integrations/plugins/hermes-agent/pyproject.toml`'s `version`
+   field (matches the `plugin.yaml` version).
+4. Commit + tag: `git tag hermes-plugin-vX.Y.Z && git push origin
+   hermes-plugin-vX.Y.Z`.
+5. A `release-hermes-plugin.yml` GitHub Actions workflow publishes the
+   wheel + sdist to PyPI via Trusted Publishing.
+
+### Legacy skill bundle (pre-RFC-0007 amendments)
+
+For users on sidecars that pre-date the amendments, the original
+well-known install path remains supported as a fallback:
+
+```sh
+hermes skills install well-known:<base>/.well-known/skills/index.json
+```
 
 The cloud loads skills from the directory configured by
-`SHADOWNET_CLOUD_INTEGRATIONS_DIR` (defaults to `<repo>/integrations`). For
-production we recommend either committing skills as part of the backend image
-or mounting a versioned volume.
+`SHADOWNET_CLOUD_INTEGRATIONS_DIR` (defaults to `<repo>/integrations`).
+The well-known endpoint is served whenever the backend is deployed —
+the well-known mechanism continues to work, but new installs should
+prefer `hermes plugins install`.
 
 ## OpenClaw plugin (npm + ClawHub)
 

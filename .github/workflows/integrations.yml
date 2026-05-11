@@ -61,6 +61,76 @@ jobs:
         # exclude this test in CI so the rest of the suite stays gated.
         run: pnpm exec vitest run --exclude 'tests/webhook.test.ts'
 
+  hermes-plugin:
+    name: Hermes Agent plugin (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/plugins/hermes-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        # The plugin's pyproject depends on shadownet>=0.3; resolve it
+        # from the sibling python-sdk checkout instead of PyPI so this
+        # job runs before the python-sdk release is cut.
+        run: |
+          uv venv
+          uv pip install --refresh -e ../../../python-sdk
+          uv pip install pytest pytest-asyncio ruff mypy
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy shadownet_hermes_plugin
+
+      - name: Pytest
+        run: uv run pytest tests/ -v
+
+  claude-monitor:
+    name: Claude Code monitor (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/plugins/claude-code/monitors
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        # PEP 723 inline metadata on inbound.py resolves shadownet at
+        # script-run time; tests need it pre-installed against the sibling
+        # python-sdk checkout.
+        run: |
+          uv venv
+          uv pip install --refresh -e ../../../../python-sdk
+          uv pip install pytest ruff
+
+      - name: Ruff lint
+        run: uv run ruff check inbound.py test_inbound.py
+
+      - name: Pytest
+        run: uv run pytest test_inbound.py -v
+
   manifests:
     name: Plugin manifest sanity
     runs-on: ubuntu-latest
