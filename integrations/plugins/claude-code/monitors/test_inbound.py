@@ -70,8 +70,27 @@ def test_resolve_config_handoff_url_rejected(monkeypatch: pytest.MonkeyPatch) ->
 def test_resolve_config_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    with pytest.raises(RuntimeError, match="SHADOWNET_TOKEN"):
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    with pytest.raises(RuntimeError, match="Token not configured"):
         inbound._resolve_config()
+
+
+def test_resolve_config_prefers_claude_plugin_connect_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plugin userConfig sets CLAUDE_PLUGIN_OPTION_CONNECT_URL; that wins
+    over a manually-exported SHADOWNET_CONNECT_URL."""
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_OPTION_CONNECT_URL",
+        "shadownet://connect?base=https://plugin-cfg.example&token=from-plugin",
+    )
+    monkeypatch.setenv(
+        "SHADOWNET_CONNECT_URL",
+        "shadownet://connect?base=https://shell-env.example&token=from-shell",
+    )
+    token, base_url, _, _ = inbound._resolve_config()
+    assert token == "from-plugin"
+    assert base_url == "https://plugin-cfg.example"
 
 
 def test_resolve_config_bad_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,8 +182,8 @@ def test_main_propagates_config_error_to_exit_code(
 ) -> None:
     monkeypatch.setenv("SHADOWNET_INBOUND", "1")
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_TOKEN", raising=False)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     assert inbound.main() == 1
 
 
@@ -175,33 +194,18 @@ def test_claude_plugin_option_inbound_enabled_activates_monitor(
     monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
     monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "true")
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_TOKEN", raising=False)
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     # Token unset, so config resolution fails -> exit 1 (NOT 0 which would
     # mean the inbound gate kept it inactive).
     assert inbound.main() == 1
-
-
-def test_resolve_config_prefers_claude_plugin_option_over_shadownet_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """CLAUDE_PLUGIN_OPTION_TOKEN wins over SHADOWNET_TOKEN; same for endpoint."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_TOKEN", "from-plugin-config")
-    monkeypatch.setenv("SHADOWNET_TOKEN", "from-shell-env")
-    monkeypatch.setenv(
-        "CLAUDE_PLUGIN_OPTION_ENDPOINT", "https://plugin-cfg.example/u/bob/mcp"
-    )
-    monkeypatch.setenv("SHADOWNET_SIDECAR_BASE_URL", "https://shell-env.example")
-    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    token, base_url, _, _ = inbound._resolve_config()
-    assert token == "from-plugin-config"
-    assert base_url == "https://plugin-cfg.example"  # /u/bob/mcp stripped
 
 
 def test_resolve_config_falls_back_to_shadownet_env_when_userconfig_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Power-user path: shell env vars still work without Claude Code."""
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_TOKEN", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_ENDPOINT", raising=False)
     monkeypatch.setenv("SHADOWNET_TOKEN", "shell-tok")
     monkeypatch.setenv("SHADOWNET_SIDECAR_BASE_URL", "https://shell.example/")

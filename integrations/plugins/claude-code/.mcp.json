@@ -1,10 +1,9 @@
 {
   "mcpServers": {
     "shadownet": {
-      "type": "http",
-      "url": "${user_config.endpoint}",
-      "headers": {
-        "Authorization": "Bearer ${user_config.token}"
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/mcp-shadownet-proxy.py",
+      "env": {
+        "SHADOWNET_CONNECT_URL": "${user_config.connect_url}"
       }
     }
   }
