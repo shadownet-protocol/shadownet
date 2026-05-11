@@ -65,8 +65,27 @@ logging.basicConfig(
 _log = logging.getLogger("shadownet.monitor")
 
 
+def _env_first(*names: str, default: str = "") -> str:
+    """Return the first env var that's set, in order. Empty string -> default."""
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return default
+
+
 def _resolve_config() -> tuple[str, str, int, bool]:
-    connect_url = os.environ.get("SHADOWNET_CONNECT_URL")
+    """Resolve runtime config from Claude Code's userConfig env vars, then
+    fall back to shell-style SHADOWNET_* env vars.
+
+    Per https://code.claude.com/docs/en/plugins-reference#user-configuration,
+    Claude Code exports userConfig values to plugin subprocesses as
+    ``CLAUDE_PLUGIN_OPTION_<KEY>`` env vars. We prefer those so the user
+    doesn't have to hand-edit a shell rc file; SHADOWNET_* env vars remain
+    a fallback for power users and for environments without a Claude Code
+    plugin context.
+    """
+    connect_url = _env_first("SHADOWNET_CONNECT_URL")
     if connect_url:
         parsed = parse_connect_url(connect_url)
         if not parsed.is_inline:
@@ -76,23 +95,36 @@ def _resolve_config() -> tuple[str, str, int, bool]:
             )
         assert parsed.token is not None
         token = parsed.token
+        # The connect URL carries the sidecar base; the monitor only needs
+        # that to derive the integration-bundle and MCP endpoints.
         base_url = parsed.base_url
     else:
-        token = os.environ.get("SHADOWNET_TOKEN", "")
-        base_url = (
-            os.environ.get("SHADOWNET_SIDECAR_BASE_URL") or DEFAULT_BASE_URL
-        ).rstrip("/")
+        token = _env_first("CLAUDE_PLUGIN_OPTION_TOKEN", "SHADOWNET_TOKEN")
+        # userConfig stores the full per-tenant MCP endpoint (so users
+        # paste exactly what /connect/claude-code shows); shell-env users
+        # historically set just the sidecar base. Accept either.
+        endpoint = _env_first("CLAUDE_PLUGIN_OPTION_ENDPOINT")
+        if endpoint:
+            # Strip the /u/<shadowname>/mcp suffix to recover the base.
+            base_url = endpoint.rsplit("/u/", 1)[0] if "/u/" in endpoint else endpoint
+        else:
+            base_url = _env_first(
+                "SHADOWNET_SIDECAR_BASE_URL", default=DEFAULT_BASE_URL
+            )
+        base_url = base_url.rstrip("/")
     if not token:
         raise RuntimeError(
-            "SHADOWNET_TOKEN (or SHADOWNET_CONNECT_URL) must be set; "
+            "Token not configured. Set it via Claude Code's userConfig prompt "
+            "(plugin enable time) or export SHADOWNET_TOKEN in your shell; "
             "mint a token at <SHADOWNET_SIDECAR_BASE_URL>/connect/claude-code."
         )
+    timeout_raw = _env_first("SHADOWNET_LONG_POLL_TIMEOUT", default="30")
     try:
-        timeout = int(os.environ.get("SHADOWNET_LONG_POLL_TIMEOUT", "30"))
+        timeout = int(timeout_raw)
     except ValueError as exc:
         raise RuntimeError("SHADOWNET_LONG_POLL_TIMEOUT must be an integer") from exc
     timeout = max(1, timeout)
-    os_notifications = os.environ.get("SHADOWNET_OS_NOTIFICATIONS", "1") == "1"
+    os_notifications = _env_first("SHADOWNET_OS_NOTIFICATIONS", default="1") == "1"
     return token, base_url, timeout, os_notifications
 
 
@@ -206,8 +238,18 @@ async def _run_monitor(token: str, base_url: str, timeout: int, os_notif: bool) 
 
 
 def main() -> int:
-    if os.environ.get("SHADOWNET_INBOUND") != "1":
-        _log.info("SHADOWNET_INBOUND not set — monitor inactive (outbound MCP only)")
+    # Inbound is opt-in. Claude Code's userConfig exposes the boolean as
+    # CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED ("true"/"false"); shell-env
+    # users set SHADOWNET_INBOUND=1. Either turns the monitor on.
+    inbound_flag = (
+        os.environ.get("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "").lower() == "true"
+        or os.environ.get("SHADOWNET_INBOUND") == "1"
+    )
+    if not inbound_flag:
+        _log.info(
+            "Inbound monitor inactive (set inbound_enabled=true in Claude Code's "
+            "plugin config, or export SHADOWNET_INBOUND=1, to enable)."
+        )
         return 0
     try:
         token, base_url, timeout, os_notif = _resolve_config()

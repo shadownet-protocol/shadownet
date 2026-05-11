@@ -8,13 +8,13 @@
       "endpoint": {
         "type": "string",
         "format": "uri",
-        "description": "MCP endpoint URL for your Shadow. Get from https://app.sh4dow.org/connect."
+        "description": "Per-tenant MCP endpoint (e.g. https://<your-sidecar>/u/<your-shadowname>/mcp). RFC-0008-compliant Sidecars serve a pre-filled snippet at https://<your-sidecar>/connect/openclaw."
       },
       "token": {
         "type": "string",
         "minLength": 16,
         "writeOnly": true,
-        "description": "Bearer token for the MCP endpoint. Mint at https://app.sh4dow.org/connect."
+        "description": "Bearer token for the MCP endpoint. Mint on your sidecar's connect page."
       }
     }
   }
