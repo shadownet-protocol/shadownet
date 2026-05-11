@@ -20,6 +20,9 @@ __all__ = [
     "InboxInput",
     "InboxItem",
     "InboxOutput",
+    "InboxWaitEvent",
+    "InboxWaitInput",
+    "InboxWaitOutput",
     "PresentInput",
     "PresentOutput",
     "ResolveInput",
@@ -114,7 +117,12 @@ class SendInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     contact_id: str = Field(alias="contactId")
-    interaction: str = Field(pattern=r"^urn:")
+    # RFC-0006 / RFC-0007: `interaction` is OPTIONAL. Default envelope is
+    # free-form text (payload = {"text": "...", "hints"?: {...}}); typed
+    # Interaction Profiles become an opt-in for cases where structure
+    # prevents ambiguity. When present, the value MUST be a URN per
+    # RFC-0006 § Interaction Profiles.
+    interaction: str | None = Field(default=None, pattern=r"^urn:")
     intent_id: str | None = Field(default=None, alias="intentId")
     payload: dict[str, Any]
 
@@ -151,6 +159,45 @@ class InboxItem(BaseModel):
 
 class InboxOutput(BaseModel):
     items: list[InboxItem]
+
+
+# --- social_inbox_wait (RFC-0007 amendment D) -------------------------------
+
+
+# Server-side maximum hold time. RFC-0007 amendment D requires the sidecar
+# to clamp the client-supplied ``timeout_seconds`` to ≤90 seconds — beyond
+# that, idle-kill behaviour of TCP middleboxes becomes unreliable.
+INBOX_WAIT_MAX_TIMEOUT_SECONDS = 90
+INBOX_WAIT_DEFAULT_TIMEOUT_SECONDS = 30
+
+
+class InboxWaitInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    timeout_seconds: int = Field(default=INBOX_WAIT_DEFAULT_TIMEOUT_SECONDS, ge=0)
+    last_event_id: str | None = Field(default=None, alias="lastEventId")
+
+
+class InboxWaitEvent(BaseModel):
+    """A single event delivered through the long-poll channel.
+
+    Payload shape mirrors the corresponding webhook event 1:1 — receivers
+    that bridge both transports share one parser and dedupe on ``event_id``.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    event_id: str = Field(min_length=1, alias="eventId")
+    event: str = Field(min_length=1)
+    occurred_at: int = Field(ge=0, alias="occurredAt")
+    data: dict[str, Any]
+
+
+class InboxWaitOutput(BaseModel):
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    events: list[InboxWaitEvent] = Field(default_factory=list)
+    next_event_id: str | None = Field(default=None, alias="nextEventId")
 
 
 # --- social_respond ----------------------------------------------------------

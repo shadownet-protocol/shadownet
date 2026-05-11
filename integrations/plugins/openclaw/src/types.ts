@@ -59,6 +59,11 @@ export type ShadownetEventType =
 
 export interface ShadownetEventEnvelope {
   "shadownet:v": "0.1";
+  // RFC-0007 § Path 2: webhook payloads carry a top-level event_id that
+  // receivers MUST use for idempotency. Byte-identical to the event_id
+  // the same event would carry via social_inbox_wait or
+  // notifications/shadownet/* — cross-transport dedupe relies on it.
+  event_id: string;
   event: ShadownetEventType | (string & {});
   occurredAt: number;
   data: Record<string, unknown>;

@@ -1,0 +1,109 @@
+name: release (hermes-plugin)
+
+# Triggered by tags of the shape `hermes-plugin/vX.Y.Z` (or pre-release
+# variants). Publishes the `shadownet-hermes-plugin` distribution to PyPI
+# via Trusted Publishing, mirroring the release-python-sdk.yml pattern.
+
+on:
+  push:
+    tags:
+      - "hermes-plugin/v*"
+
+permissions:
+  id-token: write    # PyPI Trusted Publishing (OIDC)
+  contents: write    # creating the GitHub Release
+
+concurrency:
+  group: release-hermes-plugin-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: integrations/plugins/hermes-agent
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/shadownet-hermes-plugin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Resolve shadownet from PyPI
+        # The plugin's pyproject pins shadownet>=0.3.0; PyPI is the
+        # canonical source at release time (unlike CI which uses the
+        # sibling python-sdk checkout). This MUST run after python-sdk
+        # 0.3.0 has been published.
+        run: |
+          uv venv
+          uv pip install -e .
+          uv pip install pytest pytest-asyncio ruff mypy
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy shadownet_hermes_plugin
+
+      - name: Test
+        run: uv run pytest tests/ -v
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Verify tag matches package version
+        run: |
+          set -euo pipefail
+          tag_full="${GITHUB_REF#refs/tags/}"
+          tag_version="${tag_full#hermes-plugin/v}"
+          uv run python - "$tag_version" <<'PY'
+          import sys
+          from importlib.metadata import version
+          from packaging.version import Version
+          tag = Version(sys.argv[1])
+          pkg = Version(version("shadownet-hermes-plugin"))
+          if tag != pkg:
+              raise SystemExit(f"git tag {tag} does not match pyproject version {pkg}")
+          print(f"ok: git tag and pyproject both resolve to {tag}")
+          PY
+
+      - name: Verify plugin.yaml shipped with wheel
+        # Hermes' plugin loader reads plugin.yaml at install time. Confirm
+        # the build included it as shared data per the wheel's
+        # share/hermes-plugins/shadownet/plugin.yaml layout.
+        run: |
+          unzip -l dist/shadownet_hermes_plugin-*.whl \
+            | grep -q 'share/hermes-plugins/shadownet/plugin.yaml' \
+            || { echo "plugin.yaml missing from wheel"; exit 1; }
+
+      - name: Verify skills/ shipped with wheel
+        run: |
+          unzip -l dist/shadownet_hermes_plugin-*.whl \
+            | grep -q 'share/hermes-plugins/shadownet/skills/shadownet-setup/SKILL.md' \
+            || { echo "skills/ missing from wheel"; exit 1; }
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: integrations/plugins/hermes-agent/dist
+        # No `password:` — OIDC binding via the `pypi` environment.
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: integrations/plugins/hermes-agent/dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}

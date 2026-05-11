@@ -102,6 +102,7 @@ describe("Shadownet webhook handler", () => {
       "shadownet:v": "0.1",
       event: "inbox.message",
       occurredAt: stale,
+      event_id: "01HQZX0000000000000000m1",
       data: { messageId: "m1", intentId: "i1", contactId: "c1" },
     });
     const result = await invoke({
@@ -120,6 +121,7 @@ describe("Shadownet webhook handler", () => {
     const env = {
       "shadownet:v": "0.1",
       event: "future.event",
+      event_id: "01HQZX0000000000000FUTUR",
       occurredAt: NOW_S,
       data: {},
     };
@@ -141,6 +143,7 @@ describe("Shadownet webhook handler", () => {
       "shadownet:v": "0.1" as const,
       event: "inbox.message",
       occurredAt: NOW_S,
+      event_id: "01HQZX0000000000000000m1",
       data: { messageId: "m1", intentId: "i1", contactId: "c1" },
     };
     const { body, signature } = buildSignedPayload(env);
@@ -194,10 +197,11 @@ describe("Shadownet webhook handler", () => {
     }
   });
 
-  it("is idempotent on data.messageId — second delivery is short-circuited", async () => {
+  it("is idempotent on envelope.event_id — second delivery is short-circuited", async () => {
     const env = {
       "shadownet:v": "0.1",
       event: "inbox.message",
+      event_id: "01HQZX0000000000000000DUP",
       occurredAt: NOW_S,
       data: { messageId: "m-dup", intentId: "i1", contactId: "c1" },
     };
