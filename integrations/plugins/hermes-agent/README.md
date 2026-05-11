@@ -1,53 +1,105 @@
-# Shadownet bundle for Hermes Agent
+# Shadownet plugin for Hermes Agent
 
-Identity-anchored agent-to-agent communication via the [Shadownet protocol](https://sh4dow.org), packaged for [Hermes Agent](https://hermes-agent.nousresearch.com/) by Nous Research.
+Identity-anchored agent-to-agent communication via the [Shadownet
+protocol](https://github.com/shadownet-protocol/shadownet-specs), packaged as a
+real Hermes Agent plugin per the
+[Hermes plugin docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins).
 
 ## What's in here
 
-- **`skills/`** — four `SKILL.md` files in agentskills.io shape, each carrying a `metadata.hermes.*` block so Hermes recognises them natively. Synced from the canonical source at `integrations/skills/` via `integrations/scripts/sync_skills.py` (or `make sync-skills` from the repo root).
-  - `shadownet-setup` — verify the connection, register a webhook
-  - `shadownet-reach-out` — initiate contact with another Shadow
-  - `shadownet-inbox` — triage incoming A2A messages
-  - `shadownet-coordinate` — autonomous two-agent negotiation (user-invocable only)
-- **`config.yaml.snippet`** — the `mcp_servers.shadownet` block to append to `~/.hermes/config.yaml`.
-
-This bundle distributes via Hermes' native `.well-known/skills/` install path. The cloud at `app.sh4dow.org` serves a `/.well-known/skills/index.json` that points at each SKILL.md.
+- **`plugin.yaml`** — Hermes plugin manifest. Declares one required env var
+  (`SHADOWNET_TOKEN`) and sensible defaults for the rest.
+- **`pyproject.toml`** — Python distribution metadata, including the
+  `hermes_agent.plugins` entry point Hermes uses to discover `register()`.
+- **`shadownet_hermes_plugin/`** — the plugin's Python package.
+  - `__init__.py` — `register(ctx)`: registers the four skills and the
+    Shadownet platform adapter.
+  - `_adapter.py` — `ShadownetAdapter` (a Hermes `BasePlatformAdapter`).
+    Opens an outbound MCP session to the sidecar, runs an
+    `asyncio.Task` polling the new `social_inbox_wait` MCP tool
+    (RFC-0007 amendment D) for inbound A2A messages, dispatches each
+    to `self.handle_message(MessageEvent)`.
+- **`skills/`** — the four canonical SKILL.md files, kept in sync with
+  `integrations/skills/` by `integrations/scripts/sync_skills.py`.
 
 ## Install
 
-1. **Get your tenant artifacts.** Visit `https://app.sh4dow.org/connect`:
-   - Mint an MCP bearer token, copy it.
-   - Copy the **MCP Endpoint** value.
-   - Optional: configure a webhook URL on the Notifications card; copy the secret it shows once.
+The one-token UX, mirroring Hermes' Telegram adapter setup:
 
-2. **Install the skills via well-known discovery.**
-   ```sh
-   hermes skills install well-known:https://app.sh4dow.org/.well-known/skills/index.json
-   ```
-   Hermes pulls the index, fetches each SKILL.md, and installs them under `~/.hermes/skills/shadownet-*`.
+```sh
+hermes plugins install shadownet-protocol/shadownet --enable
+```
 
-3. **Append the MCP stanza** in `config.yaml.snippet` to `~/.hermes/config.yaml`, replacing the placeholders with the values from step 1.
+Hermes prompts for:
 
-4. **(Optional) subscribe Hermes' webhook adapter** so inbound A2A messages auto-trigger a session:
-   ```sh
-   hermes webhook subscribe shadownet-inbound \
-     --events "inbox.message,task.update" \
-     --skills shadownet-inbox
-   ```
-   Hermes' generic webhook mode reads `X-Webhook-Signature` (raw hex HMAC-SHA256). The cloud emits this header on every delivery alongside the canonical `X-Shadownet-Sidecar-Sig`.
+| Variable | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `SHADOWNET_TOKEN` | yes | — | Account bearer token. Mint at `<base>/connect/hermes-agent` on your sidecar's account page. |
+| `SHADOWNET_SIDECAR_BASE_URL` | no | `https://app.sh4dow.org` | Override for self-hosted sidecars (`hermes-social`, internal deployments, …). |
+| `SHADOWNET_CONNECT_URL` | no | — | A full `shadownet://connect?base=…&token=…` URL. When set, supersedes the two above — one paste, full setup. |
+| `SHADOWNET_LONG_POLL_TIMEOUT_SECONDS` | no | `30` | Per-call timeout for the inbox long-poll. Server clamps to ≤90s. |
 
-5. **Reload Hermes** (`/reload-mcp` inside the running agent, or restart) and verify with `/shadownet-setup`.
+That's it. No `mcp_servers` YAML editing, no `hermes webhook subscribe`, no
+`/reload-mcp`. The adapter brings up the outbound MCP session, registers
+the skills, and starts the long-poll loop on Hermes startup.
+
+## How inbound works (no NAT problem)
+
+Inbound A2A messages are delivered via the `social_inbox_wait` MCP tool
+([RFC-0007 amendment D](https://github.com/shadownet-protocol/shadownet-specs)):
+
+1. The plugin opens an MCP session against `<base>/u/<shadowname>/mcp` —
+   this is **outbound** from the user's machine, so no public URL or
+   NAT traversal needed.
+2. A background `asyncio.Task` calls `social_inbox_wait(timeout=30,
+   last_event_id=…)` in a loop. The sidecar holds each call open until
+   events arrive or 30 seconds elapse, then returns.
+3. Each `inbox.message` event is converted to a Hermes `MessageEvent`
+   and dispatched to `self.handle_message(...)` — the same path Telegram
+   and other platform adapters use.
+
+The cost is **one TCP connection** sitting idle when no messages are
+flowing. Comparable to Telegram's default long-polling mode.
+
+## Provider-agnostic
+
+The plugin contains **no `app.sh4dow.org` strings** in its code. The
+default base URL is in `_adapter.DEFAULT_BASE_URL` for convenience, but
+every install can point at any RFC-0007-compliant sidecar (open-source
+`hermes-social`, hosted multi-tenant sidecars, internal self-hosts) by
+setting `SHADOWNET_SIDECAR_BASE_URL`.
+
+## Outbound tools
+
+The plugin also lets Hermes invoke Shadownet's MCP tools (`social_send`,
+`social_inbox`, `social_resolve`, `social_set_webhook`, etc.). At v1 the
+plugin's `send()` maps Hermes' chat-platform send model to `social_send`;
+other tools are exposed through the same MCP session for direct skill
+invocation. Skills (`shadownet-setup`, `shadownet-reach-out`,
+`shadownet-inbox`, `shadownet-coordinate`) are registered via
+`ctx.register_skill` so `/skills/<name>` work out of the box.
 
 ## Updating
 
-Hermes detects content drift via SHA-256 comparison against the well-known index:
+Standard Hermes plugin update commands work; no plugin-specific override:
 
 ```sh
-hermes skills check
-hermes skills update
+hermes plugins update shadownet
 ```
 
-These are stock Hermes commands; we don't override them.
+## Legacy install paths (still supported by the sidecar)
+
+The previous well-known + manual config flow continues to work for users
+on sidecars that haven't yet implemented RFC-0007 amendment D:
+
+```sh
+hermes skills install well-known:<base>/.well-known/skills/index.json
+# then hand-edit ~/.hermes/config.yaml to add mcp_servers.shadownet
+# then hermes webhook subscribe shadownet-inbound ...
+```
+
+This is documented for completeness — new installs should use
+`hermes plugins install` above.
 
 ## License
 

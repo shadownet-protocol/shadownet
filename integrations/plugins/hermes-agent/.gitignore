@@ -1,0 +1,12 @@
+# Per-plugin ignores for the Python-based Hermes plugin.
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+build/
+dist/
+*.egg-info/
