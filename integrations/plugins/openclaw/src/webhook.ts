@@ -43,7 +43,7 @@ const IDEMPOTENCY_MAX_ENTRIES = 10_000;
 
 const inFlightLimiter = createWebhookInFlightLimiter();
 const rateLimiters = new Map<string, ShadownetRateLimiter>();
-const idempotencyLru = new Map<string, number>(); // messageId -> firstSeenAtMs
+const idempotencyLru = new Map<string, number>(); // event_id -> firstSeenAtMs
 
 function getRateLimiter(account: ResolvedShadownetAccount): ShadownetRateLimiter {
   let rl = rateLimiters.get(account.accountId);
@@ -60,16 +60,18 @@ export function _resetWebhookStateForTest(): void {
   inFlightLimiter.clear();
 }
 
-function recordSeen(messageId: string, now = Date.now()): boolean {
+function recordSeen(eventId: string, now = Date.now()): boolean {
   // Returns true if this is a fresh delivery, false if it has been seen
-  // within the TTL.
-  const seen = idempotencyLru.get(messageId);
+  // within the TTL. Keyed on RFC-0007 envelope.event_id so receivers
+  // dedupe across webhook retries AND cross-transport deliveries
+  // (social_inbox_wait, notifications/shadownet/*).
+  const seen = idempotencyLru.get(eventId);
   if (seen !== undefined && now - seen < IDEMPOTENCY_TTL_MS) {
     return false;
   }
   // Move-to-end semantics: delete + reinsert keeps the freshest entries.
-  idempotencyLru.delete(messageId);
-  idempotencyLru.set(messageId, now);
+  idempotencyLru.delete(eventId);
+  idempotencyLru.set(eventId, now);
   while (idempotencyLru.size > IDEMPOTENCY_MAX_ENTRIES) {
     const oldest = idempotencyLru.keys().next().value;
     if (!oldest) break;
@@ -216,12 +218,20 @@ export function createWebhookHandler(
         return;
       }
 
-      // Idempotency on data.messageId — only inbox.message carries one.
-      const messageId =
-        typeof envelope.data?.messageId === "string"
-          ? (envelope.data.messageId as string)
-          : `${envelope.event}-${envelope.occurredAt}`;
-      if (!recordSeen(messageId, now())) {
+      // RFC-0007 § Path 2 receiver requirements: be idempotent on
+      // envelope.event_id (the top-level field, NOT data.messageId).
+      // The same event MAY arrive via webhook retry AND/OR another
+      // transport (social_inbox_wait, notifications/shadownet/*) — all
+      // three carry byte-identical event_id strings for cross-transport
+      // dedupe.
+      const eventId =
+        typeof envelope.event_id === "string" && envelope.event_id.length > 0
+          ? envelope.event_id
+          : // Tolerate legacy senders that pre-date the event_id top-level
+            // field by falling back to (event, occurredAt). Logged so
+            // operators notice.
+            `${envelope.event}-${envelope.occurredAt}`;
+      if (!recordSeen(eventId, now())) {
         respond(res, 200, JSON.stringify({ ok: true, idempotent: true }));
         return;
       }
@@ -265,6 +275,15 @@ export function createWebhookHandler(
             : JSON.stringify(payload);
         const interaction =
           typeof item.interaction === "string" ? item.interaction : undefined;
+        // OpenClaw's internal identifier for this inbound. The webhook's
+        // envelope.event_id is stable per event (cross-transport dedupe
+        // contract — see RFC-0007 § Path 2), so we reuse it here. If
+        // social_inbox returned its own message id, prefer that since
+        // it survives across re-deliveries of the same logical message.
+        const messageId =
+          typeof item.messageId === "string" && item.messageId.length > 0
+            ? (item.messageId as string)
+            : eventId;
         inbound = {
           accountId: account.accountId,
           intentId,
