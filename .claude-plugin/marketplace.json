@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "shadownet-protocol",
+  "owner": "shadownet-protocol",
+  "description": "Plugins from the Shadownet protocol project for Claude Code.",
+  "homepage": "https://github.com/shadownet-protocol/shadownet",
+  "plugins": [
+    {
+      "name": "shadownet",
+      "version": "0.2.0",
+      "source": "./integrations/plugins/claude-code",
+      "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol. Adds outbound MCP tools, four skills, and an opt-in background monitor that long-polls the sidecar for real-time inbound A2A messages (RFC-0007 amendment D)."
+    }
+  ]
+}
