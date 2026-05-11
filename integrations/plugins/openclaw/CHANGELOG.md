@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to `@shadownet/openclaw-plugin`. Format follows
+Notable changes to `@shadownet-protocol/openclaw-plugin`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). In the
 monorepo, npm releases are cut by tagging `openclaw-plugin-vX.Y.Z`.
 

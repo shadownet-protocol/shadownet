@@ -31,7 +31,7 @@ Security fixes target the latest released minor of each subtree:
 | `core/pgstore/` (Postgres backend) | `v0.2.x` |
 | `python-sdk/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
 | `conformance/` (PyPI `shadownet-conformance`, image `ghcr.io/shadownet-protocol/conformance`) | `0.2.x` |
-| `integrations/plugins/openclaw/` (npm `@shadownet/openclaw-plugin`) | latest only |
+| `integrations/plugins/openclaw/` (npm `@shadownet-protocol/openclaw-plugin`) | latest only |
 
 Older `v0.1.x` releases — published from the legacy
 [`shadownet-go`](https://github.com/shadownet-protocol/shadownet-go),

@@ -1,4 +1,4 @@
-// Bundled-channel-entry for `@shadownet/openclaw-plugin`.
+// Bundled-channel-entry for `@shadownet-protocol/openclaw-plugin`.
 //
 // One plugin install gives the user two surfaces:
 //   * channel-plugin-api.js — Shadownet appears as a chat channel in

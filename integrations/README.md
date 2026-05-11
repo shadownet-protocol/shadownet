@@ -65,7 +65,7 @@ integrations/
     ├── hermes-agent/      Hermes Agent plugin — plugin.yaml + pyproject.toml + register(ctx) +
     │                      ShadownetAdapter platform adapter; one-token install via
     │                      `hermes plugins install`
-    └── openclaw/          @shadownet/openclaw-plugin — TypeScript channel plugin + tools +
+    └── openclaw/          @shadownet-protocol/openclaw-plugin — TypeScript channel plugin + tools +
                            connect/ URL parser
 ```
 
