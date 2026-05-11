@@ -213,40 +213,53 @@ class ShadownetMCPSession:
         timeout_seconds: int = DEFAULT_INBOX_TIMEOUT_SECONDS,
         starting_event_id: str | None = None,
         on_error: Callable[[Exception], Awaitable[Literal["retry", "stop"]]] | None = None,
+        reconnect_base_seconds: float = DEFAULT_RECONNECT_BASE_SECONDS,
+        reconnect_max_seconds: float = DEFAULT_RECONNECT_MAX_SECONDS,
     ) -> None:
         """Long-poll loop dispatching each inbox event to ``handler``.
 
         Runs forever. Cancel the surrounding task to stop. Catches
         transient transport errors and retries with exponential backoff
-        (capped at :data:`DEFAULT_RECONNECT_MAX_SECONDS`). Pass
-        ``on_error`` to override that behavior — return ``"stop"`` to
-        exit the loop on the next failure, ``"retry"`` to keep going.
+        between ``reconnect_base_seconds`` and ``reconnect_max_seconds``.
+        Pass ``on_error`` to override that behavior — return ``"stop"``
+        to exit the loop on the next failure, ``"retry"`` to keep going.
+
+        The reconnect kwargs are exposed primarily so tests can pass
+        very small values; production callers should leave the defaults.
         """
         cursor = starting_event_id
-        backoff = DEFAULT_RECONNECT_BASE_SECONDS
+        backoff = reconnect_base_seconds
         while True:
+            # Transport call is wrapped — its failures are retried. Handler
+            # invocation is OUTSIDE the try so handler exceptions propagate
+            # to the caller (a handler raising signals "stop the loop", not
+            # "the connection blipped"). This separation is load-bearing:
+            # a broad catch around the handler would mask user bugs and
+            # cause CPU-bound retry spins.
             try:
                 result = await self.wait_for_inbox(
                     last_event_id=cursor, timeout_seconds=timeout_seconds
                 )
-                backoff = DEFAULT_RECONNECT_BASE_SECONDS  # reset on success
-                for event in result.events:
-                    await handler(event)
-                    cursor = event.event_id
-                if result.next_event_id is not None:
-                    cursor = result.next_event_id
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _log.warning("inbox_loop transient error: %s", exc)
+                _log.warning("inbox_loop transient transport error: %s", exc)
                 decision: Literal["retry", "stop"] = "retry"
                 if on_error is not None:
                     decision = await on_error(exc)
                 if decision == "stop":
                     raise
                 jitter = random.uniform(0, backoff * 0.25)  # noqa: S311 — not crypto
-                await asyncio.sleep(min(backoff + jitter, DEFAULT_RECONNECT_MAX_SECONDS))
-                backoff = min(backoff * 2, DEFAULT_RECONNECT_MAX_SECONDS)
+                await asyncio.sleep(min(backoff + jitter, reconnect_max_seconds))
+                backoff = min(backoff * 2, reconnect_max_seconds)
+                continue
+
+            backoff = reconnect_base_seconds  # reset on transport success
+            for event in result.events:
+                await handler(event)
+                cursor = event.event_id
+            if result.next_event_id is not None:
+                cursor = result.next_event_id
 
 
 def _extract_structured(call_tool_result: Any) -> dict[str, Any]:
