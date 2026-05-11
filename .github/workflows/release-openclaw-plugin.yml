@@ -1,0 +1,113 @@
+name: release (openclaw-plugin)
+
+# Triggered by tags of the shape `openclaw-plugin-vX.Y.Z` (matches the
+# convention documented in CLAUDE.md and PUBLISHING.md — hyphen, not slash,
+# unlike core/conformance/python-sdk which use slash).
+#
+# Publishes `@shadownet-protocol/openclaw-plugin` to the public npm registry
+# using NPM_TOKEN. ClawHub publishing is a separate manual step
+# (`clawhub package publish .`) because ClawHub's auth is browser-OAuth-only;
+# this workflow does the npm half only.
+
+on:
+  push:
+    tags:
+      - "openclaw-plugin-v*"
+
+permissions:
+  contents: write    # creating the GitHub Release
+
+concurrency:
+  group: release-openclaw-plugin-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: integrations/plugins/openclaw
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
+          cache-dependency-path: integrations/plugins/openclaw/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        # The webhook.test.ts suite imports `openclaw/plugin-sdk/webhook-ingress`
+        # which is not resolvable without OpenClaw installed (peer dep set
+        # to auto-install-peers=false in .npmrc). See .github/workflows/integrations.yml
+        # for the same exclude on the regular CI lane.
+        run: pnpm exec vitest run --exclude 'tests/webhook.test.ts'
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify tag matches package.json version
+        run: |
+          set -euo pipefail
+          tag_full="${GITHUB_REF#refs/tags/}"
+          tag_version="${tag_full#openclaw-plugin-v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::git tag version ($tag_version) does not match package.json version ($pkg_version)"
+            exit 1
+          fi
+          echo "ok: tag and package.json both at $pkg_version"
+
+      - name: Skip publish if version already on npm
+        # Makes the workflow re-runnable on a tag that pointed at a commit
+        # whose version was already published (e.g. retroactive tag, or
+        # CI rerun after a partial failure). The GitHub Release step still
+        # runs so the tag has its release page.
+        id: check
+        run: |
+          set -euo pipefail
+          pkg=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          if npm view "$pkg@$ver" version >/dev/null 2>&1; then
+            echo "::notice::$pkg@$ver already on npm — skipping publish step"
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pack tarball (for verification + GitHub Release upload)
+        run: pnpm pack
+
+      - name: Publish to npm
+        if: steps.check.outputs.already_published != 'true'
+        # --access public is required because @shadownet-protocol is a
+        # scoped name and the npm free tier defaults scoped packages to
+        # private. --no-git-checks disables pnpm's "you have uncommitted
+        # changes / no matching tag" guard which is meaningless in CI
+        # (we're checked out at exactly the tag).
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: integrations/plugins/openclaw/*.tgz
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}
