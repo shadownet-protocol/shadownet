@@ -40,13 +40,14 @@ jobs:
         run: uv python install 3.12
 
       - name: Resolve shadownet from PyPI
-        # The plugin's pyproject pins shadownet>=0.3.0; PyPI is the
-        # canonical source at release time (unlike CI which uses the
-        # sibling python-sdk checkout). This MUST run after python-sdk
-        # 0.3.0 has been published.
+        # The plugin's pyproject pins shadownet>=0.3.0 AND declares a
+        # `[tool.uv.sources]` override for in-repo dev. At release time
+        # we want PyPI, not the sibling checkout — `--no-sources` does
+        # exactly that. This MUST run after `python-sdk vX.Y.Z` is on
+        # PyPI (per the cross-subtree ordering in `.claude/skills/release/SKILL.md`).
         run: |
           uv venv
-          uv pip install -e .
+          uv pip install --no-sources -e .
           uv pip install pytest pytest-asyncio ruff mypy
 
       - name: Lint

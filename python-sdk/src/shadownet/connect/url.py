@@ -94,9 +94,7 @@ def parse_connect_url(url: str) -> ConnectURL:
         # RFC-0008 + RFC-0007 § URL constraints: http allowed only for loopback.
         host = (base_parsed.hostname or "").lower()
         if host not in _LOOPBACK_HOSTS:
-            raise ConnectURLInvalid(
-                f"http:// base allowed only for loopback hosts; got {host!r}"
-            )
+            raise ConnectURLInvalid(f"http:// base allowed only for loopback hosts; got {host!r}")
 
     token_values = query.get("token") or []
     handoff_values = query.get("handoff") or []
@@ -138,9 +136,7 @@ def format_connect_url(
     if parsed.scheme == "http":
         host = (parsed.hostname or "").lower()
         if host not in _LOOPBACK_HOSTS:
-            raise ConnectURLInvalid(
-                f"http:// base allowed only for loopback hosts; got {host!r}"
-            )
+            raise ConnectURLInvalid(f"http:// base allowed only for loopback hosts; got {host!r}")
     if handoff is not None and not _HANDOFF_PATTERN.match(handoff):
         raise ConnectURLInvalid(
             "handoff code must match [A-Za-z0-9._~-]{16,128} (RFC-0008 grammar)"

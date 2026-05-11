@@ -148,7 +148,7 @@ def build_adapter_class() -> type:
                 },
             )
             _, _, send_result_cls = _resolve_hermes_types()
-            return send_result_cls(success=True)  # type: ignore[call-arg]
+            return send_result_cls(success=True)
 
         async def send_typing(self, chat_id: str) -> None:
             """Shadownet is async / fire-and-forget — no typing indicator."""
@@ -169,14 +169,14 @@ def build_adapter_class() -> type:
             data = event.data or {}
             sender = data.get("from") or data.get("contactId") or "unknown"
             body = data.get("body") or ""
-            message_event = message_event_cls(  # type: ignore[call-arg]
+            message_event = message_event_cls(
                 platform="shadownet",
                 chat_id=sender,
                 sender_id=sender,
                 text=body,
                 raw={"event_id": event.event_id, "data": data},
             )
-            await self.handle_message(message_event)  # type: ignore[attr-defined]
+            await self.handle_message(message_event)
 
         async def _fetch_bundle(self, http: httpx.AsyncClient) -> IntegrationBundle:
             return await fetch_integration_bundle(
