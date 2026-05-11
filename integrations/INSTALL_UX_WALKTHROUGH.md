@@ -13,7 +13,7 @@ list in [`AGENT_HOST_REFERENCE.md`](./AGENT_HOST_REFERENCE.md)).
 
 | Host | Hosted Sidecar | Self-hosted Sidecar | Floor / ceiling |
 | --- | --- | --- | --- |
-| **Claude Code** | 3 prompts (token, endpoint, inbound toggle) at install. Done. | Same 3 prompts, just paste your own values. | Best of the three: native `userConfig` prompts, secret stored in keychain. |
+| **Claude Code** | 1 prompt: paste `shadownet://connect?...` URL. Optional second prompt for the inbound-monitor toggle. | Same — connect URL embeds the self-host's base. | One-paste install via the MCP stdio↔HTTP proxy (`bin/mcp-shadownet-proxy.py`). Token never leaves the keychain. |
 | **Hermes Agent** | One `hermes plugins install` + one prompt for `SHADOWNET_TOKEN`, plus a `SHADOWNET_SIDECAR_BASE_URL` env var if not on the default host. | Same plus `SHADOWNET_SIDECAR_BASE_URL` always required. | Telegram-tier ergonomics inside Hermes (long-poll, no NAT). |
 | **OpenClaw** | `openclaw plugins install` + configSchema prompts (endpoint, token). User must expose the gateway HTTP port for inbound webhooks. | Same, plus the user-side reachability requirement still applies. | Requires public reachability for inbound. Outbound tools work without. |
 
@@ -30,24 +30,40 @@ list in [`AGENT_HOST_REFERENCE.md`](./AGENT_HOST_REFERENCE.md)).
 /plugin install shadownet@shadownet-protocol
 ```
 
-After install, the plugin's `userConfig` block triggers three prompts
-(handled natively by Claude Code per the docs' "User configuration"
-section):
+After install, the plugin's `userConfig` block triggers **one or two
+prompts** (handled natively by Claude Code per the docs' "User
+configuration" section):
 
 | Prompt | Stored where | Sensitive |
 | --- | --- | --- |
-| **Sidecar MCP endpoint** | `~/.claude/settings.json` -> `pluginConfigs.shadownet.options.endpoint` | no |
-| **Sidecar account token** | System keychain (or `~/.claude/.credentials.json`) | **yes** (`sensitive: true`) |
-| **Enable real-time inbound monitor?** | settings.json (boolean) | no |
+| **`shadownet://connect?...` URL** | System keychain (single value carries base + token) | **yes** (`sensitive: true`) |
+| **Enable real-time inbound monitor?** | settings.json (boolean) | no — defaults to false; user can skip |
 
-The endpoint value is exactly what RFC-0008's `<base>/connect/claude-code`
-endpoint returns in the JSON payload's `mcpServerConfig.shadownet.url`,
-so the workflow for **hosted** Sidecars is:
+The connect URL is exactly what RFC-0008's `<base>/connect/claude-code`
+endpoint serves. Workflow for **hosted** Sidecars:
 
 1. Visit `<your-sidecar>/connect/claude-code` (e.g.
    `https://app.sh4dow.org/connect/claude-code`).
-2. Copy the endpoint URL and the token shown on the page.
-3. Paste them into Claude Code's two prompts.
+2. Copy the `shadownet://connect?base=...&token=...` URL.
+3. Paste it into Claude Code's one prompt.
+
+### How the proxy makes this work
+
+`.mcp.json` declares an stdio MCP server pointing at
+`${CLAUDE_PLUGIN_ROOT}/bin/mcp-shadownet-proxy.py` with the connect URL
+exported as `SHADOWNET_CONNECT_URL`. At session start the proxy:
+
+1. Parses the URL via the shared `shadownet.connect.url` parser.
+2. Fetches the integration bundle to discover the per-tenant MCP endpoint
+   (one HTTP call, ~50ms).
+3. Opens an HTTP+SSE MCP session against that endpoint with the parsed
+   token as Bearer.
+4. Bridges every JSON-RPC message between Claude Code (stdio) and the
+   sidecar (HTTP+SSE) until either side closes.
+
+Cost: one extra process spawn + one bundle fetch per Claude Code session
+start. Latency is dominated by the upstream MCP server; the proxy itself
+is just a pipe.
 
 For **self-hosted** Sidecars: the same `<base>/connect/claude-code` page
 exists (RFC-0008 makes it mandatory once the Sidecar advertises the

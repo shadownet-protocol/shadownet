@@ -85,7 +85,13 @@ def _resolve_config() -> tuple[str, str, int, bool]:
     a fallback for power users and for environments without a Claude Code
     plugin context.
     """
-    connect_url = _env_first("SHADOWNET_CONNECT_URL")
+    # The 0.3.0 plugin's userConfig collapses to a single `connect_url`
+    # field; Claude Code exposes it as CLAUDE_PLUGIN_OPTION_CONNECT_URL.
+    # SHADOWNET_CONNECT_URL remains a shell-env fallback for users who
+    # set it directly.
+    connect_url = _env_first(
+        "CLAUDE_PLUGIN_OPTION_CONNECT_URL", "SHADOWNET_CONNECT_URL"
+    )
     if connect_url:
         parsed = parse_connect_url(connect_url)
         if not parsed.is_inline:
@@ -99,24 +105,21 @@ def _resolve_config() -> tuple[str, str, int, bool]:
         # that to derive the integration-bundle and MCP endpoints.
         base_url = parsed.base_url
     else:
-        token = _env_first("CLAUDE_PLUGIN_OPTION_TOKEN", "SHADOWNET_TOKEN")
-        # userConfig stores the full per-tenant MCP endpoint (so users
-        # paste exactly what /connect/claude-code shows); shell-env users
-        # historically set just the sidecar base. Accept either.
-        endpoint = _env_first("CLAUDE_PLUGIN_OPTION_ENDPOINT")
-        if endpoint:
-            # Strip the /u/<shadowname>/mcp suffix to recover the base.
-            base_url = endpoint.rsplit("/u/", 1)[0] if "/u/" in endpoint else endpoint
-        else:
-            base_url = _env_first(
-                "SHADOWNET_SIDECAR_BASE_URL", default=DEFAULT_BASE_URL
-            )
-        base_url = base_url.rstrip("/")
+        # Shell-env power-user path. The 0.3.0 plugin no longer asks for
+        # token/endpoint via userConfig (they're derived from connect_url),
+        # so CLAUDE_PLUGIN_OPTION_TOKEN/ENDPOINT will be empty in normal
+        # Claude Code installs — only set when the user exports them
+        # manually for testing.
+        token = _env_first("SHADOWNET_TOKEN")
+        base_url = _env_first(
+            "SHADOWNET_SIDECAR_BASE_URL", default=DEFAULT_BASE_URL
+        ).rstrip("/")
     if not token:
         raise RuntimeError(
-            "Token not configured. Set it via Claude Code's userConfig prompt "
-            "(plugin enable time) or export SHADOWNET_TOKEN in your shell; "
-            "mint a token at <SHADOWNET_SIDECAR_BASE_URL>/connect/claude-code."
+            "Token not configured. Paste a shadownet:// connect URL into "
+            "the plugin's `connect_url` prompt at install time, or export "
+            "SHADOWNET_CONNECT_URL / SHADOWNET_TOKEN in your shell. Mint a "
+            "connect URL at https://<your-sidecar>/connect/claude-code."
         )
     timeout_raw = _env_first("SHADOWNET_LONG_POLL_TIMEOUT", default="30")
     try:
