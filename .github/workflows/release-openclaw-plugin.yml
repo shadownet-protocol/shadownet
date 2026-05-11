@@ -5,9 +5,14 @@ name: release (openclaw-plugin)
 # unlike core/conformance/python-sdk which use slash).
 #
 # Publishes `@shadownet-protocol/openclaw-plugin` to the public npm registry
-# using NPM_TOKEN. ClawHub publishing is a separate manual step
-# (`clawhub package publish .`) because ClawHub's auth is browser-OAuth-only;
-# this workflow does the npm half only.
+# via npm Trusted Publishing (OIDC) — no long-lived NPM_TOKEN required.
+# Trust binding is configured per-package at
+# https://www.npmjs.com/package/@shadownet-protocol/openclaw-plugin/access,
+# matched on (org=shadownet-protocol, repo=shadownet, workflow=release-openclaw-plugin.yml).
+#
+# ClawHub publishing is a separate manual step (`clawhub package publish .`)
+# because ClawHub's auth is browser-OAuth-only; this workflow does the npm
+# half only.
 
 on:
   push:
@@ -15,6 +20,7 @@ on:
       - "openclaw-plugin-v*"
 
 permissions:
+  id-token: write    # npm Trusted Publishing — OIDC token exchange
   contents: write    # creating the GitHub Release
 
 concurrency:
@@ -94,16 +100,22 @@ jobs:
       - name: Pack tarball (for verification + GitHub Release upload)
         run: pnpm pack
 
-      - name: Publish to npm
+      - name: Publish to npm (Trusted Publishing + provenance)
         if: steps.check.outputs.already_published != 'true'
-        # --access public is required because @shadownet-protocol is a
-        # scoped name and the npm free tier defaults scoped packages to
-        # private. --no-git-checks disables pnpm's "you have uncommitted
-        # changes / no matching tag" guard which is meaningless in CI
-        # (we're checked out at exactly the tag).
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Auth is npm Trusted Publishing: the workflow's OIDC token (gated
+        # by `permissions: id-token: write` at the top of the file) is
+        # exchanged for a publish credential against the trust binding
+        # configured at https://www.npmjs.com/package/<pkg>/access. No
+        # NPM_TOKEN secret involved — nothing to rotate or leak.
+        #
+        # --provenance attaches a signed SLSA Build L3 attestation to the
+        # published tarball naming this exact workflow run as the builder.
+        # https://docs.npmjs.com/generating-provenance-statements
+        #
+        # --access public: scoped packages default to private on the npm
+        # free tier; explicit public required.
+        # --no-git-checks: pnpm guard meaningless in CI (checked out at tag).
+        run: pnpm publish --provenance --access public --no-git-checks
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
