@@ -1,7 +1,7 @@
 {
   "name": "shadownet",
   "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Shadownet",
     "email": "hello@sh4dow.org"
@@ -9,5 +9,12 @@
   "homepage": "https://sh4dow.org",
   "repository": "https://github.com/shadownet-protocol/shadownet-cloud",
   "license": "MIT",
-  "keywords": ["mcp", "a2a", "agent", "messaging", "shadownet"]
+  "keywords": ["mcp", "a2a", "agent", "messaging", "shadownet"],
+  "monitors": [
+    {
+      "name": "shadownet-inbound",
+      "command": "${CLAUDE_PLUGIN_ROOT}/monitors/inbound.py",
+      "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Opt-in via SHADOWNET_INBOUND=1; emits a notification line per inbound message and (by default) fires an OS-level toast."
+    }
+  ]
 }
