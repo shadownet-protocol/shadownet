@@ -10,6 +10,44 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-11
+
+### Added
+
+- New module `shadownet.connect` for one-token install bootstrap
+  (RFC-0007 amendments A–D, draft):
+  - `fetch_integration_bundle(http, base_url, token) -> IntegrationBundle`
+    — fetches the per-tenant `/v1/account/me/integration-bundle` endpoint
+    (RFC-0007 amendment A), returning the canonical bootstrap payload
+    (DID, shadowname, MCP endpoint, supported features, tool/event
+    names, version) plus the optional webhook secret.
+  - `parse_connect_url(url) -> ConnectURL` and `format_connect_url(...)`
+    — symmetric helpers for the standardized `shadownet://connect?…` URL
+    scheme (RFC-0007 amendment B). Supports both inline (`?token=`) and
+    handoff (`?handoff=`) forms.
+  - `ShadownetMCPSession(base_url, shadowname, token)` — async-context
+    wrapper around `mcp.ClientSession` for a Shadownet sidecar's MCP
+    endpoint. Provides `call_tool(name, args)` proxying and
+    `inbox_loop(handler, *, timeout_seconds, on_error)` — a long-poll
+    loop over the new `social_inbox_wait` MCP tool (RFC-0007 amendment
+    D). Handles `last_event_id` cursor advancement and exponential
+    backoff on transient errors. Used by the Hermes plugin and the
+    Claude Code background monitor for NAT-free inbound delivery on
+    hosts whose MCP SDK can't dispatch custom notifications.
+- `shadownet.connect.errors` adds `ConnectError`, `BundleFetchError`,
+  `BundleSchemaError`, `ConnectURLInvalid`, `MCPSessionError`.
+
+### Notes
+
+- All additions are additive. No breaking changes to the 0.2.x public
+  API. Existing webhook signing (`X-Shadownet-Sidecar-Sig` +
+  `X-Webhook-Signature` compatibility header) and `verify_webhook` are
+  unchanged — webhooks remain the canonical transport for
+  sidecar-to-sidecar delivery, OpenClaw plugins, and any non-MCP
+  integration.
+
+[0.3.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.0
+
 ## [0.2.1] — 2026-05-11
 
 ### Added

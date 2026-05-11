@@ -59,9 +59,7 @@ def parse_connect_url(url: str) -> ConnectURL:
     """
     parsed = urlparse(url)
     if parsed.scheme != CONNECT_SCHEME:
-        raise ConnectURLInvalid(
-            f"scheme must be {CONNECT_SCHEME!r}, got {parsed.scheme!r}"
-        )
+        raise ConnectURLInvalid(f"scheme must be {CONNECT_SCHEME!r}, got {parsed.scheme!r}")
     if parsed.netloc != CONNECT_HOST:
         raise ConnectURLInvalid(f"host must be {CONNECT_HOST!r}, got {parsed.netloc!r}")
     # Path is permitted but must be empty or "/" — anything else is ambiguous
@@ -77,18 +75,14 @@ def parse_connect_url(url: str) -> ConnectURL:
 
     base_parsed = urlparse(base)
     if base_parsed.scheme not in ("http", "https"):
-        raise ConnectURLInvalid(
-            f"base must use http(s) scheme, got {base_parsed.scheme!r}"
-        )
+        raise ConnectURLInvalid(f"base must use http(s) scheme, got {base_parsed.scheme!r}")
     if not base_parsed.netloc:
         raise ConnectURLInvalid("base URL missing host")
 
     token_values = query.get("token") or []
     handoff_values = query.get("handoff") or []
     if len(token_values) > 1 or len(handoff_values) > 1:
-        raise ConnectURLInvalid(
-            "'token' and 'handoff' allow at most one value each"
-        )
+        raise ConnectURLInvalid("'token' and 'handoff' allow at most one value each")
     if bool(token_values) == bool(handoff_values):
         raise ConnectURLInvalid("exactly one of 'token' or 'handoff' must be set")
 
@@ -126,6 +120,4 @@ def format_connect_url(
         assert handoff is not None
         params["handoff"] = handoff
 
-    return urlunparse(
-        (CONNECT_SCHEME, CONNECT_HOST, "", "", urlencode(params), "")
-    )
+    return urlunparse((CONNECT_SCHEME, CONNECT_HOST, "", "", urlencode(params), ""))

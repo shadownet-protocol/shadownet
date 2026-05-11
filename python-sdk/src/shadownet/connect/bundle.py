@@ -29,9 +29,12 @@ class IntegrationBundle(BaseModel):
     """Per-tenant bootstrap payload returned by the integration-bundle endpoint.
 
     Plugins fetch this once at install time using the user's account bearer
-    token. Every field except ``stream_endpoint`` and ``webhook_secret`` is
-    REQUIRED — those two are nullable so a sidecar can advertise that it does
-    not support RFC-0008 streaming or that no webhook subscriber is wired yet.
+    token. ``webhook_secret`` is nullable (only set when a webhook subscriber
+    is registered). All other fields are REQUIRED.
+
+    Capability discovery is via ``supported_features`` — plugins SHOULD check
+    ``supports_inbox_wait`` before opening the long-poll loop and
+    ``supports_webhook`` before issuing ``social_set_webhook``.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
@@ -40,7 +43,6 @@ class IntegrationBundle(BaseModel):
     did: str = Field(min_length=1)
     shadowname: str = Field(min_length=1)
     mcp_endpoint: str = Field(min_length=1)
-    stream_endpoint: str | None = None
     webhook_secret: str | None = None
     supported_features: list[str] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
@@ -48,13 +50,23 @@ class IntegrationBundle(BaseModel):
     version: str = Field(min_length=1)
 
     @property
-    def supports_stream(self) -> bool:
-        """Whether the sidecar advertises RFC-0008 outbound stream support."""
-        return "stream" in self.supported_features and self.stream_endpoint is not None
+    def supports_inbox_wait(self) -> bool:
+        """Whether the sidecar advertises the ``social_inbox_wait`` long-poll tool."""
+        return "inbox-wait" in self.supported_features
 
     @property
     def supports_webhook(self) -> bool:
         return "webhook" in self.supported_features
+
+    @property
+    def supports_mcp_notifications(self) -> bool:
+        """Whether the sidecar pushes ``notifications/shadownet/*`` events.
+
+        TS plugins (OpenClaw) can subscribe via ``setNotificationHandler``;
+        Python plugins fall back to :attr:`supports_inbox_wait` due to a
+        Python MCP SDK validation limitation.
+        """
+        return "mcp-notifications" in self.supported_features
 
 
 async def fetch_integration_bundle(

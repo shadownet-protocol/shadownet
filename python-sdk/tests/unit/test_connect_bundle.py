@@ -21,10 +21,9 @@ def _bundle_payload(**overrides: object) -> dict[str, object]:
         "did": "did:web:app.example",
         "shadowname": "alice@app.example",
         "mcp_endpoint": f"{BASE}/u/alice/mcp",
-        "stream_endpoint": f"{BASE}/u/alice/events",
         "webhook_secret": "wh-secret",
-        "supported_features": ["mcp", "webhook", "stream", "bundle"],
-        "tool_names": ["social_send", "social_inbox"],
+        "supported_features": ["mcp", "webhook", "inbox-wait", "bundle"],
+        "tool_names": ["social_send", "social_inbox", "social_inbox_wait"],
         "event_names": ["inbox.message"],
         "version": "0.3.0",
     }
@@ -50,28 +49,35 @@ async def test_round_trip() -> None:
     async with _client_returning(json=_bundle_payload()) as client:
         bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
     assert bundle.shadowname == "alice@app.example"
-    assert bundle.supports_stream is True
+    assert bundle.supports_inbox_wait is True
     assert bundle.supports_webhook is True
-    assert "stream" in bundle.supported_features
+    assert "inbox-wait" in bundle.supported_features
 
 
 async def test_strip_trailing_slash() -> None:
     async with _client_returning(json=_bundle_payload()) as client:
-        bundle = await fetch_integration_bundle(
-            client, base_url=f"{BASE}///", token=TOKEN
-        )
+        bundle = await fetch_integration_bundle(client, base_url=f"{BASE}///", token=TOKEN)
     assert bundle.shadowname == "alice@app.example"
 
 
-async def test_bundle_without_stream() -> None:
-    """Sidecar that pre-dates RFC-0008: stream_endpoint absent, no 'stream' feature."""
+async def test_bundle_without_inbox_wait() -> None:
+    """Sidecar that pre-dates RFC-0007 amendment D: no 'inbox-wait' feature."""
+    payload = _bundle_payload(supported_features=["mcp", "webhook", "bundle"])
+    async with _client_returning(json=payload) as client:
+        bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
+    assert bundle.supports_inbox_wait is False
+    assert bundle.supports_webhook is True
+
+
+async def test_bundle_with_mcp_notifications() -> None:
+    """Sidecar advertising notifications/shadownet/* push (TS plugins use this)."""
     payload = _bundle_payload(
-        stream_endpoint=None, supported_features=["mcp", "webhook", "bundle"]
+        supported_features=["mcp", "webhook", "inbox-wait", "mcp-notifications", "bundle"]
     )
     async with _client_returning(json=payload) as client:
         bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
-    assert bundle.supports_stream is False
-    assert bundle.supports_webhook is True
+    assert bundle.supports_mcp_notifications is True
+    assert bundle.supports_inbox_wait is True
 
 
 async def test_401_is_fetch_error() -> None:
@@ -122,17 +128,17 @@ async def test_wrong_protocol_version_is_schema_error() -> None:
             await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
 
 
-def test_supports_stream_requires_endpoint_and_feature() -> None:
-    """Both 'stream' in features AND non-null stream_endpoint required."""
-    feature_no_endpoint = IntegrationBundle.model_validate(
-        _bundle_payload(stream_endpoint=None)
+def test_supports_inbox_wait_keys_off_feature_flag() -> None:
+    """Capability gating happens via supported_features, not endpoint presence."""
+    with_feature = IntegrationBundle.model_validate(
+        _bundle_payload(supported_features=["mcp", "inbox-wait"])
     )
-    assert feature_no_endpoint.supports_stream is False  # endpoint missing
+    assert with_feature.supports_inbox_wait is True
 
-    endpoint_no_feature = IntegrationBundle.model_validate(
+    without_feature = IntegrationBundle.model_validate(
         _bundle_payload(supported_features=["mcp"])
     )
-    assert endpoint_no_feature.supports_stream is False  # feature missing
+    assert without_feature.supports_inbox_wait is False
 
 
 def test_bundle_is_frozen() -> None:
