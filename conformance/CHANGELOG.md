@@ -8,7 +8,24 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
-## [0.3.0] — 2026-05-11
+## [0.3.1] — 2026-05-11
+
+### Fixed
+
+- `tests/sidecar/test_0008_connect_url.py` had a stray blank line between
+  the `import pytest` and `from shadownet.connect.url import (...)`
+  groups that the release workflow's stricter `ruff check` rejected (I001).
+  The regular Conformance CI didn't run `ruff check`, so the bad import
+  block slipped past the prepare phase. **Result: `conformance/v0.3.0`
+  was tagged and pushed but the release workflow failed at the lint
+  step before any image was built or pushed to GHCR. The tag is burned
+  per the release skill's "fix forward on main, cut a new patch"
+  guidance; this 0.3.1 ships the same content with the lint fix.**
+
+## [0.3.0] — 2026-05-11 (burned)
+
+Tagged but not released. The release workflow failed at `ruff check`
+before any GHCR artifact was published. Fixed forward as 0.3.1.
 
 ### Added
 
@@ -24,7 +41,7 @@ the `conformance/vX.Y.Z` prefix.
   python-sdk 0.3.0 release that introduces the `shadownet.connect`
   module (integration-bundle, connect-url, MCP-session helpers).
 
-[0.3.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/conformance%2Fv0.3.0
+[0.3.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/conformance%2Fv0.3.1
 
 ## [0.2.0] — 2026-05-11
 
