@@ -10,7 +10,7 @@ One install gives you **two surfaces**:
 ## What's in the package
 
 ```
-@shadownet/openclaw-plugin
+@shadownet-protocol/openclaw-plugin
 ├── dist/index.js                    # bundled-channel-entry (defineBundledChannelEntry)
 ├── dist/channel-plugin-api.js       # exports `shadownetPlugin` (the channel)
 ├── dist/runtime-setter-api.js       # exports `setShadownetRuntime`
@@ -106,8 +106,8 @@ Default `pytest -x` skips the harness entirely — the test module guards on `SH
 
 ## Versioning
 
-`@shadownet/openclaw-plugin@0.2.0` — Phase D (channel + tools).
-`@shadownet/openclaw-plugin@0.1.0` — Phase C (tools only).
+`@shadownet-protocol/openclaw-plugin@0.2.0` — Phase D (channel + tools).
+`@shadownet-protocol/openclaw-plugin@0.1.0` — Phase C (tools only).
 
 The plugin's peerDependency pin is `openclaw@^2026.5.0`. Upgrading the OpenClaw runtime is the user's responsibility; we type-check against whatever the user has installed.
 

@@ -201,7 +201,7 @@ tag. The release workflow handles the rest. Pre-releases use the matching
 PEP-440 / semver suffixes (`python-sdk/v0.2.0-rc.1`, `core/v0.2.0-rc.1`,
 `conformance/v0.2.0-rc.1`).
 
-Integrations releases (e.g. publishing `@shadownet/openclaw-plugin` to npm)
+Integrations releases (e.g. publishing `@shadownet-protocol/openclaw-plugin` to npm)
 are currently manual; an automated `release-openclaw-plugin.yml` workflow
 will land once the OpenClaw plugin's release cadence stabilizes.
 

@@ -164,7 +164,7 @@ GitHub Releases on the legacy repo.
 Existing installs of the OpenClaw plugin from npm, Claude Code plugins
 from a `marketplace.json` link, or `.well-known/skills/index.json` URLs
 continue to work unchanged. The npm distribution name
-(`@shadownet/openclaw-plugin`), the Claude Code plugin manifest schema,
+(`@shadownet-protocol/openclaw-plugin`), the Claude Code plugin manifest schema,
 and the skill bundle shape (agentskills.io) are all unchanged.
 
 The integrations are protocol-level — they consume the spec's public

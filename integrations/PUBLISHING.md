@@ -10,7 +10,7 @@ touching the others.
 | --- | --- | --- |
 | Claude Code plugin | A user-facing GitHub repo's `.claude-plugin/marketplace.json` (today: this repo's root) | tag `claude-plugin-vX.Y.Z` |
 | Hermes Agent skill bundle | `https://app.sh4dow.org/.well-known/skills/index.json` (served by the cloud backend) | every backend deploy |
-| OpenClaw plugin | npm (`@shadownet/openclaw-plugin`) **and** ClawHub | tag `openclaw-plugin-vX.Y.Z` |
+| OpenClaw plugin | npm (`@shadownet-protocol/openclaw-plugin`) **and** ClawHub | tag `openclaw-plugin-vX.Y.Z` |
 | Skill bundle (canonical) | n/a — consumed by the three above | every commit, kept in sync via `make check-skills` |
 
 The publishing pipelines never run from a developer's machine in production;
@@ -139,7 +139,7 @@ prefer `hermes plugins install`.
 The plugin lives in `integrations/plugins/openclaw/` and ships as a real
 TypeScript package under two channels:
 
-- **npm**, as `@shadownet/openclaw-plugin`. The OpenClaw runtime resolves
+- **npm**, as `@shadownet-protocol/openclaw-plugin`. The OpenClaw runtime resolves
   this when a user runs `openclaw plugins install clawhub:shadownet`
   (ClawHub fetches from npm under the hood).
 - **ClawHub**, as the user-facing slug `shadownet`. ClawHub stores the

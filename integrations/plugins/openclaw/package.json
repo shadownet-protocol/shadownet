@@ -1,5 +1,5 @@
 {
-  "name": "@shadownet/openclaw-plugin",
+  "name": "@shadownet-protocol/openclaw-plugin",
   "version": "0.3.0",
   "private": false,
   "type": "module",
