@@ -7,14 +7,36 @@
     "email": "hello@sh4dow.org"
   },
   "homepage": "https://sh4dow.org",
-  "repository": "https://github.com/shadownet-protocol/shadownet-cloud",
+  "repository": "https://github.com/shadownet-protocol/shadownet",
   "license": "MIT",
   "keywords": ["mcp", "a2a", "agent", "messaging", "shadownet"],
-  "monitors": [
-    {
-      "name": "shadownet-inbound",
-      "command": "${CLAUDE_PLUGIN_ROOT}/monitors/inbound.py",
-      "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Opt-in via SHADOWNET_INBOUND=1; emits a notification line per inbound message and (by default) fires an OS-level toast."
+  "userConfig": {
+    "endpoint": {
+      "type": "string",
+      "title": "Sidecar MCP endpoint",
+      "description": "Per-tenant MCP URL, e.g. https://app.sh4dow.org/u/<your-shadowname>/mcp. Find it on your sidecar's connect page.",
+      "default": "https://app.sh4dow.org/u/alice/mcp"
+    },
+    "token": {
+      "type": "string",
+      "title": "Sidecar account token",
+      "description": "Bearer token minted on your sidecar's account page (https://app.sh4dow.org/connect/claude-code for the hosted Sidecar).",
+      "sensitive": true
+    },
+    "inbound_enabled": {
+      "type": "boolean",
+      "title": "Enable real-time inbound monitor",
+      "description": "Run a background long-poll worker so inbound A2A messages surface as notifications. Requires the sidecar to advertise the inbox-wait capability (RFC-0007).",
+      "default": false
     }
-  ]
+  },
+  "experimental": {
+    "monitors": [
+      {
+        "name": "shadownet-inbound",
+        "command": "${CLAUDE_PLUGIN_ROOT}/monitors/inbound.py",
+        "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Emits one structured notification line per inbound message and (by default) fires an OS-level toast. Opt-in via the 'inbound_enabled' userConfig option."
+      }
+    ]
+  }
 }

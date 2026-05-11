@@ -2,9 +2,9 @@
   "mcpServers": {
     "shadownet": {
       "type": "http",
-      "url": "${SHADOWNET_ENDPOINT}",
+      "url": "${user_config.endpoint}",
       "headers": {
-        "Authorization": "Bearer ${SHADOWNET_TOKEN}"
+        "Authorization": "Bearer ${user_config.token}"
       }
     }
   }
