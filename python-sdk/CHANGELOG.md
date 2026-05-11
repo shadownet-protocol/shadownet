@@ -15,7 +15,7 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 ### Added
 
 - New module `shadownet.connect` for one-token install bootstrap
-  (RFC-0007 amendments A–D, draft):
+  (RFC-0007 amendments A–D, draft) — CLIENT side helpers:
   - `fetch_integration_bundle(http, base_url, token) -> IntegrationBundle`
     — fetches the per-tenant `/v1/account/me/integration-bundle` endpoint
     (RFC-0007 amendment A), returning the canonical bootstrap payload
@@ -36,6 +36,27 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
     hosts whose MCP SDK can't dispatch custom notifications.
 - `shadownet.connect.errors` adds `ConnectError`, `BundleFetchError`,
   `BundleSchemaError`, `ConnectURLInvalid`, `MCPSessionError`.
+- New module `shadownet.connect.fastapi` (behind the `[fastapi]` extra)
+  — SERVER side helpers for sidecar implementations (hermes-social,
+  shadownet-cloud, …):
+  - `build_connect_router(*, bundle_builder, host_templates, handoff_resolver)`
+    returns a `fastapi.APIRouter` exposing the bundle endpoint
+    (`GET /v1/account/me/integration-bundle`, with a legacy alias for
+    the previous `/tenants/me/` path), `<base>/connect/<host>` content-
+    negotiated install pages, `<base>/connect/raw` JSON, and an optional
+    `POST /v1/account/connect/handoff/{code}` resolver.
+  - `DEFAULT_HOST_TEMPLATES` ships with `hermes-agent` and `raw` out of
+    the box; operators add `claude-code`, `openclaw`, `cursor`,
+    `continue`, … by passing their own `HostTemplate` instances.
+- `shadownet.mcp.tools` adds `InboxWaitInput`, `InboxWaitEvent`,
+  `InboxWaitOutput` and the `INBOX_WAIT_MAX_TIMEOUT_SECONDS` (90) clamp
+  constant (RFC-0007 amendment D).
+- `shadownet.mcp.protocol.Sidecar` Protocol gains
+  `social_inbox_wait(input) -> InboxWaitOutput` for sidecar implementors.
+- `shadownet.mcp.register.register_shadownet_tools` now accepts
+  `"inbox_wait"` in `include_optional`. When opted in, the tool is
+  registered with server-side timeout clamping at 90 seconds, dispatching
+  to `sidecar.social_inbox_wait`.
 
 ### Notes
 
