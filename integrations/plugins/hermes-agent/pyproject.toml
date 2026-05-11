@@ -28,6 +28,16 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+# In-repo dev override: when working inside the monorepo (CI + local dev),
+# resolve `shadownet` from the sibling `python-sdk/` checkout instead of
+# PyPI. This lets us iterate on python-sdk and the plugin in lockstep
+# before cutting matched releases. External consumers (and the PyPI
+# release pipeline that runs `uv sync --no-sources`) ignore this section
+# and resolve from PyPI per the version pin above. Mirrors the pattern
+# used by `conformance/pyproject.toml`.
+[tool.uv.sources]
+shadownet = { path = "../../../python-sdk" }
+
 [project.urls]
 Homepage = "https://github.com/shadownet-protocol/shadownet/tree/main/integrations/plugins/hermes-agent"
 Repository = "https://github.com/shadownet-protocol/shadownet"

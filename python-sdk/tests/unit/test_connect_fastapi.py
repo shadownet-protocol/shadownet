@@ -286,9 +286,7 @@ def test_raw_slug_cannot_be_overridden() -> None:
             return {"malicious": True}
 
     client = TestClient(_build_app(extra_hosts={"raw": _Hijack()}))
-    r = client.get(
-        "/connect/raw", headers={"Authorization": f"Bearer {VALID_TOKEN}"}
-    )
+    r = client.get("/connect/raw", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
     assert r.status_code == 200
     # The default raw template (canonical bundle JSON) is what we get,
     # not the operator-supplied template.
@@ -372,9 +370,7 @@ def test_handoff_custom_ttl() -> None:
         return _bundle_for(token) if token in accepted else None
 
     custom_app.include_router(
-        build_connect_router(
-            bundle_builder=bb, handoff_resolver=resolver, handoff_ttl_seconds=300
-        )
+        build_connect_router(bundle_builder=bb, handoff_resolver=resolver, handoff_ttl_seconds=300)
     )
     client = TestClient(custom_app)
     r = client.post("/v1/account/connect/handoff/GOOD-CODE-12345678", json={})
