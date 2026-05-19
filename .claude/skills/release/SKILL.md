@@ -73,7 +73,7 @@ empty, e.g. `v0.2.1`).
 1. **Sanity gates** (refuse if any fail, with one-line explanation):
    - Branch is `main`.
    - At least one commit in the subtree path since the latest tag for that
-     subtree: !`git log --oneline <latest-tag>..HEAD -- <subtree>/`.
+     subtree: `git log --oneline <latest-tag>..HEAD -- <subtree>/`.
    - If `<version>` is supplied, must be strictly greater than the latest
      tag for the subtree.
    - Working tree is clean except for files the user explicitly named for
@@ -81,9 +81,9 @@ empty, e.g. `v0.2.1`).
    - For cross-subtree dependencies (see table above), verify the
      dependency has its matching release available:
      - `core/pgstore` release → `core/vX.Y.Z` is on the Go proxy:
-       !`curl -sS https://proxy.golang.org/github.com/shadownet-protocol/shadownet/core/@v/<version>.info`
+       `curl -sS https://proxy.golang.org/github.com/shadownet-protocol/shadownet/core/@v/<version>.info`
      - `conformance` release → `shadownet vX.Y.Z` is on PyPI:
-       !`curl -sS https://pypi.org/pypi/shadownet/<bare-version>/json | python3 -c "import sys,json; print(json.load(sys.stdin).get('info',{}).get('version','MISSING'))"`
+       `curl -sS https://pypi.org/pypi/shadownet/<bare-version>/json | python3 -c "import sys,json; print(json.load(sys.stdin).get('info',{}).get('version','MISSING'))"`
 
 2. **Categorize commits** in the subtree path into **Breaking / Added /
    Changed / Fixed / Operations**. One bullet per logical change, not per
