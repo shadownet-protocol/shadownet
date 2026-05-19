@@ -10,6 +10,46 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-19
+
+### Added
+
+- New module `shadownet.connect.redeem` for client-side handoff
+  redemption:
+  - `redeem_handoff(http, *, base_url, code) -> str` — POSTs to
+    `<base>/v1/account/connect/handoff/<code>` and returns the embedded
+    bearer token. Single-use; the server returns 404 on the second call.
+  - `redeem_connect_url(http, connect_url, *, store=None) -> (base_url, token)`
+    — resolves any `shadownet://connect` URL (inline or handoff) to its
+    `(base_url, token)` pair. When a `TokenStore` is supplied, handoff
+    URLs are checked against the cache before contacting the server, so
+    a host agent can call this on every start without burning the
+    single-use code.
+  - `HandoffRedemptionError` for transport / 404 / non-JSON failures.
+- New module `shadownet.connect.tokens` for persisting redeemed tokens
+  across host-agent restarts:
+  - `TokenStore` Protocol (`load`, `save`).
+  - `KeyringTokenStore` — recommended default, backed by the OS secret
+    store (Login keychain on macOS, Secret Service on Linux, Credential
+    Manager on Windows) via the optional `keyring` dependency.
+  - `FileTokenStore` — fallback for environments without an OS secret
+    store. Writes 0o600 JSON files keyed by `sha256(connect_url)` under
+    the OS state directory
+    (`~/Library/Application Support/shadownet/handoff-tokens/` on macOS,
+    `$XDG_STATE_HOME/shadownet/handoff-tokens/` on Linux,
+    `%LOCALAPPDATA%\shadownet\handoff-tokens\` on Windows).
+  - `default_token_store()` returns `KeyringTokenStore` if available,
+    else `FileTokenStore`.
+  - `default_store_path()` for callers that need the file fallback's
+    root.
+
+### Notes
+
+- All additions are additive. No breaking changes to the 0.3.0 public
+  API.
+
+[0.3.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.1
+
 ## [0.3.0] — 2026-05-11
 
 ### Added
