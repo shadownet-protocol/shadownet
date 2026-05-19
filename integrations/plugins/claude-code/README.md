@@ -93,9 +93,11 @@ worker process. Each inbound `inbox.message` event becomes:
    PowerShell — so you see it immediately even when you're not
    actively looking at Claude Code.
 
-**Inbound is opt-in.** Set `inbound_enabled: true` during install (or
-flip it later via `/plugin config shadownet`). Without it, the monitor
-exits silently at startup.
+**Inbound is on by default.** The monitor checks `inbound_enabled` at
+startup; if explicitly set to `false` via `/plugin → Configure options`,
+it exits silently. It also exits silently when the sidecar doesn't
+advertise the `inbox-wait` capability, so users on older sidecars get a
+no-op rather than a crash.
 
 ### Requirements
 
