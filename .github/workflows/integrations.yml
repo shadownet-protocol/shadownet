@@ -119,11 +119,13 @@ jobs:
       - name: Install dependencies
         # PEP 723 inline metadata on inbound.py resolves shadownet at
         # script-run time; tests need it pre-installed against the sibling
-        # python-sdk checkout.
+        # python-sdk checkout. pytest-asyncio drives the async tests in
+        # test_inbound.py — the existing pytest.ini sets
+        # `asyncio_mode = auto`, which is a no-op without this plugin.
         run: |
           uv venv
           uv pip install --refresh -e ../../../../python-sdk
-          uv pip install pytest ruff
+          uv pip install pytest pytest-asyncio ruff
 
       - name: Ruff lint
         run: uv run ruff check inbound.py test_inbound.py
