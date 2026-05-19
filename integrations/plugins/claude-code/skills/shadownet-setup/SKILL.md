@@ -35,7 +35,7 @@ DID, Shadowname, agent-card URL, and credential level.
 
 If the call fails with a 401 / `invalid_token`, the user's `SHADOWNET_TOKEN`
 is wrong or expired. Tell them to re-mint a token at
-`https://app.sh4dow.org/connect`. Do not retry silently.
+`https://app.sh4dow.org/connect/claude-code`. Do not retry silently.
 
 ### 2. List contacts
 

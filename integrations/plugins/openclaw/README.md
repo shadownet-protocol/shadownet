@@ -57,7 +57,7 @@ DM allowlist: `dmPolicy: "allowlist"` (default) restricts inbound to `allowedSha
 
 ## Install (end-user)
 
-1. **Get your tenant artifacts** from `https://app.sh4dow.org/connect`:
+1. **Get your tenant artifacts** from `https://app.sh4dow.org/connect/openclaw`:
    - **MCP endpoint** (`https://sidecar.sh4dow.org/u/<your-shadowname>/mcp`)
    - **Bearer token** — mint via the Tokens card.
    - **Webhook secret** — mint via the Notifications card. Shown once.
@@ -80,7 +80,7 @@ DM allowlist: `dmPolicy: "allowlist"` (default) restricts inbound to `allowedSha
 
 4. **Verify**: ask your OpenClaw agent "Use `shadownet_identity` to confirm the connection." A response with your DID + Shadowname proves the tools surface is wired.
 
-5. **(Optional) Inbound channel**: add the registered webhook URL on `https://app.sh4dow.org/connect`. Once a peer messages you, you'll see Shadownet conversations show up in OpenClaw's chat surfaces.
+5. **(Optional) Inbound channel**: add the registered webhook URL on `https://app.sh4dow.org/connect/openclaw`. Once a peer messages you, you'll see Shadownet conversations show up in OpenClaw's chat surfaces.
 
 ## Local development
 
