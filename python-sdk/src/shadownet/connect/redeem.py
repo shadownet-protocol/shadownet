@@ -12,11 +12,15 @@ the single-use code each time.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import httpx
 
 from shadownet.connect.errors import ConnectError
-from shadownet.connect.tokens import TokenStore
 from shadownet.connect.url import parse_connect_url
+
+if TYPE_CHECKING:
+    from shadownet.connect.tokens import TokenStore
 
 __all__ = ["HandoffRedemptionError", "redeem_connect_url", "redeem_handoff"]
 
@@ -25,9 +29,7 @@ class HandoffRedemptionError(ConnectError):
     """The handoff code could not be redeemed (consumed, expired, transport)."""
 
 
-async def redeem_handoff(
-    http: httpx.AsyncClient, *, base_url: str, code: str
-) -> str:
+async def redeem_handoff(http: httpx.AsyncClient, *, base_url: str, code: str) -> str:
     """Trade a handoff code for a bearer token.
 
     Wraps ``POST <base>/v1/account/connect/handoff/<code>``. The
@@ -82,15 +84,14 @@ async def redeem_connect_url(
         assert parsed.token is not None
         return parsed.base_url, parsed.token
 
-    assert parsed.is_handoff and parsed.handoff is not None
+    assert parsed.is_handoff
+    assert parsed.handoff is not None
     if store is not None:
         cached = store.load(connect_url)
         if cached:
             return parsed.base_url, cached
 
-    token = await redeem_handoff(
-        http, base_url=parsed.base_url, code=parsed.handoff
-    )
+    token = await redeem_handoff(http, base_url=parsed.base_url, code=parsed.handoff)
     if store is not None:
         store.save(connect_url, token)
     return parsed.base_url, token

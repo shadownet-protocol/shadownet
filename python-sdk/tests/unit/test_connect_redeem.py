@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from shadownet.connect.errors import ConnectURLInvalid
 from shadownet.connect.redeem import (
@@ -64,9 +67,7 @@ async def test_redeem_handoff_5xx() -> None:
 
 
 async def test_redeem_handoff_network_error() -> None:
-    transport = _redeem_handler_returning(
-        raise_exc=httpx.ConnectError("connection refused")
-    )
+    transport = _redeem_handler_returning(raise_exc=httpx.ConnectError("connection refused"))
     async with httpx.AsyncClient(transport=transport) as http:
         with pytest.raises(HandoffRedemptionError, match="could not reach"):
             await redeem_handoff(http, base_url=BASE, code=HANDOFF)
@@ -81,6 +82,7 @@ async def test_redeem_handoff_missing_token_field() -> None:
 
 async def test_redeem_connect_url_inline_is_immediate() -> None:
     """No HTTP call needed for inline URLs."""
+
     def never_called(request: httpx.Request) -> httpx.Response:  # pragma: no cover
         raise AssertionError("inline URL must not contact the server")
 

@@ -157,7 +157,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["^tests/"]
 
 [[tool.mypy.overrides]]
-module = ["mcp.*", "a2a.*"]
+module = ["mcp.*", "a2a.*", "keyring", "keyring.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
