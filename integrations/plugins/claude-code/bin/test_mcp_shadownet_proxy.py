@@ -43,18 +43,40 @@ proxy = _load_proxy_module()
 
 async def test_run_exits_1_when_url_not_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     rc = await proxy._run()
     assert rc == 1
 
 
 async def test_run_exits_1_when_url_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHADOWNET_CONNECT_URL", "   ")
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     rc = await proxy._run()
     assert rc == 1
 
 
+async def test_run_prefers_claude_plugin_option_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude Code exports userConfig as CLAUDE_PLUGIN_OPTION_* — including
+    `sensitive: true` fields, whose `${user_config.X}` substitution into
+    .mcp.json env blocks doesn't always resolve. The proxy must read the
+    plugin-option form first."""
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_OPTION_CONNECT_URL",
+        "shadownet://connect?base=http://localhost:1&token=tok-from-plugin",
+    )
+    rc = await proxy._run()
+    # exit 4 = bundle unreachable, which means the URL parsed and the proxy
+    # got far enough to attempt the bundle fetch. That's all we want to
+    # prove here: the value was picked up from CLAUDE_PLUGIN_OPTION_*.
+    assert rc == 4
+
+
 async def test_run_exits_2_on_malformed_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHADOWNET_CONNECT_URL", "not-a-shadownet-url")
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     rc = await proxy._run()
     assert rc == 2
 
