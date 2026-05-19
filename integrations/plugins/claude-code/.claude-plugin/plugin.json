@@ -1,7 +1,7 @@
 {
   "name": "shadownet",
   "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": {
     "name": "Shadownet",
     "email": "hello@sh4dow.org"
@@ -21,8 +21,8 @@
     "inbound_enabled": {
       "type": "boolean",
       "title": "Enable real-time inbound monitor",
-      "description": "Run a background long-poll worker so inbound A2A messages surface as Claude notifications + OS toasts. Requires the sidecar to advertise the inbox-wait capability (RFC-0007).",
-      "default": false
+      "description": "Run a background long-poll worker so inbound A2A messages surface as Claude notifications + OS toasts. Requires the sidecar to advertise the inbox-wait capability (RFC-0007). Enabled by default; degrades to a silent no-op if `uv` is missing or the sidecar lacks the capability.",
+      "default": true
     }
   },
   "experimental": {
