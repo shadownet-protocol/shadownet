@@ -17,9 +17,7 @@ from shadownet.connect.tokens import (
     default_token_store,
 )
 
-CONNECT_URL = (
-    "shadownet://connect?base=https://app.example&handoff=8K3J9-W2L1Q-Y5R7T"
-)
+CONNECT_URL = "shadownet://connect?base=https://app.example&handoff=8K3J9-W2L1Q-Y5R7T"
 
 
 def test_file_store_round_trip(tmp_path: Path) -> None:

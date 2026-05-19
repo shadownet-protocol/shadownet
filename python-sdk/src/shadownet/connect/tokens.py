@@ -34,14 +34,15 @@ responds, else ``FileTokenStore``).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 __all__ = [
     "FileTokenStore",
@@ -68,13 +69,14 @@ class TokenStore(Protocol):
 
 def default_store_path() -> Path:
     """Return the OS-appropriate cache directory for redeemed tokens."""
-    if sys.platform == "win32":
+    # Type as `str` (not `Literal`) so mypy's per-platform unreachable
+    # analysis doesn't flag the linux branch on macOS/Windows builds.
+    platform: str = sys.platform
+    if platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "shadownet" / "handoff-tokens"
-    if sys.platform == "darwin":
-        return (
-            Path.home() / "Library" / "Application Support" / "shadownet" / "handoff-tokens"
-        )
+    if platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "shadownet" / "handoff-tokens"
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
     return Path(base) / "shadownet" / "handoff-tokens"
 
@@ -125,14 +127,12 @@ class FileTokenStore:
         path = self._path(connect_url)
         path.parent.mkdir(parents=True, exist_ok=True)
         # POSIX: keep the parent dir private. Windows ignores mode but it's harmless.
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(path.parent, 0o700)
-        except OSError:
-            pass
         payload = {
             "version": _SCHEMA_VERSION,
             "token": token,
-            "redeemed_at": datetime.now(timezone.utc).isoformat(),
+            "redeemed_at": datetime.now(UTC).isoformat(),
         }
         tmp = path.with_suffix(path.suffix + ".tmp")
         # Open with explicit mode so the file is 0o600 from creation, no
@@ -182,12 +182,13 @@ class KeyringTokenStore:
         self._keyring = keyring
 
     def load(self, connect_url: str) -> str | None:
-        return self._keyring.get_password(_KEYRING_SERVICE, _cache_key(connect_url))
+        return cast(
+            "str | None",
+            self._keyring.get_password(_KEYRING_SERVICE, _cache_key(connect_url)),
+        )
 
     def save(self, connect_url: str, token: str) -> None:
-        self._keyring.set_password(
-            _KEYRING_SERVICE, _cache_key(connect_url), token
-        )
+        self._keyring.set_password(_KEYRING_SERVICE, _cache_key(connect_url), token)
 
 
 def default_token_store() -> TokenStore:
