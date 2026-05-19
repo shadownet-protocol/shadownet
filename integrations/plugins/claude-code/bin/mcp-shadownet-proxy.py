@@ -94,12 +94,24 @@ async def _resolve_mcp_endpoint(base_url: str, token: str) -> tuple[str, str]:
 
 
 async def _run() -> int:
-    url = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
+    # Claude Code exports every userConfig value to plugin subprocesses as
+    # `CLAUDE_PLUGIN_OPTION_<KEY>` (plugins-reference §User configuration,
+    # line 481). `${user_config.X}` substitution into the .mcp.json env block
+    # works for non-sensitive fields, but as of Claude Code 2.1.x the
+    # substitution doesn't resolve `sensitive: true` keychain-backed values
+    # — that path lands the proxy with an empty env var. The CLAUDE_PLUGIN_*
+    # form does cover sensitive values, so we prefer it and fall back to the
+    # shell-env name for power-user / non-Claude contexts.
+    url = (
+        os.environ.get("CLAUDE_PLUGIN_OPTION_CONNECT_URL", "").strip()
+        or os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
+    )
     if not url:
         _log.error(
-            "SHADOWNET_CONNECT_URL is empty. The Claude Code plugin's "
-            ".mcp.json should set this from ${user_config.connect_url}; "
-            "did the user complete the install prompt?"
+            "connect_url is empty. Expected the Claude Code plugin's "
+            "`connect_url` userConfig to be set (via /plugin → Configure "
+            "options or the install prompt), or SHADOWNET_CONNECT_URL "
+            "exported in the shell for non-Claude contexts."
         )
         return 1
 
