@@ -1,7 +1,7 @@
 {
   "name": "shadownet",
   "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": {
     "name": "Shadownet",
     "email": "hello@sh4dow.org"
@@ -15,7 +15,8 @@
       "type": "string",
       "title": "Shadownet connect URL",
       "description": "Paste the shadownet://connect?base=...&token=... URL from your sidecar's account page. The hosted Sidecar serves a pre-filled snippet at https://app.sh4dow.org/connect/claude-code; self-hosts serve the same at https://<your-sidecar>/connect/claude-code (RFC-0008).",
-      "sensitive": true
+      "sensitive": true,
+      "required": true
     },
     "inbound_enabled": {
       "type": "boolean",
