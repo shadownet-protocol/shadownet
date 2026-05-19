@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["shadownet>=0.3.0,<0.4"]
+# dependencies = ["shadownet>=0.3.1,<0.4", "keyring>=24"]
 # ///
 """Shadownet inbound monitor for Claude Code.
 
@@ -52,8 +52,9 @@ from typing import Any
 import httpx
 
 from shadownet.connect.bundle import fetch_integration_bundle
+from shadownet.connect.redeem import redeem_connect_url
 from shadownet.connect.session import ShadownetMCPSession
-from shadownet.connect.url import parse_connect_url
+from shadownet.connect.tokens import default_token_store
 
 DEFAULT_BASE_URL = "https://app.sh4dow.org"
 
@@ -74,7 +75,7 @@ def _env_first(*names: str, default: str = "") -> str:
     return default
 
 
-def _resolve_config() -> tuple[str, str, int, bool]:
+async def _resolve_config() -> tuple[str, str, int, bool]:
     """Resolve runtime config from Claude Code's userConfig env vars, then
     fall back to shell-style SHADOWNET_* env vars.
 
@@ -93,17 +94,14 @@ def _resolve_config() -> tuple[str, str, int, bool]:
         "CLAUDE_PLUGIN_OPTION_CONNECT_URL", "SHADOWNET_CONNECT_URL"
     )
     if connect_url:
-        parsed = parse_connect_url(connect_url)
-        if not parsed.is_inline:
-            raise RuntimeError(
-                "SHADOWNET_CONNECT_URL must be inline (token=...) form for the "
-                "Claude Code monitor; handoff URLs require a separate browser flow."
-            )
-        assert parsed.token is not None
-        token = parsed.token
-        # The connect URL carries the sidecar base; the monitor only needs
-        # that to derive the integration-bundle and MCP endpoints.
-        base_url = parsed.base_url
+        # Inline URLs return the embedded token immediately. Handoff URLs
+        # redeem the single-use code on first run and cache the resulting
+        # token (OS keychain when available; 0o600 JSON fallback otherwise).
+        # The proxy and monitor share the same cache, so whichever starts
+        # first redeems and the other reads from cache.
+        store = default_token_store()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as http:
+            base_url, token = await redeem_connect_url(http, connect_url, store=store)
     else:
         # Shell-env power-user path. The 0.3.0 plugin no longer asks for
         # token/endpoint via userConfig (they're derived from connect_url),
@@ -255,15 +253,19 @@ def main() -> int:
         )
         return 0
     try:
-        token, base_url, timeout, os_notif = _resolve_config()
-    except RuntimeError as exc:
-        _log.error("config error: %s", exc)
-        return 1
-    try:
-        return asyncio.run(_run_monitor(token, base_url, timeout, os_notif))
+        return asyncio.run(_resolve_and_run())
     except KeyboardInterrupt:
         _log.info("monitor stopped by signal")
         return 0
+
+
+async def _resolve_and_run() -> int:
+    try:
+        token, base_url, timeout, os_notif = await _resolve_config()
+    except Exception as exc:  # noqa: BLE001
+        _log.error("config error: %s", exc)
+        return 1
+    return await _run_monitor(token, base_url, timeout, os_notif)
 
 
 if __name__ == "__main__":
