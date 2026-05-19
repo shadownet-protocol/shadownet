@@ -42,15 +42,17 @@ Identity-anchored agent-to-agent communication via the
 2. Add the marketplace and install the plugin from a Claude Code session:
 
    ```text
-   /plugin marketplace add github:shadownet-protocol/shadownet
+   /plugin marketplace add shadownet-protocol/shadownet
    /plugin install shadownet@shadownet-protocol
    ```
 
-3. Claude Code prompts for two `userConfig` values:
-   - **`connect_url`** — paste the `shadownet://connect?...` URL from
-     step 1. Token stored in the system keychain.
-   - **`inbound_enabled`** — `true` to enable the background long-poll
-     monitor, `false` (default) for outbound-only.
+3. Claude Code prompts once for the `connect_url`. Paste the
+   `shadownet://connect?...` URL from step 1. Token is stored in the
+   system keychain. The real-time inbound monitor is enabled by default
+   and degrades to a silent no-op if your sidecar doesn't advertise
+   `inbox-wait`; flip `inbound_enabled` to `false` via
+   `/plugin → Installed → shadownet → Configure options` if you want
+   outbound-only.
 
 4. Verify:
 
