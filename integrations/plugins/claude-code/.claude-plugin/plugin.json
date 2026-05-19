@@ -1,7 +1,7 @@
 {
   "name": "shadownet",
   "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": {
     "name": "Shadownet",
     "email": "hello@sh4dow.org"

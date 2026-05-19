@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["shadownet>=0.3.0,<0.4"]
+# dependencies = ["shadownet>=0.3.1,<0.4", "keyring>=24"]
 # ///
 """Shadownet MCP stdio<->HTTP+SSE proxy for Claude Code.
 
@@ -32,9 +32,15 @@ failed cleanly:
 
   1 — SHADOWNET_CONNECT_URL not set
   2 — URL didn't parse
-  3 — handoff form (not supported; user needs to use a token URL)
+  3 — handoff URL could not be redeemed (consumed, expired, sidecar down)
   4 — couldn't reach the bundle endpoint
   5 — bundle didn't list mcp_endpoint
+
+Handoff URLs (RFC-0008 §Handoff form) are redeemed exactly once and the
+resulting token is cached via shadownet.connect.FileTokenStore. On
+subsequent session starts the proxy reads the cached token instead of
+re-redeeming — so Claude Code's "re-read userConfig on every spawn"
+model works against single-use codes without burning a code each turn.
 """
 
 from __future__ import annotations
@@ -50,7 +56,9 @@ from mcp.server.stdio import stdio_server
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from shadownet.connect.bundle import fetch_integration_bundle
-from shadownet.connect.url import parse_connect_url
+from shadownet.connect.errors import ConnectURLInvalid
+from shadownet.connect.redeem import HandoffRedemptionError, redeem_connect_url
+from shadownet.connect.tokens import default_token_store
 
 # Stdout is reserved for JSON-RPC; all logging goes to stderr where Claude
 # Code's MCP server-output panel will display it for diagnostics.
@@ -95,23 +103,21 @@ async def _run() -> int:
         )
         return 1
 
-    try:
-        parsed = parse_connect_url(url)
-    except Exception as exc:  # noqa: BLE001
-        _log.error("could not parse shadownet:// URL: %s", exc)
-        return 2
-
-    if not parsed.is_inline:
-        _log.error(
-            "Connect URL must be inline form (?token=...). Handoff URLs "
-            "require a browser flow that isn't supported by this proxy. "
-            "Mint a token-bearing URL at <base>/connect/claude-code."
-        )
-        return 3
-
-    assert parsed.token is not None
-    base = parsed.base_url
-    token = parsed.token
+    # Resolve both inline and handoff URLs through the SDK. For handoff
+    # URLs the first call redeems the single-use code and caches the
+    # resulting token in the OS keychain (or 0600 JSON if keyring isn't
+    # available); subsequent proxy starts read the cached token without
+    # re-redeeming.
+    store = default_token_store()
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as http:
+        try:
+            base, token = await redeem_connect_url(http, url, store=store)
+        except ConnectURLInvalid as exc:
+            _log.error("could not parse shadownet:// URL: %s", exc)
+            return 2
+        except HandoffRedemptionError as exc:
+            _log.error("handoff redemption failed: %s", exc)
+            return 3
 
     try:
         mcp_endpoint, shadowname = await _resolve_mcp_endpoint(base, token)

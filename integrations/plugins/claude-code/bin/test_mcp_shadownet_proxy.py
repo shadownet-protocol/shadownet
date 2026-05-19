@@ -59,9 +59,18 @@ async def test_run_exits_2_on_malformed_url(monkeypatch: pytest.MonkeyPatch) -> 
     assert rc == 2
 
 
-async def test_run_exits_3_on_handoff_form(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Handoff URLs require a browser flow that the proxy can't drive —
-    the user should re-mint a token-bearing URL."""
+async def test_run_exits_3_when_handoff_cannot_be_redeemed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handoff URL whose code has been consumed/expired: surface a clean
+    exit 3 instead of crashing on the HTTP 404."""
+
+    from shadownet.connect.redeem import HandoffRedemptionError
+
+    async def _fail(http: object, url: str, *, store: object) -> tuple[str, str]:
+        raise HandoffRedemptionError("handoff code rejected (404)")
+
+    monkeypatch.setattr(proxy, "redeem_connect_url", _fail)
     monkeypatch.setenv(
         "SHADOWNET_CONNECT_URL",
         "shadownet://connect?base=https://x.example&handoff=ABCDEFGHIJ12345678",
