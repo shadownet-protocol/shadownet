@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from shadownet.connect.errors import BundleFetchError, BundleSchemaError
 from shadownet.logging import get_logger
@@ -49,11 +49,34 @@ class IntegrationBundle(BaseModel):
     # RFC-0005: local@provider form.
     shadowname: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,63}@[A-Za-z0-9.-]+$")
     mcp_endpoint: str = Field(pattern=r"^https://")
+    # RFC-0009 § Relationship to RFC-0008: when oauth-authorize is in
+    # supported_features the bundle MUST advertise the RFC 9728 PRM URL.
+    # The cross-field invariant is checked in ``_check_oauth_invariant``.
+    protected_resource_metadata: str | None = Field(default=None, pattern=r"^https://")
     webhook_secret: str | None
     supported_features: list[str] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
     event_names: list[str] = Field(default_factory=list)
     version: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_oauth_invariant(self) -> IntegrationBundle:
+        # RFC-0009 § Relationship to RFC-0008: the PRM URL field MUST be
+        # present iff `oauth-authorize` is advertised. Either side missing
+        # is a malformed bundle.
+        oauth = "oauth-authorize" in self.supported_features
+        prm = self.protected_resource_metadata is not None
+        if oauth and not prm:
+            raise ValueError(
+                "supported_features includes 'oauth-authorize' but "
+                "protected_resource_metadata is missing (RFC-0009)"
+            )
+        if prm and not oauth:
+            raise ValueError(
+                "protected_resource_metadata is set but supported_features "
+                "does not include 'oauth-authorize' (RFC-0009)"
+            )
+        return self
 
     @property
     def supports_inbox_wait(self) -> bool:
@@ -73,6 +96,16 @@ class IntegrationBundle(BaseModel):
         Python MCP SDK validation limitation.
         """
         return "mcp-notifications" in self.supported_features
+
+    @property
+    def supports_oauth_authorize(self) -> bool:
+        """Whether the sidecar advertises the RFC-0009 OAuth 2.1 profile.
+
+        When ``True``, :attr:`protected_resource_metadata` is the URL of
+        the RFC 9728 PRM document and OAuth-capable host agents SHOULD
+        prefer it over RFC-0008 paste-based onboarding.
+        """
+        return "oauth-authorize" in self.supported_features
 
 
 async def fetch_integration_bundle(

@@ -10,6 +10,37 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Added
+
+- New module `shadownet.oauth` implementing the RFC-0009 OAuth 2.1
+  authorization profile for the Sidecar MCP endpoint. Strict superset
+  of the [MCP authorization specification](https://modelcontextprotocol.io/specification/latest/basic/authorization):
+  - `shadownet.oauth.server` — `AuthorizationServer` (RFC 6749 / OAuth
+    2.1 authorization-code + PKCE + RFC 8707 resource indicators +
+    RFC 7591 dynamic client registration + RFC 7009 revocation +
+    refresh-token rotation with replay-detect family revocation) and
+    `ResourceServer` (RFC 6750 bearer-token validation with EdDSA JWS,
+    audience binding, scope enforcement, kid pinning).
+  - `shadownet.oauth.fastapi` — `build_oauth_router`,
+    `build_resource_metadata_router`, `build_bearer_auth_dependency`
+    and `oauth_challenge_headers` for mounting the authorization
+    surface on a FastAPI app. Lives behind the `shadownet[fastapi]`
+    extra.
+  - `shadownet.oauth.client` — `discover` (RFC 9728 PRM + RFC 8414 AS
+    metadata) and `OAuthClient` for SDK consumers: dynamic client
+    registration, PKCE authorization-code flow, refresh-token
+    rotation, and `wait_for_loopback_callback` for browser-driven CLI
+    flows.
+  - `shadownet.oauth.scopes` — the v0.1 scope set
+    (`mcp:tools.read`, `mcp:tools.write`, `mcp:inbox.wait`,
+    `offline_access`) plus the per-tool `TOOL_SCOPE_REQUIREMENTS` map.
+  - `shadownet.oauth.pkce` — RFC 7636 S256 verifier/challenge
+    primitives.
+- `IntegrationBundle` (RFC-0008 `bundle.py`) gains the optional
+  `protected_resource_metadata` field and the
+  `supports_oauth_authorize` property; cross-field invariant enforced
+  per RFC-0009 (`oauth-authorize` ⟺ `protected_resource_metadata`).
+
 ## [0.3.1] — 2026-05-19
 
 ### Added
