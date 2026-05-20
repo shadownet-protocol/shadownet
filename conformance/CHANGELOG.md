@@ -8,6 +8,16 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+### Added
+
+- New test module `tests/sidecar/test_0009_authorization.py` exercising
+  the RFC-0009 OAuth 2.1 authorization profile: PRM document, AS
+  metadata, `WWW-Authenticate` shape, PKCE `S256` enforcement,
+  RFC 8707 resource binding, DCR response shape, and Bearer-token
+  validation. Eight tests behind the `draft` marker pending RFC-0009
+  graduation; runs against any Sidecar advertising `oauth-authorize`
+  via the 401 challenge.
+
 ## [0.3.1] — 2026-05-11
 
 ### Fixed
