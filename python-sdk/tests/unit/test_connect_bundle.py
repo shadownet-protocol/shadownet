@@ -186,3 +186,30 @@ def test_bundle_accepts_explicit_null_webhook_secret() -> None:
     payload = _bundle_payload(webhook_secret=None)
     bundle = IntegrationBundle.model_validate(payload)
     assert bundle.webhook_secret is None
+
+
+def test_bundle_oauth_authorize_invariant_requires_prm() -> None:
+    """RFC-0009: oauth-authorize in supported_features REQUIRES protected_resource_metadata."""
+    payload = _bundle_payload(supported_features=["mcp", "bundle", "oauth-authorize"])
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_oauth_authorize_invariant_requires_capability() -> None:
+    """RFC-0009: protected_resource_metadata REQUIRES the oauth-authorize feature flag."""
+    payload = _bundle_payload(
+        protected_resource_metadata="https://app.example/u/alice/.well-known/oauth-protected-resource",
+    )
+    with pytest.raises(ValidationError):
+        IntegrationBundle.model_validate(payload)
+
+
+def test_bundle_oauth_authorize_full_shape() -> None:
+    """RFC-0009: paired oauth-authorize feature flag + PRM URL validates cleanly."""
+    payload = _bundle_payload(
+        supported_features=["mcp", "bundle", "oauth-authorize"],
+        protected_resource_metadata="https://app.example/u/alice/.well-known/oauth-protected-resource",
+    )
+    bundle = IntegrationBundle.model_validate(payload)
+    assert bundle.supports_oauth_authorize is True
+    assert bundle.protected_resource_metadata is not None
