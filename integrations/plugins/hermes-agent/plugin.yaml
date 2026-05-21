@@ -1,11 +1,20 @@
 # Hermes Agent plugin manifest for the Shadownet protocol.
 #
-# Distributed via `hermes plugins install shadownet-protocol/shadownet` per
-# the Hermes documentation at
+# Distributed via PyPI (`pip install shadownet-hermes-plugin`) and discovered
+# by Hermes through the `hermes_agent.plugins` entry point declared in
+# pyproject.toml. The Hermes guide for plugins with third-party Python deps
+# explicitly directs distribution via pip — see
 # https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins.
+# The `hermes plugins install <owner/repo>` path requires plugin.yaml +
+# __init__.py at the cloned repo root and does NOT resolve Python deps; our
+# plugin pulls in `mcp` and the `shadownet` SDK transitively, so the pip
+# entry-point path is the canonical install method.
 #
-# The plugin's behavior is documented in README.md; this file just declares
-# the metadata Hermes needs to load it.
+# `requires_env` below is read by Hermes only when a plugin is installed via
+# `hermes plugins install` (the Git-clone path). On the pip entry-point path
+# Hermes never reads plugin.yaml — env-var validation happens at startup in
+# `_adapter.check_shadownet_requirements`. The fields are kept here so the
+# manifest is still authoritative if the install path changes.
 
 name: shadownet
 version: "0.1.0"

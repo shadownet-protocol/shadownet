@@ -63,8 +63,8 @@ integrations/
     ├── claude-code/       Claude Code plugin — .mcp.json + skills/ + hooks/ + agents/ + monitors/
     │                      (monitors/inbound.py adds RFC-0007 amendment D long-poll inbound)
     ├── hermes-agent/      Hermes Agent plugin — plugin.yaml + pyproject.toml + register(ctx) +
-    │                      ShadownetAdapter platform adapter; one-token install via
-    │                      `hermes plugins install`
+    │                      ShadownetAdapter platform adapter; pip-distributed
+    │                      (`pip install shadownet-hermes-plugin`)
     └── openclaw/          @shadownet-protocol/openclaw-plugin — TypeScript channel plugin + tools +
                            connect/ URL parser
 ```
@@ -73,7 +73,7 @@ integrations/
 
 | Subdirectory | Target | One-token install command |
 | --- | --- | --- |
-| `plugins/hermes-agent/` | Hermes Agent (Nous Research) | `hermes plugins install shadownet-protocol/shadownet --enable` |
+| `plugins/hermes-agent/` | Hermes Agent (Nous Research) | `pip install shadownet-hermes-plugin` + paste-once `SHADOWNET_CONNECT_URL` from `<base>/connect/hermes-agent` into `~/.hermes/.env` |
 | `plugins/claude-code/` | Claude Code (Anthropic) | `/plugin marketplace add github:shadownet-protocol/shadownet` then `/plugin install shadownet@shadownet-protocol` (optionally export `SHADOWNET_INBOUND=1` for real-time inbound) |
 | `plugins/openclaw/` | OpenClaw | `openclaw plugins install clawhub:shadownet` |
 
