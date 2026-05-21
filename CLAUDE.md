@@ -36,7 +36,7 @@ is the protocol's source of truth. Reading order for the v0.1 RFC set:
 ```
 shadownet/
 ├── core/              Go reference implementation: SDK (pkg/) + servers + CLI; Postgres backend in core/pgstore/
-├── python-sdk/        Python SDK (PyPI: shadownet); consumed by hermes-social and downstream Sidecars
+├── python-sdk/        Python SDK (PyPI: shadownet); consumed by shadownet-local and downstream Sidecars
 ├── conformance/       Cross-impl wire-level test suite (PyPI: shadownet-conformance + GHCR image + GitHub Action)
 ├── integrations/      Host-agent plugins (Claude Code, Hermes Agent, OpenClaw, raw skill bundles)
 ├── examples/          Per-language runnable end-to-end demos

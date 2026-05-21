@@ -3,7 +3,7 @@
 How easy is it for a user to get Shadownet running on each of the three
 agent platforms we support? Two scenarios per platform: a **hosted
 Sidecar** (the user signs up on someone else's sh4dow.org-style cloud)
-and a **self-hosted Sidecar** (the user runs `hermes-social` or an
+and a **self-hosted Sidecar** (the user runs `shadownet-local` or an
 RFC-0007-compliant Sidecar on their own infra).
 
 For each path we name the canonical doc URL we verified against (full
