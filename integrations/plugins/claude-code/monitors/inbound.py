@@ -11,7 +11,7 @@ Per the Claude Code docs, each stdout line emitted by a monitor becomes a
 notification delivered to Claude during the session — that's our channel
 for surfacing inbound A2A messages.
 
-Claude Code itself has no webhook receiver model, so this monitor is the
+Claude Code itself has no platform adapter model, so this monitor is the
 only documented inbound path. It opens an outbound MCP session against
 the Shadownet sidecar's MCP endpoint and runs the `social_inbox_wait`
 long-poll loop (RFC-0007 amendment D) from inside this process. Inbound

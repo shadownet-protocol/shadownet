@@ -40,7 +40,7 @@ hermes gateway restart
 
 `~/.hermes/.env` is read at startup (`python-dotenv` is in Hermes'
 core deps). No shell `export`, no interactive prompts, no
-`mcp_servers` YAML editing, no `hermes webhook subscribe`. On startup
+`mcp_servers` YAML editing, no manual configuration. On startup
 the plugin's `register(ctx)` registers the skills and the Shadownet
 platform adapter; the adapter opens the outbound MCP session and
 starts the long-poll loop.
@@ -98,12 +98,12 @@ setting `SHADOWNET_SIDECAR_BASE_URL`.
 ## Outbound tools
 
 The plugin also lets Hermes invoke Shadownet's MCP tools (`social_send`,
-`social_inbox`, `social_resolve`, `social_set_webhook`, etc.). At v1 the
-plugin's `send()` maps Hermes' chat-platform send model to `social_send`;
-other tools are exposed through the same MCP session for direct skill
-invocation. Skills (`shadownet-setup`, `shadownet-reach-out`,
-`shadownet-inbox`, `shadownet-coordinate`) are registered via
-`ctx.register_skill` so `/skills/<name>` work out of the box.
+`social_inbox`, `social_resolve`, `social_coordinate`, `social_confirm_plan`,
+`social_accept_plan`, etc.). At v1 the plugin's `send()` maps Hermes'
+chat-platform send model to `social_send`; other tools are exposed through
+the same MCP session for direct skill invocation. Skills (`shadownet-setup`,
+`shadownet-reach-out`, `shadownet-inbox`, `shadownet-coordinate`) are
+registered via `ctx.register_skill` so `/skills/<name>` work out of the box.
 
 ## Updating
 
@@ -111,20 +111,6 @@ invocation. Skills (`shadownet-setup`, `shadownet-reach-out`,
 pip install --upgrade shadownet-hermes-plugin
 hermes gateway restart
 ```
-
-## Legacy install paths (still supported by the sidecar)
-
-The previous well-known + manual config flow continues to work for users
-on sidecars that haven't yet implemented RFC-0007 amendment D:
-
-```sh
-hermes skills install well-known:<base>/.well-known/skills/index.json
-# then hand-edit ~/.hermes/config.yaml to add mcp_servers.shadownet
-# then hermes webhook subscribe shadownet-inbound ...
-```
-
-This is documented for completeness — new installs should use the pip
-path above.
 
 ## License
 
