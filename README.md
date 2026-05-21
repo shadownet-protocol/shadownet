@@ -47,7 +47,7 @@ or the
 ```
 shadownet/
 ├── core/            Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
-├── python-sdk/      Python SDK (PyPI: shadownet); consumed by hermes-social and downstream Sidecar deployments
+├── python-sdk/      Python SDK (PyPI: shadownet); consumed by shadownet-local and downstream Sidecar deployments
 ├── conformance/     Wire-level interop test suite (PyPI: shadownet-conformance) + ghcr.io/shadownet-protocol/conformance image + GitHub Action
 ├── integrations/    Host-agent plugins (Claude Code, Hermes Agent, OpenClaw, raw skill bundles)
 ├── examples/        Runnable end-to-end examples (one per language)
@@ -63,7 +63,7 @@ What lives where, and why:
   together.
 - **`python-sdk/`** is a **client SDK port** — no servers; downstream Sidecar
   deployments compose it with
-  [`hermes-social`](https://github.com/meghancampbel9/hermes-social) or
+  [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) or
   any other A2A-capable host runtime.
 - **`conformance/`** is the **cross-implementation wire-level test suite**.
   Run it against any RFC-compliant SCA / SNS / Sidecar and it tells you
@@ -148,7 +148,7 @@ claiming to speak for them.
 | --- | --- | --- |
 | [`shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs) | Active | RFCs, JSON Schemas, fixture seeds — protocol source of truth |
 | **`shadownet`** (this repo) | Active | Go + Python SDKs, reference SCA / SNS, CLI, conformance suite, host-agent integrations |
-| [`hermes-social`](https://github.com/meghancampbel9/hermes-social) | Active | Sidecar reference implementation; drop-in for any A2A-capable runtime |
+| [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) | Active | Sidecar reference implementation; drop-in for any A2A-capable runtime |
 | `shadownet-ts` | Planned | TypeScript SDK for browser + Node |
 
 ## Versioning & releases

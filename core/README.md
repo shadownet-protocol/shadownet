@@ -6,7 +6,7 @@ Go SDK and reference server binaries for the [Shadownet protocol](https://github
 
 ## Status
 
-v0.1 protocol implementation: SDK, reference SCA + SNS servers, and CLI. Implements [RFC-0001 through RFC-0006](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs). RFC-0007 (MCP) is intentionally out of scope — that's the Sidecar surface, owned by the Python implementation in `hermes-social`.
+v0.1 protocol implementation: SDK, reference SCA + SNS servers, and CLI. Implements [RFC-0001 through RFC-0006](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs). RFC-0007 (MCP) is intentionally out of scope — that's the Sidecar surface, owned by the Python implementation in `shadownet-local`.
 
 ## What this is
 

@@ -77,7 +77,7 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 - `shadownet.connect.errors` adds `ConnectError`, `BundleFetchError`,
   `BundleSchemaError`, `ConnectURLInvalid`, `MCPSessionError`.
 - New module `shadownet.connect.fastapi` (behind the `[fastapi]` extra)
-  — SERVER side helpers for sidecar implementations (hermes-social,
+  — SERVER side helpers for sidecar implementations (shadownet-local,
   shadownet-cloud, …):
   - `build_connect_router(*, bundle_builder, host_templates, handoff_resolver)`
     returns a `fastapi.APIRouter` exposing the bundle endpoint

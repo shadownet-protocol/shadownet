@@ -55,7 +55,7 @@ repos — receive critical fixes only at maintainer discretion.
 
 **Out of scope:**
 
-- Issues against [`hermes-social`](https://github.com/meghancampbel9/hermes-social)
+- Issues against [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local)
   or any operator-side cloud / hosting deployment — report those to those
   repos directly.
 - Issues against the protocol spec itself — file with

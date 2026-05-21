@@ -35,7 +35,7 @@ Hermes prompts for:
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `SHADOWNET_TOKEN` | yes | — | Account bearer token. Mint at `<base>/connect/hermes-agent` on your sidecar's account page. |
-| `SHADOWNET_SIDECAR_BASE_URL` | no | `https://app.sh4dow.org` | Override for self-hosted sidecars (`hermes-social`, internal deployments, …). |
+| `SHADOWNET_SIDECAR_BASE_URL` | no | `https://app.sh4dow.org` | Override for self-hosted sidecars (`shadownet-local`, internal deployments, …). |
 | `SHADOWNET_CONNECT_URL` | no | — | A full `shadownet://connect?base=…&token=…` URL. When set, supersedes the two above — one paste, full setup. |
 | `SHADOWNET_LONG_POLL_TIMEOUT_SECONDS` | no | `30` | Per-call timeout for the inbox long-poll. Server clamps to ≤90s. |
 
@@ -66,7 +66,7 @@ flowing. Comparable to Telegram's default long-polling mode.
 The plugin contains **no `app.sh4dow.org` strings** in its code. The
 default base URL is in `_adapter.DEFAULT_BASE_URL` for convenience, but
 every install can point at any RFC-0007-compliant sidecar (open-source
-`hermes-social`, hosted multi-tenant sidecars, internal self-hosts) by
+`shadownet-local`, hosted multi-tenant sidecars, internal self-hosts) by
 setting `SHADOWNET_SIDECAR_BASE_URL`.
 
 ## Outbound tools

@@ -22,7 +22,7 @@ A reusable library — **not** a server, **not** a canonical core. It exposes th
 - **Webhooks** — outbound dispatcher with the spec retry schedule + degraded-state tracking; receiver-side verifier (RFC-0007).
 - **MCP** — Pydantic models + a `Sidecar` Protocol + a one-call helper that wires every RFC-0007 tool onto a `FastMCP` server.
 
-It is consumed by [`hermes-social`](https://github.com/meghancampbel9/hermes-social) —
+It is consumed by [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) —
 the Sidecar reference implementation — and by downstream Sidecar deployments
 that compose the SDK with their own infrastructure.
 
