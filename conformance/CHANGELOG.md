@@ -8,6 +8,8 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-05-22
+
 ### Added
 
 - `tests/sns/test_0005_lifecycle.py` — draft RFC-0005 §Lifecycle tests.
