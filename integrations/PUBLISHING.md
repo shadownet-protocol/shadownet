@@ -81,31 +81,45 @@ claude --plugin-dir integrations/plugins/claude-code
 
 Ships as a real Python plugin to PyPI under the distribution name
 `shadownet-hermes-plugin` (entry point group `hermes_agent.plugins`).
-Users install via Hermes's documented plugin install command — no
-well-known-URL skill installation step, no manual MCP config editing.
+Users install via pip, not `hermes plugins install` — the Git-clone
+path doesn't resolve Python dependencies, and our adapter pulls in
+`mcp` and the `shadownet` SDK transitively (see "Why pip" below).
 
 ### How users install
 
+Visit `<base>/connect/hermes-agent` on the sidecar — the page mints
+a per-user token and hands the user a paste-ready three-line block:
+
 ```sh
-hermes plugins install shadownet-protocol/shadownet --enable
+pip install shadownet-hermes-plugin
+echo 'SHADOWNET_CONNECT_URL=shadownet://connect?base=<sidecar>&token=<minted>' >> ~/.hermes/.env
+hermes gateway restart
 ```
 
-Hermes prompts once for `SHADOWNET_TOKEN` (per the plugin's
-`requires_env`), then loads `register(ctx)` at startup. The plugin
+`~/.hermes/.env` is read at startup (`python-dotenv` is in Hermes'
+core deps). On startup the plugin's `register(ctx)` loads and
 registers the four canonical skills via `ctx.register_skill` and a
 `shadownet` platform adapter via `ctx.register_platform`. Inbound A2A
 messages flow over the `social_inbox_wait` long-poll tool (RFC-0007
 amendment D) — no `hermes webhook subscribe` step needed.
 
-Alternative one-string install (RFC-0007 amendment B):
-
-```sh
-SHADOWNET_CONNECT_URL='shadownet://connect?base=https://app.sh4dow.org&token=...' \
-  hermes plugins install shadownet-protocol/shadownet --enable
-```
-
 The plugin's `_resolve_config()` parses the connect URL and derives
-both `SHADOWNET_TOKEN` and `SHADOWNET_SIDECAR_BASE_URL` from it.
+both `SHADOWNET_TOKEN` and `SHADOWNET_SIDECAR_BASE_URL` from it
+(RFC-0007 amendment B). Separate `SHADOWNET_TOKEN` +
+`SHADOWNET_SIDECAR_BASE_URL` env vars are also supported.
+
+### Why pip, not `hermes plugins install`
+
+`hermes plugins install owner/repo` (the Git-clone path) clones the
+repo to `~/.hermes/plugins/<name>/` and imports `__init__.py` from the
+cloned root — but it does NOT install Python dependencies for the
+cloned tree (verified against upstream source:
+`hermes_cli/plugins_cmd.py:_install_plugin_core` is a `git clone
+--depth 1` + manifest read, nothing else). Our adapter imports
+`mcp.client.session` and `shadownet.connect.*` at module load; both
+are third-party deps not bundled with Hermes core. The Hermes plugin
+guide directs plugins with non-bundled deps to distribute via pip,
+which is what we do.
 
 ### Updating the published plugin
 
