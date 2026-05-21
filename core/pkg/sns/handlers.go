@@ -68,7 +68,7 @@ func (s *Server) Validate() error {
 		return fmt.Errorf("sns: ProviderKID %q does not match ProviderDID %q", s.ProviderKID, s.ProviderDID)
 	}
 	if s.DefaultTTL == 0 {
-		s.DefaultTTL = 300
+		s.DefaultTTL = 3600
 	}
 	if s.DefaultTTL < MinTTL || s.DefaultTTL > MaxTTL {
 		return fmt.Errorf("sns: DefaultTTL %d out of [%d,%d]", s.DefaultTTL, MinTTL, MaxTTL)
