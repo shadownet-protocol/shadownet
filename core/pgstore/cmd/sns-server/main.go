@@ -156,7 +156,7 @@ func validateConfig(cfg *fileConfig) error {
 		return fmt.Errorf("storage.driver must be memory, sqlite, or postgres (got %q)", cfg.Storage.Driver)
 	}
 	if cfg.DefaultTTL == 0 {
-		cfg.DefaultTTL = 300
+		cfg.DefaultTTL = 3600
 	}
 	return nil
 }

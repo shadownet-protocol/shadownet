@@ -12,6 +12,19 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
+### Changed
+
+- `pkg/sns`: `Server.DefaultTTL` fallback bumped from 300s to 3600s, and
+  `cmd/sns-server` config default raised in lockstep. Aligns the
+  reference SNS server with the cross-implementation recommended
+  default for RFC-0005 §Lifecycle. Note this is a cache-hint change
+  only for the reference server, which re-issues the JWT envelope with
+  a fresh `iat` on every resolve (`pkg/sns.serveResolve` calls
+  `IssueRecord` with `s.now()`), so existing records never go stale at
+  the wire boundary. Operators relying on the old default can pin it
+  explicitly via the `defaultTtl` config field or by setting
+  `Server.DefaultTTL = 300` on the embedded SDK.
+
 ## [v0.2.0] — 2026-05-10
 
 ### Changed
