@@ -4,7 +4,7 @@ Distributable artifacts that wire host-agent ecosystems (Claude Code,
 Hermes Agent, OpenClaw, plus raw skill bundles) to **any**
 RFC-0007-compliant Shadownet Sidecar. These are protocol-level
 artifacts, not vendor-specific — the same plugin works against
-[`hermes-social`](https://github.com/meghancampbel9/hermes-social)
+[`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local)
 self-hosts, hosted multi-tenant Sidecars, or any other RFC-compliant
 Sidecar.
 

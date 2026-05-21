@@ -11,7 +11,7 @@ reviewed. Read it before opening a PR.
 
 This repo is the contract that catches **two implementations disagreeing about
 the wire**. Other implementations (`shadownet-go`, `shadownet-py`,
-`shadownet-ts`, `hermes-social`) gate their CI on this suite. Code quality is
+`shadownet-ts`, `shadownet-local`) gate their CI on this suite. Code quality is
 judged by senior Python developers and by anyone debugging an interop failure
 at 2am. Optimize for: legibility, byte-level precision, no silent fallbacks,
 no fixture drift.
@@ -75,7 +75,7 @@ flag is uniformly accepted for any role so the surface is stable.
 
 At v0.1 there are two SCA impls (`shadownet-go`, `shadownet-py`) and
 two SNS impls (same), so SCA and SNS round-trip tests run when both
-targets are configured. There is **one** Sidecar impl (`hermes-social`),
+targets are configured. There is **one** Sidecar impl (`shadownet-local`),
 so Sidecar round-trip is **degenerate** at v0.1 — those tests are
 registered but skip with a single-line log
 (`sidecar round-trip skipped: only one v0.1 Sidecar impl exists`)
@@ -85,7 +85,7 @@ no flag redesign required.
 What we do **not** ship:
 
 - An SCA, SNS, or Sidecar runtime — those live in `shadownet-go` and
-  `hermes-social`.
+  `shadownet-local`.
 - Storage, persistence, or any state outside a single test run.
 - A library API. The package is consumed via the CLI; importable names
   inside `shadownet_conformance.*` are not semver-stable.

@@ -2,7 +2,7 @@
 
 """Sidecar↔Sidecar round-trip is registered now so v0.2 can light it up.
 
-At v0.1 there is exactly one Sidecar implementation (`hermes-social`). The
+At v0.1 there is exactly one Sidecar implementation (`shadownet-local`). The
 test below is registered with the same `rfc`/`round_trip` markers as its
 SCA/SNS siblings and skips with a single-line log explaining why. When a
 second Sidecar impl exists, configure both via `--target sidecar=URL_A`
