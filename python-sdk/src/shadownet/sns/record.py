@@ -13,7 +13,7 @@ from shadownet.crypto.jwt import (
     sign_jwt,
     verify_jwt,
 )
-from shadownet.sns.errors import ShadownameInvalid
+from shadownet.sns.errors import ShadownameExpired, ShadownameInvalid
 
 if TYPE_CHECKING:
     from shadownet.crypto.ed25519 import Ed25519KeyPair
@@ -139,12 +139,15 @@ async def verify_record(
         )
     if envelope.exp - envelope.iat != envelope.record.ttl:
         raise ShadownameInvalid("envelope exp-iat must equal record.ttl")
+    # Check expiry before signature verification so callers can pass `now` for
+    # deterministic behavior, and so expiry is classifiable distinctly from
+    # other JWT-layer failures (RFC-0005 §Lifecycle).
+    if envelope.exp < moment - leeway:
+        raise ShadownameExpired("SNS record expired")
     provider_doc = await resolver.resolve(envelope.iss)
     key = provider_doc.find_key(header.get("kid"))
     try:
-        verify_jwt(token, key, issuer=envelope.iss, leeway=leeway, verify_exp=True)
+        verify_jwt(token, key, issuer=envelope.iss, leeway=leeway, verify_exp=False)
     except JWTError as exc:
         raise ShadownameInvalid(str(exc)) from exc
-    if envelope.exp < moment - leeway:
-        raise ShadownameInvalid("SNS record expired")
     return envelope.record

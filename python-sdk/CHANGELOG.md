@@ -10,6 +10,28 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Added
+
+- New error subclass `shadownet.sns.ShadownameExpired` (extends
+  `ShadownameInvalid`) for SNS records whose `exp` is in the past but
+  whose envelope is otherwise well-formed and validly signed. Callers
+  that catch `ShadownameInvalid` continue to work unchanged; callers
+  treating expiry as transient/re-resolvable can branch on the
+  subclass.
+- New module `shadownet.sns.renewal` with helpers
+  (`due_at`, `is_due`, `renew_due`) for client-side SNS record
+  re-registration before expiry, per RFC-0005 §Lifecycle. The renewer
+  takes a caller-supplied `register` coroutine — the SDK does not
+  expose a write-side SNS API at v0.1.
+
+### Changed
+
+- `shadownet.sns.record.verify_record` now checks `exp` against the
+  `now` argument *before* JWT signature verification. Behavior with
+  no `now` argument is unchanged (still uses `int(time.time())`);
+  callers passing `now` for tests get deterministic expiry semantics
+  and a distinct `ShadownameExpired` exception type.
+
 ## [0.3.1] — 2026-05-19
 
 ### Added

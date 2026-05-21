@@ -152,7 +152,7 @@ func validateConfig(cfg *fileConfig) error {
 		cfg.Storage.Driver = "memory"
 	}
 	if cfg.DefaultTTL == 0 {
-		cfg.DefaultTTL = 300
+		cfg.DefaultTTL = 3600
 	}
 	return nil
 }

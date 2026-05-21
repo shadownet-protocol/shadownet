@@ -8,6 +8,21 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+### Added
+
+- `tests/sns/test_0005_lifecycle.py` — draft RFC-0005 §Lifecycle tests.
+  - `exp_in_future`: served records' `exp` MUST be strictly in the
+    future at response time (catches store-and-serve implementations
+    that return pre-expired records).
+  - `resolvable_past_initial_ttl`: a registered shadowname MUST stay
+    resolvable past its first `iat + ttl` (forces servers to either
+    re-issue on resolve or implement a renewal model). Skips when the
+    served TTL exceeds the CI wait budget (120s).
+
+  Both tests are marked `@pytest.mark.draft` and skipped unless
+  `--include-draft` is passed; promote to default when RFC-0005
+  §Lifecycle text lands upstream.
+
 ## [0.3.1] — 2026-05-11
 
 ### Fixed
