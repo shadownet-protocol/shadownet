@@ -12,6 +12,8 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
+## [v0.2.1] — 2026-05-22
+
 ### Changed
 
 - `pkg/sns`: `Server.DefaultTTL` fallback bumped from 300s to 3600s, and
