@@ -191,6 +191,7 @@ def build_adapter_class() -> type:
                 return
 
             import os
+
             notify_target = os.environ.get("SHADOWNET_NOTIFY_CHAT", "")
 
             if data_type == "coordination_request":
@@ -220,7 +221,8 @@ def build_adapter_class() -> type:
                 else:
                     _log.warning(
                         "Got %s from %s but SHADOWNET_NOTIFY_CHAT not set — cannot notify user",
-                        data_type, sender_name,
+                        data_type,
+                        sender_name,
                     )
 
             else:
@@ -250,7 +252,9 @@ def build_adapter_class() -> type:
 
             parts = notify_target.split(":", 1)
             if len(parts) != 2:
-                _log.warning("SHADOWNET_NOTIFY_CHAT must be 'platform:chat_id', got %r", notify_target)
+                _log.warning(
+                    "SHADOWNET_NOTIFY_CHAT must be 'platform:chat_id', got %r", notify_target
+                )
                 return
             platform_name, chat_id = parts
 
@@ -289,7 +293,10 @@ def build_adapter_class() -> type:
                 await adapter.handle_message(synth_event)
                 _log.info(
                     "Injected %s from %s into %s:%s session",
-                    data_type, sender_name, platform_name, chat_id,
+                    data_type,
+                    sender_name,
+                    platform_name,
+                    chat_id,
                 )
             except Exception:
                 _log.exception("Failed to inject into %s:%s session", platform_name, chat_id)
