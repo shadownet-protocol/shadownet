@@ -149,10 +149,10 @@ async def test_register_required_tools() -> None:
         "social_respond",
         "social_grant",
         "social_identity",
-        "social_set_webhook",
     }
     assert required <= names
     # Optional tools NOT registered by default.
+    assert "social_set_webhook" not in names
     assert "social_present" not in names
     assert "social_audit" not in names
 
@@ -160,11 +160,12 @@ async def test_register_required_tools() -> None:
 async def test_register_with_optional() -> None:
     server = FastMCP(name="test")
     sidecar = FakeSidecar()
-    register_shadownet_tools(server, sidecar, include_optional={"present", "audit"})
+    register_shadownet_tools(server, sidecar, include_optional={"present", "audit", "webhook"})
     tools = await server.list_tools()
     names = {t.name for t in tools}
     assert "social_present" in names
     assert "social_audit" in names
+    assert "social_set_webhook" in names
 
 
 def test_register_rejects_unknown_optional() -> None:
@@ -195,7 +196,7 @@ async def test_call_social_send_dispatches_to_sidecar() -> None:
 async def test_set_webhook_rejects_disallowed_url() -> None:
     server = FastMCP(name="test")
     sidecar = FakeSidecar()
-    register_shadownet_tools(server, sidecar)
+    register_shadownet_tools(server, sidecar, include_optional={"webhook"})
     # Plain http to a non-localhost host -> WebhookURLInvalid raised inside the tool.
     with pytest.raises(Exception):  # noqa: B017 -- mcp wraps + re-raises
         await server.call_tool(
@@ -210,7 +211,7 @@ async def test_set_webhook_rejects_disallowed_url() -> None:
 async def test_set_webhook_unregister_with_empty_url() -> None:
     server = FastMCP(name="test")
     sidecar = FakeSidecar()
-    register_shadownet_tools(server, sidecar)
+    register_shadownet_tools(server, sidecar, include_optional={"webhook"})
     await server.call_tool("social_set_webhook", {"url": "", "secret": "x" * 32})
     assert any(name == "social_set_webhook" for name, _ in sidecar.calls)
 

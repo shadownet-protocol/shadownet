@@ -182,7 +182,7 @@ def test_bundle_accepts_did_key_for_individuals() -> None:
 
 
 def test_bundle_accepts_explicit_null_webhook_secret() -> None:
-    """webhook_secret is REQUIRED but MAY be null when no subscriber exists."""
+    """webhook_secret field is present but null when sidecar doesn't support webhooks."""
     payload = _bundle_payload(webhook_secret=None)
     bundle = IntegrationBundle.model_validate(payload)
     assert bundle.webhook_secret is None

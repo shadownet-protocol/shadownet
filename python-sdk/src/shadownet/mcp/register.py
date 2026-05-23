@@ -39,10 +39,10 @@ if TYPE_CHECKING:
     from shadownet.mcp.protocol import Sidecar
 
 # RFC-0007 wiring layer. Every required tool name is normative; argument shapes
-# are normative for required arguments. Optional tools (`social_present`,
-# `social_audit`) are off by default.
+# are normative for required arguments. Optional tools (`social_set_webhook`,
+# `social_present`, `social_audit`, `social_inbox_wait`) are off by default.
 
-OPTIONAL_TOOLS = frozenset({"present", "audit", "inbox_wait"})
+OPTIONAL_TOOLS = frozenset({"present", "audit", "inbox_wait", "webhook"})
 
 _log = get_logger(__name__)
 
@@ -151,20 +151,22 @@ def register_shadownet_tools(
     async def _identity() -> IdentityOutput:
         return await sidecar.social_identity()
 
-    @server.tool(
-        name="social_set_webhook",
-        description="Register or update the host-agent webhook (url='' to unregister).",
-    )
-    async def _set_webhook(
-        url: str,
-        secret: str,
-        events: list[str] | None = None,
-    ) -> SetWebhookOutput:
-        if url != "":
-            ensure_url_allowed(url)
-        return await sidecar.social_set_webhook(
-            SetWebhookInput(url=url, secret=secret, events=events)
+    if "webhook" in optional:
+
+        @server.tool(
+            name="social_set_webhook",
+            description="Register or update the host-agent webhook (url='' to unregister).",
         )
+        async def _set_webhook(
+            url: str,
+            secret: str,
+            events: list[str] | None = None,
+        ) -> SetWebhookOutput:
+            if url != "":
+                ensure_url_allowed(url)
+            return await sidecar.social_set_webhook(
+                SetWebhookInput(url=url, secret=secret, events=events)
+            )
 
     if "inbox_wait" in optional:
 
