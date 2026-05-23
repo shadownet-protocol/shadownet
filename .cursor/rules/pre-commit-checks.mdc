@@ -1,0 +1,37 @@
+---
+description: Run CI checks locally before committing changes
+alwaysApply: true
+---
+
+# Pre-Commit Checks
+
+Before committing any changes in this monorepo, run the relevant CI checks locally and fix any failures.
+
+## Python SDK (`python-sdk/`)
+
+```bash
+cd python-sdk
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/
+uv run pytest tests/ -v
+```
+
+## Hermes Agent Plugin (`integrations/plugins/hermes-agent/`)
+
+```bash
+cd integrations/plugins/hermes-agent
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest tests/ -v
+```
+
+## If formatting fails
+
+Run `uv run ruff format .` in the affected directory, then re-check.
+
+## Key linting rules to watch for
+
+- `B904`: Use `raise ... from err` or `raise ... from None` inside except clauses
+- `N806`: Variables inside functions must be lowercase (not `UPPER_CASE`)
+- Always run `ruff format` after editing Python files
