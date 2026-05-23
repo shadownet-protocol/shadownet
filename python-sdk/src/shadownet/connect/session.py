@@ -307,7 +307,7 @@ def _extract_structured(call_tool_result: Any) -> dict[str, Any]:
             except json.JSONDecodeError:
                 raise MCPSessionError(
                     f"{INBOX_WAIT_TOOL} returned unparseable text: {text[:200]!r}"
-                )
+                ) from None
     raise MCPSessionError(
         f"{INBOX_WAIT_TOOL} returned no structured content or text block: {call_tool_result!r}"
     )
