@@ -137,10 +137,10 @@ def build_adapter_class() -> type:
             Allows one send per contact per cooldown window. Subsequent sends
             to the same contact are suppressed to prevent A2A feedback loops.
             """
-            SEND_COOLDOWN = 120  # seconds
+            send_cooldown = 120  # seconds
             now = time.time()
             last = self._send_timestamps.get(chat_id, 0)
-            if now - last < SEND_COOLDOWN:
+            if now - last < send_cooldown:
                 _log.debug(
                     "[Shadownet] send() suppressed (cooldown): chat_id=%s elapsed=%.1fs",
                     chat_id,
