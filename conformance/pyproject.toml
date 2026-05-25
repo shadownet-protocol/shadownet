@@ -31,7 +31,7 @@ dependencies = [
     "jsonschema>=4.23",
     "starlette>=0.40",
     "uvicorn>=0.32",
-    "shadownet>=0.3.0,<0.4",
+    "shadownet>=0.4.0,<0.5",
 ]
 
 [project.optional-dependencies]
