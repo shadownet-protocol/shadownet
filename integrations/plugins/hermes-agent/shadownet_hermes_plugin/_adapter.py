@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any
@@ -137,7 +138,7 @@ def build_adapter_class() -> type:
             Allows one send per contact per cooldown window. Subsequent sends
             to the same contact are suppressed to prevent A2A feedback loops.
             """
-            send_cooldown = 120  # seconds
+            send_cooldown = int(os.environ.get("SHADOWNET_SEND_COOLDOWN_SECONDS", "120"))
             now = time.time()
             last = self._send_timestamps.get(chat_id, 0)
             if now - last < send_cooldown:
@@ -150,6 +151,7 @@ def build_adapter_class() -> type:
                 return send_result_cls(success=True)
 
             self._send_timestamps[chat_id] = now
+            self._evict_stale_timestamps(self._send_timestamps, send_cooldown * 2)
             session = self._session
             await session.call_tool(
                 "social_send",
@@ -245,10 +247,12 @@ def build_adapter_class() -> type:
             now = time.time()
             dedup_key = f"{sender_name}:{data_type}"
             last = self._notify_timestamps.get(dedup_key, 0)
-            if now - last < 60:
+            notify_cooldown = int(os.environ.get("SHADOWNET_NOTIFY_COOLDOWN_SECONDS", "60"))
+            if now - last < notify_cooldown:
                 _log.debug("Dedup suppressed inject: %s (%.1fs ago)", dedup_key, now - last)
                 return
             self._notify_timestamps[dedup_key] = now
+            self._evict_stale_timestamps(self._notify_timestamps, notify_cooldown * 2)
 
             parts = notify_target.split(":", 1)
             if len(parts) != 2:
@@ -262,6 +266,11 @@ def build_adapter_class() -> type:
             if handler is None:
                 _log.warning("No message handler available for session injection")
                 return
+            # HACK: Reaches into Hermes runner internals (handler.__self__.adapters)
+            # to locate the target platform adapter for cross-platform injection.
+            # Not part of Hermes's documented plugin API — will need updating if
+            # Hermes refactors its runner. Defensive getattr ensures graceful
+            # degradation (logs warning, skips injection) rather than crash.
             gateway_runner = getattr(handler, "__self__", None)
             if gateway_runner is None:
                 _log.warning("No gateway runner available for session injection")
@@ -320,6 +329,14 @@ def build_adapter_class() -> type:
             self._long_poll_timeout = timeout
             self._send_timestamps: dict[str, float] = {}
             self._notify_timestamps: dict[str, float] = {}
+
+        @staticmethod
+        def _evict_stale_timestamps(timestamps: dict[str, float], max_age: float) -> None:
+            """Remove entries older than max_age to prevent unbounded growth."""
+            now = time.time()
+            stale = [k for k, v in timestamps.items() if now - v > max_age]
+            for k in stale:
+                del timestamps[k]
 
     return ShadownetAdapter
 
@@ -436,50 +453,6 @@ def _build_initiator_inject(sender_name: str, body: str, data_type: str) -> str:
         )
 
     return body
-
-
-def _format_notification(sender_name: str, body: str, data_type: str) -> str | None:
-    """Format a user-facing notification based on message type.
-
-    Returns None to suppress notification for protocol noise.
-    Only surfaces plan proposals (response) and confirmations to the user.
-    """
-    import json as _json
-
-    if data_type == "response":
-        try:
-            parsed = _json.loads(body)
-            plan = parsed.get("plan") if isinstance(parsed, dict) else None
-        except (ValueError, TypeError):
-            parsed = None
-            plan = None
-
-        if plan and isinstance(plan, dict):
-            activity = plan.get("activity", "meetup")
-            date = plan.get("date", "")
-            time_str = plan.get("time", "")
-            location = plan.get("location", "")
-            parts = [f"{activity}"]
-            if location:
-                parts.append(f"at {location}")
-            if date:
-                parts.append(f"{date}")
-            if time_str:
-                parts[-1] += f" {time_str}"
-            return f"\u2615 {sender_name} proposed: {', '.join(parts)}. Confirm?"
-
-        if parsed and isinstance(parsed, dict) and parsed.get("status") == "agreed":
-            proposal = parsed.get("proposal") or parsed.get("text") or body[:200]
-            return f"\u2615 {sender_name} agreed to a plan: {proposal}. Confirm?"
-
-        truncated = body[:200] + ("\u2026" if len(body) > 200 else "")
-        return f"\U0001f4ec {sender_name} responded: {truncated}"
-
-    if data_type in ("confirmation", "confirmed"):
-        return f"\u2705 {sender_name}: Plan confirmed! All set."
-
-    # All other types (coordination_request, message, etc.) are protocol internals
-    return None
 
 
 def _resolve_config(config: Any) -> tuple[str, str, int]:

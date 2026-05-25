@@ -57,6 +57,7 @@ must be set; the rest have sensible defaults.
 | `SHADOWNET_TOKEN` | one of these | — | Account bearer token (use instead of `SHADOWNET_CONNECT_URL` if you prefer separate values). |
 | `SHADOWNET_SIDECAR_BASE_URL` | no | `https://app.sh4dow.org` | Override for self-hosted sidecars (`shadownet-local`, internal deployments, …). Ignored when `SHADOWNET_CONNECT_URL` is set. |
 | `SHADOWNET_LONG_POLL_TIMEOUT_SECONDS` | no | `30` | Per-call timeout for the inbox long-poll. Server clamps to ≤90s. |
+| `SHADOWNET_NOTIFY_CHAT` | no | — | Cross-platform notification target for plan confirmations/invitations, format `platform:chat_id` (e.g. `telegram:123456`). When set, inbound coordination events are injected into this chat session so the user sees them and the agent has context for follow-up actions like `social_confirm_plan()`. Required for user-facing instances that participate in coordination flows. |
 
 ### Why pip, not `hermes plugins install`
 
