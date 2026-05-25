@@ -22,8 +22,6 @@ from shadownet.mcp.tools import (
     RespondOutput,
     SendInput,
     SendOutput,
-    SetWebhookInput,
-    SetWebhookOutput,
 )
 
 __all__ = [
@@ -48,8 +46,6 @@ __all__ = [
     "RespondOutput",
     "SendInput",
     "SendOutput",
-    "SetWebhookInput",
-    "SetWebhookOutput",
     "Sidecar",
     "register_shadownet_tools",
 ]

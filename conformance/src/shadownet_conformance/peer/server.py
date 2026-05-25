@@ -6,9 +6,6 @@ Hosts:
 - `POST /a2a/{method}`              — JSON-RPC inbound A2A endpoint.
                                        Headers and body are recorded for test
                                        inspection; response is scriptable.
-- `POST /webhooks/inbox`            — Receives Sidecar webhook deliveries
-                                       (RFC-0007). Verifies HMAC and stores
-                                       the event for assertion.
 
 The peer is started by a session-scoped pytest fixture (`peer` in
 `tests/sidecar/conftest.py`) on a random localhost port. Tests interact
@@ -27,7 +24,6 @@ from typing import TYPE_CHECKING, Any
 import uvicorn
 from shadownet.a2a.session import mint_session_token
 from shadownet.crypto.jwt import sign_jwt
-from shadownet.webhook.verify import WebhookEvent, verify_webhook
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
@@ -52,17 +48,8 @@ class A2AReceived:
 
 
 @dataclass(slots=True)
-class WebhookDelivered:
-    headers: dict[str, str]
-    body: bytes
-    event: WebhookEvent | None
-    verification_error: str | None = None
-
-
-@dataclass(slots=True)
 class _State:
     a2a_requests: list[A2AReceived] = field(default_factory=list)
-    webhooks: list[WebhookDelivered] = field(default_factory=list)
     a2a_response_status: int = 200
     a2a_response_body: dict[str, Any] = field(
         default_factory=lambda: {"jsonrpc": "2.0", "id": "1", "result": {"status": "ok"}}
@@ -83,10 +70,6 @@ class Peer:
         with self._lock:
             self._state.a2a_requests.append(received)
 
-    def record_webhook(self, delivered: WebhookDelivered) -> None:
-        with self._lock:
-            self._state.webhooks.append(delivered)
-
     def all_a2a_requests(self) -> list[A2AReceived]:
         with self._lock:
             return list(self._state.a2a_requests)
@@ -95,14 +78,9 @@ class Peer:
         with self._lock:
             return self._state.a2a_requests[-1] if self._state.a2a_requests else None
 
-    def delivered_webhooks(self) -> list[WebhookDelivered]:
-        with self._lock:
-            return list(self._state.webhooks)
-
     def reset(self) -> None:
         with self._lock:
             self._state.a2a_requests.clear()
-            self._state.webhooks.clear()
             self._state.a2a_response_status = 200
             self._state.a2a_response_body = {
                 "jsonrpc": "2.0",
@@ -189,27 +167,9 @@ def build_app(peer: Peer) -> Starlette:
         status, payload = peer.next_a2a_response()
         return JSONResponse(payload, status_code=status)
 
-    async def webhook_inbox(request: Request) -> Response:
-        body = await request.body()
-        headers = {k.lower(): v for k, v in request.headers.items()}
-        delivered = WebhookDelivered(headers=headers, body=body, event=None)
-        try:
-            delivered.event = verify_webhook(
-                headers=dict(request.headers),
-                body=body,
-                secret=peer.identity.webhook_secret,
-            )
-        except Exception as exc:
-            delivered.verification_error = str(exc)
-            peer.record_webhook(delivered)
-            return JSONResponse({"error": "invalid"}, status_code=400)
-        peer.record_webhook(delivered)
-        return JSONResponse({"ok": True})
-
     routes = [
         Route("/.well-known/agent-card.json", agent_card, methods=["GET"]),
         Route("/a2a/{method}", a2a_inbound, methods=["POST"]),
-        Route("/webhooks/inbox", webhook_inbox, methods=["POST"]),
     ]
     return Starlette(routes=routes)
 
@@ -227,10 +187,6 @@ class PeerHandle:
     @property
     def a2a_url(self) -> str:
         return f"{self.base_url}/a2a"
-
-    @property
-    def webhook_url(self) -> str:
-        return f"{self.base_url}/webhooks/inbox"
 
 
 def spawn_peer(*, host: str = "127.0.0.1") -> PeerHandle:

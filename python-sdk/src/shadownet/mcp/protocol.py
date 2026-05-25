@@ -25,8 +25,6 @@ if TYPE_CHECKING:
         RespondOutput,
         SendInput,
         SendOutput,
-        SetWebhookInput,
-        SetWebhookOutput,
     )
 
 # RFC-0007 — the contract a Sidecar implementation fulfills so the registration
@@ -57,15 +55,15 @@ class Sidecar(Protocol):
 
     async def social_identity(self) -> IdentityOutput: ...
 
-    async def social_set_webhook(self, input: SetWebhookInput) -> SetWebhookOutput: ...
-
     # RFC-0007 amendment D — long-poll inbound. Sidecars implementing the
     # amendment expose this; ``register_shadownet_tools`` gates registration
     # on ``include_optional={"inbox_wait"}``.
     async def social_inbox_wait(self, input: InboxWaitInput) -> InboxWaitOutput: ...
 
     # Optional surfaces — implementations MAY provide these if they declare
-    # `include_optional={"present", "audit"}` on registration.
+    # the corresponding key in `include_optional` on registration.
+    # `present` — social_present
+    # `audit`   — social_audit
     async def social_present(self, input: PresentInput) -> PresentOutput: ...
 
     async def social_audit(self) -> AuditOutput: ...

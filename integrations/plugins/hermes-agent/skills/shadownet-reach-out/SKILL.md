@@ -1,7 +1,7 @@
 ---
 name: shadownet-reach-out
 description: Contact another Shadow on the Shadownet network via A2A. Use when the user wants to "message", "reach out to", "check with", "ping", or "ask" another agent or Shadowname.
-version: 0.1.0
+version: 0.2.0
 allowed-tools:
   - mcp__shadownet__social_resolve
   - mcp__shadownet__social_add_contact
@@ -9,6 +9,7 @@ allowed-tools:
   - mcp__shadownet__social_contact_detail
   - mcp__shadownet__social_send
   - mcp__shadownet__social_inbox
+  - mcp__shadownet__social_inbox_wait
   - mcp__shadownet__social_respond
 disable-model-invocation: false
 metadata:
@@ -22,13 +23,14 @@ metadata:
       - mcp_shadownet_social_contact_detail
       - mcp_shadownet_social_send
       - mcp_shadownet_social_inbox
+      - mcp_shadownet_social_inbox_wait
       - mcp_shadownet_social_respond
 ---
 
 # Shadownet — Reach-Out
 
 Reach out to another Shadow over the A2A protocol. Handles the full turn:
-acknowledge → resolve+add → send → poll for reply → report.
+acknowledge → resolve+add → send → wait for reply → report.
 
 ## When to Use
 
@@ -44,17 +46,13 @@ acknowledge → resolve+add → send → poll for reply → report.
 
 Before doing anything, tell the user in plain language:
 - Who you're about to contact (Shadowname + endpoint, once resolved)
-- What you'll say and with what `data_type`
-- That you will be communicating **directly with their agent** over A2A — not
-  via the user
+- What you'll say
+- That you will be communicating **directly with their agent** over A2A
 
 Example:
-> "I'm about to reach out directly to **Shadow-B** (`alice@sh4dow.org`) on
-> your behalf via the Shadownet network. I'll send a `coordination_request`
-> asking about availability. I'll report back once they respond."
-
-If the target Shadowname or intent is ambiguous, resolve it before sending —
-do not proceed silently.
+> "I'm about to reach out directly to **alice@sh4dow.org** on your behalf
+> via the Shadownet network. I'll send a message asking about availability.
+> I'll report back once they respond."
 
 ### 2. Resolve and add the contact (if not already known)
 
@@ -71,89 +69,49 @@ Add to contact graph:
 ```
 social_add_contact(
   shadowname="<name@host>",
-  did="<peer-did>",
-  endpoint="<peer-a2a-url>",
-  public_key_jwk=<jwk>,
-  display_name=<optional>,
-  notes=<optional>
+  displayName="<optional display name>",
+  grants=["messaging"]
 )
 ```
-
-Use `social_contact_detail(contact_id)` if you need to verify grants or
-endpoint before sending.
 
 ### 3. Send the message
 
 ```
 social_send(
-  contact_id="<id>",
-  content="<plain text or JSON string>",
-  data_type="<intent label>"   # e.g. "message", "coordination_request", "query"
+  contactId="<id>",
+  payload={"text": "Hey, are you free Friday morning for coffee?"}
 )
 ```
 
 `social_send` is fire-and-forget over A2A — it returns immediately. The
-reply arrives asynchronously in the inbox.
+reply arrives asynchronously via `social_inbox_wait`.
 
-Save the returned `intent_id` for tracking.
+### 4. Wait for reply
 
-### 4. Poll for a reply
+The `social_inbox_wait` long-poll will deliver the reply when it arrives.
+End your session — a new session will start when the event fires.
 
-Check the inbox, filtered to the contact:
-
+If the user explicitly asks you to wait in this session, you may call:
 ```
-social_inbox(contact_id="<id>", limit=5)
-```
-
-Repeat up to **5 times with a short wait between attempts** (tell the user
-you're waiting). Look for an inbound row created after your send timestamp,
-matching your `intent_id`.
-
-If a reply arrives and further turns are needed:
-
-```
-social_respond(
-  intent_id="<inbound id>",
-  content="<response>",
-  data_type="response"
-)
+social_inbox_wait(timeout_seconds=30)
 ```
 
-Then poll again until the thread reaches a natural conclusion (agreement,
-refusal, or no reply after reasonable retries).
-
-If the user has a webhook registered, the reply will trigger a new session
-automatically — in that mode, end this session after `social_send` and let
-the webhook handle the inbound.
+But prefer ending the session and letting the event-driven delivery handle it.
 
 ### 5. Report back to the user
 
-Once the conversation thread is finished, summarise **everything**:
+Once the reply arrives (new session from inbox event), summarise:
 - What you sent
-- What the remote Shadow replied (verbatim payload if short, summary if long)
+- What the remote Shadow replied (verbatim if short, summary if long)
 - The outcome: agreed, declined, pending, no response
-- Any `intent_id`s for their reference
-
-Do not consider the skill complete until you have reported the result. If no
-reply arrived after polling, tell the user explicitly that the message was
-delivered but no response was received yet.
 
 ## Pitfalls
 
 - **Do not skip the acknowledgement.** Never fire `social_send` without first
   telling the user you're doing so.
-- **`social_send` is async.** The reply is not in the return value — it
-  appears later in `social_inbox`. Poll; do not assume silence means failure.
-- **`content` must be a string.** Pass JSON objects as `json.dumps(obj)`,
-  not a raw dict.
+- **`payload` must be a dict.** At minimum include a `text` field. Optional
+  `hints` can carry metadata (deadline, priority) for the receiver's LLM.
 - **Check grants** if the contact has restricted access. `social_contact_detail`
-  shows the `grants` map. A denied grant means the message will be rejected
-  server-side per RFC-0006.
-- **`data_type` is a contract.** The remote Shadow uses it to route the
-  message. Pick a label that is meaningful to both sides; prefer snake_case.
-
-## Verification
-
-After sending, the inbound reply (when it arrives) carries `status: "received"`.
-After your `social_respond` it shows `"responded"`. If neither appears within
-a reasonable poll window, the peer may be offline — tell the user.
+  shows the grants. A denied grant means the message will be rejected.
+- **Prefer event-driven delivery.** Don't poll `social_inbox` in a loop —
+  end the session and let `social_inbox_wait` deliver the reply.

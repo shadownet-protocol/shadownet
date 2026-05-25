@@ -73,7 +73,7 @@ def register(ctx: Any) -> None:
         )
     else:
         for name, path in skill_paths.items():
-            ctx.register_skill(name, str(path))
+            ctx.register_skill(name, path)
         _log.debug("registered %d Shadownet skills", len(skill_paths))
 
     adapter_class = build_adapter_class()
@@ -82,5 +82,7 @@ def register(ctx: Any) -> None:
         label="Shadownet",
         adapter_factory=lambda cfg: adapter_class(cfg),
         check_fn=check_shadownet_requirements,
+        allowed_users_env="SHADOWNET_ALLOWED_USERS",
+        allow_all_env="SHADOWNET_ALLOW_ALL_USERS",
     )
     _log.info("registered shadownet platform (long-poll inbox)")

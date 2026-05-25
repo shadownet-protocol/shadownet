@@ -19,7 +19,7 @@ v0.1 alpha. Tests the v0.1 RFCs at the
 [shadownet-specs `rfcs/` directory](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
 Coverage: SCA (RFC-0004), SNS (RFC-0005), Sidecar inbound handshake (RFC-0006),
 predicate evaluation, JSON-Schema conformance, round-trip across two SCA / SNS
-implementations. RFC-0007 MCP/webhook coverage lands once a Sidecar
+implementations. RFC-0007 MCP tool coverage lands once a Sidecar
 implementation supports it (see [Sidecar coverage](#sidecar-coverage) below).
 
 ## What this repo is
@@ -32,7 +32,7 @@ It is what catches **Go and Python disagreeing about JWT canonicalization**, or 
 
 - **SCA** — every RFC-0004 endpoint (`/proof/start`, `/proof/status`, `/issuance`, `/freshness`, `/status/<list-id>`, `/.well-known/{did,sca/policy}.json`), including negative cases (expired sessions, mismatched CSR/session, revoked credentials).
 - **SNS** — RFC-0005 resolution, signed records, key rotation, cross-provider rejection.
-- **Sidecar** — RFC-0006 A2A handshake (session token + VP exchange), error envelope, async task semantics; RFC-0007 MCP tool surface and webhook contract.
+- **Sidecar** — RFC-0006 A2A handshake (session token + VP exchange), error envelope, async task semantics; RFC-0007 MCP tool surface.
 - **Round-trip** — issue with impl A, verify with impl B; sign a record with A, resolve with B.
 - **Predicate evaluation** — given the same `(predicate, presentation)` pair, all impls must return the same boolean.
 
@@ -186,7 +186,7 @@ RFC-0006 defines:
 `interaction` MUST validate (envelope-layer rejection is forbidden by RFC-0006
 §Verifier obligations).
 
-RFC-0007 MCP tool surface and webhook dispatch tests will land once at
+RFC-0007 MCP tool surface tests will land once at
 least one Sidecar implementation supports them. The plan keeps the
 `--target sidecar=URL` flag uniform; new tests opt in without a
 flag-design change.

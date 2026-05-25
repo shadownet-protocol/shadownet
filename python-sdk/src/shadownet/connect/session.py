@@ -49,8 +49,7 @@ _log = get_logger(__name__)
 class InboxEvent(BaseModel):
     """A single event delivered via `social_inbox_wait`.
 
-    Field shape matches the webhook payload (RFC-0007 §Webhook events) so
-    receivers can share one parser across transports.
+    Field shape matches the event payload defined in RFC-0007 § Events.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)
@@ -200,7 +199,7 @@ class ShadownetMCPSession:
             INBOX_WAIT_TOOL,
             {
                 "timeout_seconds": timeout_seconds,
-                "last_event_id": last_event_id,
+                **({"last_event_id": last_event_id} if last_event_id is not None else {}),
             },
         )
         payload = _extract_structured(result)
@@ -270,20 +269,44 @@ def _extract_structured(call_tool_result: Any) -> dict[str, Any]:
     `structuredContent`. Falls back to parsing the first text block if
     that field is absent (older sidecar implementations).
     """
+    if getattr(call_tool_result, "isError", False):
+        content = getattr(call_tool_result, "content", None) or []
+        msg = " ".join(getattr(b, "text", "") for b in content).strip()
+        raise MCPSessionError(f"{INBOX_WAIT_TOOL} tool error: {msg}")
+
     structured = getattr(call_tool_result, "structuredContent", None)
     if structured is not None:
         if isinstance(structured, dict):
+            # MCP 1.27+ wraps string tool returns as {"result": "<json>"}
+            if "result" in structured and isinstance(structured["result"], str):
+                import json
+
+                try:
+                    parsed = json.loads(structured["result"])
+                    if isinstance(parsed, dict):
+                        return parsed
+                except (ValueError, TypeError):
+                    pass
             return structured
-        # Some SDK versions wrap it in a Pydantic model.
         if hasattr(structured, "model_dump"):
             return structured.model_dump(mode="json")  # type: ignore[no-any-return]
     content = getattr(call_tool_result, "content", None) or []
     for block in content:
         text = getattr(block, "text", None)
         if isinstance(text, str):
+            if not text.strip():
+                raise MCPSessionError(
+                    f"{INBOX_WAIT_TOOL} returned empty text content (possible transport "
+                    f"corruption); isError={getattr(call_tool_result, 'isError', None)}"
+                )
             import json
 
-            return json.loads(text)  # type: ignore[no-any-return]
+            try:
+                return json.loads(text)  # type: ignore[no-any-return]
+            except json.JSONDecodeError:
+                raise MCPSessionError(
+                    f"{INBOX_WAIT_TOOL} returned unparseable text: {text[:200]!r}"
+                ) from None
     raise MCPSessionError(
         f"{INBOX_WAIT_TOOL} returned no structured content or text block: {call_tool_result!r}"
     )

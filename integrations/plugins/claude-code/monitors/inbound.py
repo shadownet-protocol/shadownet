@@ -11,7 +11,7 @@ Per the Claude Code docs, each stdout line emitted by a monitor becomes a
 notification delivered to Claude during the session — that's our channel
 for surfacing inbound A2A messages.
 
-Claude Code itself has no webhook receiver model, so this monitor is the
+Claude Code itself has no platform adapter model, so this monitor is the
 only documented inbound path. It opens an outbound MCP session against
 the Shadownet sidecar's MCP endpoint and runs the `social_inbox_wait`
 long-poll loop (RFC-0007 amendment D) from inside this process. Inbound
@@ -23,12 +23,17 @@ A2A messages get:
    (Linux), or PowerShell `BurntToast` (Windows) — so the user sees it
    immediately even when not actively in Claude Code.
 
-Inbound is OPT-IN via the `SHADOWNET_INBOUND=1` env var. Without it set,
-the monitor exits immediately on startup. This lets Claude Code users
-who only want outbound MCP tools skip the background process entirely.
+Inbound is ON by default. The monitor degrades to a silent no-op only
+when the operator explicitly disables it (``inbound_enabled=false`` in
+Claude Code's plugin config, or ``SHADOWNET_INBOUND=0`` in the shell).
+The prior opt-in default caused every install before v0.3.2 to silently
+miss inbound messages even after upgrading the plugin, because Claude
+Code keeps the original userConfig value across updates.
 
 Configuration env vars (mirrors the Hermes plugin):
-    SHADOWNET_INBOUND                Opt-in flag. Must be set to "1" to run.
+    SHADOWNET_INBOUND                Override switch. Set to "0"/"false"/"no"/"off"
+                                     to disable the monitor; any other value (or
+                                     unset) leaves it enabled.
     SHADOWNET_TOKEN                  Account bearer token (required).
     SHADOWNET_SIDECAR_BASE_URL       Sidecar base. Default: https://app.sh4dow.org
     SHADOWNET_CONNECT_URL            Optional shadownet:// connect URL; supersedes
@@ -238,18 +243,34 @@ async def _run_monitor(token: str, base_url: str, timeout: int, os_notif: bool) 
     return 0
 
 
+_FALSY_OVERRIDES = frozenset({"0", "false", "no", "off"})
+
+
+def _inbound_enabled() -> bool:
+    """Default ON. Disabled only on an explicit falsy override.
+
+    The plugin manifest declares ``inbound_enabled: true`` (v0.3.2+), but
+    Claude Code doesn't migrate userConfig values across plugin updates,
+    so anyone who installed before that bump still carries the old
+    ``false``. Rather than telling every existing user to manually flip
+    a toggle, we treat any non-explicit value — empty env, stale stored
+    "true", whatever Claude Code passes — as enabled, and require an
+    explicit ``"false"``/``"0"`` to keep the monitor off.
+    """
+    for var in ("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "SHADOWNET_INBOUND"):
+        value = os.environ.get(var, "").strip().lower()
+        if value in _FALSY_OVERRIDES:
+            return False
+    return True
+
+
 def main() -> int:
-    # Inbound is opt-in. Claude Code's userConfig exposes the boolean as
-    # CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED ("true"/"false"); shell-env
-    # users set SHADOWNET_INBOUND=1. Either turns the monitor on.
-    inbound_flag = (
-        os.environ.get("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "").lower() == "true"
-        or os.environ.get("SHADOWNET_INBOUND") == "1"
-    )
-    if not inbound_flag:
+    if not _inbound_enabled():
         _log.info(
-            "Inbound monitor inactive (set inbound_enabled=true in Claude Code's "
-            "plugin config, or export SHADOWNET_INBOUND=1, to enable)."
+            "Inbound monitor disabled by explicit override "
+            "(inbound_enabled=false in Claude Code's plugin config, or "
+            "SHADOWNET_INBOUND=0 in the shell). Unset the override or "
+            "give it any other value to re-enable."
         )
         return 0
     try:

@@ -34,7 +34,6 @@ The plugin is real TypeScript, type-checked against the published `openclaw` npm
 | `shadownet_respond` | `social_respond` | Reply to an inbound message |
 | `shadownet_grant` | `social_grant` | Allow / deny a per-contact grant |
 | `shadownet_identity` | `social_identity` | Print the Shadow's DID + Shadowname + credentials |
-| `shadownet_set_webhook` | `social_set_webhook` | Register an inbound-events webhook |
 
 A drift sentinel (`backend/tests/integration/test_openclaw_plugin_drift.py`) keeps this list in sync with `MCP_TOOL_NAMES` in the cloud.
 

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 from shadownet.crypto.jwt import decode_unverified_claims
-from shadownet.webhook.verify import build_webhook_headers
 
 from shadownet_conformance.peer import spawn_peer
 
@@ -59,46 +57,6 @@ async def test_a2a_records_request_and_returns_scripted_response(peer: PeerHandl
     assert received.headers["x-test"] == "yes"
     assert received.json_body is not None
     assert received.json_body["method"] == "message:send"
-
-
-async def test_webhook_receiver_verifies_hmac(peer: PeerHandle):
-    body = json.dumps(
-        {
-            "shadownet:v": "0.1",
-            "event": "inbox.message",
-            "occurredAt": 1759200000,
-            "data": {
-                "intentId": "urn:uuid:int-001",
-                "contactId": "ctc-x",
-                "interaction": "urn:shadownet:int:test.v0",
-                "messageId": "msg-1",
-            },
-        }
-    ).encode()
-    headers = build_webhook_headers(
-        body=body, secret=peer.peer.identity.webhook_secret, sidecar_id="sc-test"
-    )
-    async with httpx.AsyncClient() as http:
-        resp = await http.post(peer.webhook_url, headers=headers, content=body)
-    assert resp.status_code == 200
-    delivered = peer.peer.delivered_webhooks()
-    assert len(delivered) == 1
-    assert delivered[0].verification_error is None
-    assert delivered[0].event is not None
-    assert delivered[0].event.event == "inbox.message"
-
-
-async def test_webhook_receiver_rejects_bad_hmac(peer: PeerHandle):
-    body = b'{"shadownet:v":"0.1","event":"inbox.message","occurredAt":1759200000,"data":{}}'
-    bad_headers = build_webhook_headers(
-        body=body, secret="WRONG-SECRET-which-is-also-32-bytes-long", sidecar_id="sc"
-    )
-    async with httpx.AsyncClient() as http:
-        resp = await http.post(peer.webhook_url, headers=bad_headers, content=body)
-    assert resp.status_code == 400
-    delivered = peer.peer.delivered_webhooks()
-    assert len(delivered) == 1
-    assert delivered[0].verification_error is not None
 
 
 async def test_session_token_for_round_trips_through_audience(peer: PeerHandle):

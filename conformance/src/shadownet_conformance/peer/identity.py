@@ -8,7 +8,6 @@ fixtures issued by the canonical SCA. A Sidecar-under-test that trusts
 
 from __future__ import annotations
 
-import secrets
 from functools import cache
 
 from shadownet.crypto.ed25519 import Ed25519KeyPair
@@ -29,7 +28,6 @@ class PeerIdentity:
     def __init__(self) -> None:
         self._keypair = Ed25519KeyPair.from_seed(bytes.fromhex(PEER_SEED_HEX))
         self._did = derive_did_key(bytes(self._keypair.public_key.public_bytes_raw()))
-        self._webhook_secret = secrets.token_hex(32)
 
     @property
     def keypair(self) -> Ed25519KeyPair:
@@ -42,10 +40,6 @@ class PeerIdentity:
     @property
     def kid(self) -> str:
         return f"{self._did}#key-1"
-
-    @property
-    def webhook_secret(self) -> str:
-        return self._webhook_secret
 
     @cache  # noqa: B019 — peer is process-singleton; cache is intentional
     def credential_jwt(self) -> str:
