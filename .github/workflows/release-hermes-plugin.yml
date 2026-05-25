@@ -105,6 +105,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: integrations/plugins/hermes-agent/dist/*
+          # Explicit wheel + sdist patterns — `dist/*` also matches the
+          # `.gitignore` that `uv build` drops into the dist directory.
+          files: |
+            integrations/plugins/hermes-agent/dist/*.whl
+            integrations/plugins/hermes-agent/dist/*.tar.gz
+            integrations/plugins/hermes-agent/dist/*.publish.attestation
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}
