@@ -10,6 +10,11 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Removed
+
+- Removed `shadownet.webhook` subpackage and `social_set_webhook` tool registration.
+  Webhook delivery has been removed from the protocol (see shadownet-specs).
+
 ## [0.3.2] — 2026-05-22
 
 ### Added
@@ -84,7 +89,7 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
     — fetches the per-tenant `/v1/account/me/integration-bundle` endpoint
     (RFC-0007 amendment A), returning the canonical bootstrap payload
     (DID, shadowname, MCP endpoint, supported features, tool/event
-    names, version) plus the optional webhook secret.
+    names, version).
   - `parse_connect_url(url) -> ConnectURL` and `format_connect_url(...)`
     — symmetric helpers for the standardized `shadownet://connect?…` URL
     scheme (RFC-0007 amendment B). Supports both inline (`?token=`) and
@@ -125,28 +130,16 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 ### Notes
 
 - All additions are additive. No breaking changes to the 0.2.x public
-  API. Existing webhook signing (`X-Shadownet-Sidecar-Sig` +
-  `X-Webhook-Signature` compatibility header) and `verify_webhook` are
-  unchanged — webhooks remain the canonical transport for
-  sidecar-to-sidecar delivery, OpenClaw plugins, and any non-MCP
-  integration.
+  API.
 
 [0.3.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.0
 
 ## [0.2.1] — 2026-05-11
 
-### Added
+### Removed (superseded)
 
-- `webhook.build_webhook_headers` gains an `include_generic_hmac: bool = False`
-  kwarg (RFC-0007 §Compatibility headers). When set, the builder also emits
-  `X-Webhook-Signature: <raw hex HMAC-SHA256>` alongside the canonical
-  `X-Shadownet-Sidecar-Sig`/`-Ts`/`-Id` headers. This matches the pattern used
-  by Hermes Agent webhooks, OpenClaw plugins, and similar generic-HMAC
-  adapters. Default is `False` — opting in is one kwarg, fully
-  backwards-compatible. Receivers validating only the compatibility header
-  lose the `Ts`-bound replay defense (RFC-0007 still requires they check
-  `X-Shadownet-Sidecar-Ts` or document the loss); the explicit kwarg keeps
-  that trade-off visible at the call site.
+- `webhook.build_webhook_headers` and related webhook helpers — removed
+  along with the entire `shadownet.webhook` subpackage in [Unreleased].
 
 [0.2.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.2.1
 
@@ -248,8 +241,6 @@ Initial pre-release. Implements the v0.1 RFC set:
   records per RFC-0005.
 - **A2A profile** — session token + Verifiable Presentation handshake;
   framework-agnostic verifier; optional FastAPI dependency per RFC-0006.
-- **Webhooks** — outbound dispatcher with the spec retry schedule and
-  degraded-state tracking, plus a receiver-side verifier per RFC-0007.
 - **MCP** — Pydantic input/output models for every RFC-0007 tool, a
   `Sidecar` Protocol, and `register_shadownet_tools(server, sidecar)` to
   wire them onto a `FastMCP` instance.
