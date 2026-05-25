@@ -8,6 +8,23 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-25
+
+### Removed
+
+- Webhook receiver removed from the in-process test peer: the
+  `/webhook` endpoint, `WebhookDelivered` dataclass, HMAC verification,
+  and `PeerIdentity.webhook_secret`. The two webhook test cases in
+  `tests/unit/test_peer.py` are dropped. The protocol no longer
+  defines a webhook delivery path (see python-sdk v0.4.0); inbound
+  delivery is exercised via `social_inbox_wait` going forward.
+
+### Changed
+
+- Runtime SDK pin bumped to `shadownet>=0.4.0,<0.5` to track the
+  python-sdk v0.4.0 cut. The Docker image build (`uv sync
+  --no-sources`) resolves the new pin from PyPI.
+
 ## [0.3.2] — 2026-05-22
 
 ### Added
