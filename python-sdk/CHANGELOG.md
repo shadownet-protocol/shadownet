@@ -10,10 +10,38 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-25
+
 ### Removed
 
-- Removed `shadownet.webhook` subpackage and `social_set_webhook` tool registration.
-  Webhook delivery has been removed from the protocol (see shadownet-specs).
+- Removed `shadownet.webhook` subpackage and the `social_set_webhook` MCP
+  tool registration in `register_shadownet_tools`. Webhook delivery has
+  been removed from the protocol (see shadownet-specs); receivers use
+  `social_inbox_wait` (RFC-0007 amendment D) instead.
+- Removed `social_set_webhook` from the `Sidecar` Protocol in
+  `shadownet.mcp.protocol`, and `SetWebhookInput`/`SetWebhookOutput`
+  from the public `shadownet.mcp` surface. Implementations no longer
+  need to provide a `social_set_webhook` coroutine.
+
+### Changed
+
+- `ShadownetMCPSession.wait_inbox` now omits `last_event_id` from the
+  tool-call kwargs when it is `None`, instead of sending an explicit
+  `null`. Avoids spurious rejections on sidecars that validate the
+  field strictly.
+- `_extract_structured` transparently unwraps the MCP 1.27+
+  `{"result": "<json-string>"}` envelope that newer MCP server SDKs
+  emit for string tool returns, so callers continue to see the
+  underlying tool-output dict.
+
+### Fixed
+
+- `_extract_structured` now surfaces `CallToolResult.isError=true` as a
+  descriptive `MCPSessionError` instead of falling through to a generic
+  "no structured content" error. Empty or unparseable text blocks also
+  raise with the offending payload truncated into the message.
+- Internal lint cleanup (`B904` exception chaining, `N806` variable
+  casing) — no behavior change.
 
 ## [0.3.2] — 2026-05-22
 
@@ -247,7 +275,8 @@ Initial pre-release. Implements the v0.1 RFC set:
 - Fully `mypy --strict`-clean; ships `py.typed`; ruff lint+format clean;
   176 tests at the cut.
 
-[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.3.2...HEAD
+[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.4.0...HEAD
+[0.4.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.0
 [0.3.2]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.2
 [0.2.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.2.0
 [0.1.3]: https://github.com/shadownet-protocol/shadownet-py/compare/v0.1.2...v0.1.3
