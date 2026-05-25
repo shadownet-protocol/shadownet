@@ -127,22 +127,28 @@ async def test_on_event_dispatches_inbox_message_only(
 ) -> None:
     """Only inbox.message events drive a turn at v1; others are dropped."""
     monkeypatch.setenv("SHADOWNET_TOKEN", "t")
+    monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
     AdapterCls = build_adapter_class()
     adapter = AdapterCls(_PlatformConfig({"token": "t"}))
 
     class _Event:
-        def __init__(self, event_type: str) -> None:
+        def __init__(self, event_type: str, data: dict[str, Any] | None = None) -> None:
             self.event = event_type
             self.event_id = "evt-1"
-            self.data = {"from": "alice@x", "body": "hi"}
+            self.data = data or {
+                "from": "alice@x",
+                "body": "hi",
+                "data_type": "coordination_request",
+                "contactId": "c1",
+                "intentId": "i1",
+            }
 
     await adapter._on_event(_Event("inbox.message"))
     await adapter._on_event(_Event("task.update"))
     await adapter._on_event(_Event("freshness.expired"))
 
     assert len(adapter.handled) == 1
-    assert adapter.handled[0].text == "hi"
-    assert adapter.handled[0].sender_id == "alice@x"
+    assert "COORDINATION REQUEST" in adapter.handled[0].text
 
 
 async def test_send_routes_to_social_send(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,7 +162,7 @@ async def test_send_routes_to_social_send(monkeypatch: pytest.MonkeyPatch) -> No
     fake_session.call_tool = AsyncMock(return_value=None)
     adapter._session = fake_session
 
-    result = await adapter.send(chat_id="alice@x.example", text="hello")
+    result = await adapter.send(chat_id="alice@x.example", content="hello")
     assert result.success is True
     fake_session.call_tool.assert_awaited_once()
     call_args = fake_session.call_tool.await_args

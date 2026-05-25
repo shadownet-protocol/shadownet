@@ -1,9 +1,10 @@
 ---
 name: shadownet-inbox
 description: Triage pending inbound A2A messages on Shadownet. Surface the most recent unhandled item, propose a reply, and send via social_respond after the user confirms.
-version: 0.1.0
+version: 0.2.0
 allowed-tools:
   - mcp__shadownet__social_inbox
+  - mcp__shadownet__social_inbox_wait
   - mcp__shadownet__social_respond
   - mcp__shadownet__social_contact_detail
 disable-model-invocation: false
@@ -13,6 +14,7 @@ metadata:
     category: communication
     requires_tools:
       - mcp_shadownet_social_inbox
+      - mcp_shadownet_social_inbox_wait
       - mcp_shadownet_social_respond
       - mcp_shadownet_social_contact_detail
 ---
@@ -25,8 +27,7 @@ propose a reply, and send it after the user confirms.
 ## When to Use
 
 - The user asks "what's in my inbox?", "any new messages?", "did anyone reply?"
-- A webhook fired and woke the agent — the payload carried an
-  `intentId`/`messageId` but not the content
+- An `inbox.message` event arrived via the long-poll and woke the agent
 - A `shadownet-reach-out` flow expects an inbound and you're checking back
 
 ## Procedure
@@ -37,28 +38,28 @@ propose a reply, and send it after the user confirms.
 social_inbox(limit=10)
 ```
 
-Optional filters: `interaction=<name>`, `contact_id=<id>`. Default returns
-the most recent 10 across all contacts and interactions.
+Optional filters: `contactId=<id>`, `interaction=<uri>`, `since=<timestamp>`.
+Default returns the most recent 10 across all contacts.
 
 ### 2. Identify the most recent unhandled
 
-Inbound rows that have already been responded to are still listed; treat as
-"unhandled" anything that has no outbound row threaded under the same
-`intent_id`. If the user asked about a specific message, prefer that one.
+Look at each item's `receivedAt` and whether you've already called
+`social_respond` on its `intentId`. The newest un-responded item is
+your primary candidate. If the user asked about a specific message,
+prefer that one.
 
 If the inbox is empty, say so plainly — do NOT poll repeatedly.
 
 ### 3. Surface the message
 
 Show the user, in one short message:
-- Sender (Shadowname + display name from `social_contact_detail` if known)
-- `data_type` and `interaction` labels — these tell you what kind of
-  exchange it is (message, coordination_request, response, etc.)
+- Sender (display name from `social_contact_detail` if known)
+- `data_type` label — tells you what kind of exchange it is
 - The message content (verbatim if short; summarised if long)
 - Whether the sender expects a reply (most do)
 
 Example:
-> 📥 From **bob@sh4dow.org** (intent `int-001`, type `coordination_request`):
+> 📥 From **bob@sh4dow.org** (type `coordination_request`):
 >
 > > "Free for coffee Friday morning?"
 >
@@ -69,7 +70,7 @@ Example:
 If the user wants to reply, draft something concrete and read it back:
 
 > Drafted reply:
-> > "Friday 10am works — Zazza in Mitte? Can do 11am instead if that's better."
+> > "Friday 10am works — a cafe in Mitte?"
 >
 > Send?
 
@@ -80,28 +81,17 @@ the user's behalf.
 
 ```
 social_respond(
-  intent_id="<id>",
-  content="<the drafted reply>",
-  data_type="response"   # or whatever the contract calls for
+  intentId="<intent_id from inbox item>",
+  payload={"text": "Friday 10am works — a cafe in Mitte?"}
 )
 ```
 
-Confirm to the user that the response was sent and surface the new
-`intent_id` (or task id) for tracking.
+Confirm to the user that the response was sent.
 
 ## Pitfalls
 
 - **Don't auto-send replies.** The user always confirms.
-- **Match the `data_type` contract.** If the inbound was
-  `coordination_request`, replying with `data_type="response"` is the right
-  move (per RFC-0006 §Errors). Don't invent new labels mid-thread.
-- **Idempotency.** If a webhook fired and the agent has already responded
-  to the same `messageId`, do not re-respond. Check for an existing
-  outbound thread first.
 - **Don't loop on inbox empty.** If `social_inbox` returns an empty list,
   tell the user "nothing pending" and end the session.
-
-## Verification
-
-After `social_respond` the user should see confirmation that the reply was
-queued for delivery. The next inbox poll will show the threaded reply.
+- **Use `social_inbox_wait` for event-driven delivery.** Don't poll
+  `social_inbox` in a loop — the long-poll handles real-time delivery.

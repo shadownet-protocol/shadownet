@@ -48,7 +48,7 @@ Issues = "https://github.com/shadownet-protocol/shadownet/issues"
 # https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins
 # under "Distribution & Installation -> Entry Points".
 [project.entry-points."hermes_agent.plugins"]
-shadownet = "shadownet_hermes_plugin:register"
+shadownet = "shadownet_hermes_plugin"
 
 [tool.hatch.build.targets.wheel]
 packages = ["shadownet_hermes_plugin"]

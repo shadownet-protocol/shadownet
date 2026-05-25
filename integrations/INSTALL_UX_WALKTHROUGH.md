@@ -115,19 +115,24 @@ monitor exits silently at startup. No background process.
 ### Install command (identical for hosted & self-hosted)
 
 Visit `<base>/connect/hermes-agent` on the sidecar. The page mints a
-per-user token and hands the user a paste-ready block; inside the
+per-user token and hands the user a paste-ready one-liner; inside the
 Hermes environment they paste:
 
 ```sh
-pip install shadownet-hermes-plugin
-echo 'SHADOWNET_CONNECT_URL=shadownet://connect?base=<sidecar>&token=<minted>' >> ~/.hermes/.env
-hermes gateway restart
+echo 'SHADOWNET_CONNECT_URL=shadownet://connect?base=<sidecar>&token=<minted>' >> ~/.hermes/.env \
+  && hermes plugins install shadownet-protocol/hermes-plugin --enable \
+  && hermes gateway restart
 ```
 
-Hermes reads `~/.hermes/.env` at startup (`python-dotenv` is in
-Hermes' core deps), so no shell `export` is needed — the values
-survive container restarts and are picked up on the next gateway
-launch.
+Hermes' native `plugins install` flow clones the install-shim repo
+(`shadownet-protocol/hermes-plugin`) into `~/.hermes/plugins/shadownet/`.
+The shim's `register(ctx)` checks if `shadownet-hermes-plugin` is
+importable in Hermes' venv; if not, it runs `pip install
+shadownet-hermes-plugin~=0.1.1` (~10–30s, one-time per install) before
+delegating to the real package's `register()`. Hermes reads
+`~/.hermes/.env` at startup (`python-dotenv` is a core dep), so the
+pre-written `SHADOWNET_CONNECT_URL` silences Hermes' `requires_env`
+prompt and the whole flow is non-interactive.
 
 | Variable | Required | Default |
 | --- | --- | --- |
@@ -138,9 +143,10 @@ launch.
 
 **Hosted Sidecar** flow:
 1. Visit `<hosted-sidecar>/connect/hermes-agent`.
-2. Copy the three-line install block (the sidecar embeds the token
-   into the `SHADOWNET_CONNECT_URL` it serves).
-3. Paste inside the Hermes environment; gateway restart.
+2. Copy the one-line install block (the sidecar embeds the token
+   into the `SHADOWNET_CONNECT_URL` value).
+3. Paste inside the Hermes environment; `&&`-chain runs through
+   `.env` write → `plugins install` → gateway restart.
 
 **Self-hosted Sidecar** flow:
 1. Visit `<your-sidecar>/connect/hermes-agent` on your self-host.
@@ -160,24 +166,29 @@ A2A messages. Each `inbox.message` event becomes a
 path the Telegram and Discord adapters use, per the
 [platform adapter dev guide](https://hermes-agent.nousresearch.com/docs/developer-guide/adding-platform-adapters).
 
-### Why pip, not `hermes plugins install`
+### Why the install-shim repo
 
-The `hermes plugins install owner/repo` Git-clone path doesn't resolve
-Python dependencies for the cloned tree (confirmed against upstream
-source: `hermes_cli/plugins_cmd.py:_install_plugin_core` just
-`git clone --depth 1`'s the repo and reads `<root>/plugin.yaml` +
-`<root>/__init__.py` — no pip step). Our adapter imports
-`mcp.client.session` and the `shadownet` SDK transitively, so the
-Git-clone install would proceed but `register()` would fail at
-startup with `ModuleNotFoundError`. The upstream Hermes plugin guide
-directs plugins with third-party Python deps to distribute via pip;
-that's the canonical path for our shape.
+Hermes' `plugins install owner/repo` flow is git-clone-only — it
+doesn't run pip on the cloned tree (`hermes_cli/plugins_cmd.py:_install_plugin_core`
+just `git clone --depth 1`'s the repo and reads `<root>/plugin.yaml` +
+`<root>/__init__.py`), and `_resolve_git_url` accepts no subdirectory
+specifiers. Our adapter imports `mcp.client.session` and the
+`shadownet` SDK transitively, so a naive `plugins install` pointed at
+the monorepo would proceed but `register()` would fail with
+`ModuleNotFoundError`; also, the clone would dump our entire monorepo
+(Go SDK, conformance suite, etc.) into `~/.hermes/plugins/shadownet/`.
 
-The Git-clone path is also incompatible with our monorepo layout —
-Hermes looks for `plugin.yaml` at the cloned repo root, and we have
-three plugins coexisting under `integrations/plugins/`. The
-dashboard-served paste block hides this constraint from the user
-entirely.
+The `shadownet-protocol/hermes-plugin` repo is a ~60-line install
+shim purpose-built for this constraint: `plugin.yaml` + `__init__.py`
+at the repo root, and a `register(ctx)` that bootstraps
+`shadownet-hermes-plugin` from PyPI into Hermes' active venv before
+delegating to the real `register()`. Same algorithm Hermes' bundled
+`tools/lazy_deps.ensure()` uses for its own backends — open-coded
+because the upstream allowlist is closed to third parties. The real
+adapter package on PyPI is unchanged; it's still the canonical source
+of truth and is discoverable directly via its `hermes_agent.plugins`
+entry point for users who prefer a plain `pip install
+shadownet-hermes-plugin` over the shim path.
 
 ### What the user does NOT have to do
 
@@ -189,20 +200,26 @@ entirely.
   public URL needed).
 - Configure any reverse proxy / tunnel for inbound.
 
-### Trade-off: no install-time `requires_env` wizard
+### Trade-offs of the shim path
 
-Hermes' wizard that prompts for `requires_env` values fires only on
-the Git-clone install path (verified in
-`hermes_cli/plugins.py:prompt_for_requires_env`, called from
-`_install_plugin_core` and nowhere else). On the pip entry-point path
-Hermes never reads `plugin.yaml`. We compensate two ways:
+Two costs worth naming so they don't surprise anyone:
 
-1. The sidecar's `/connect/hermes-agent` page pre-fills the
-   `SHADOWNET_CONNECT_URL` value in the paste block, so the user never
-   types or sees the token directly.
-2. The plugin's `_adapter._resolve_config` raises a clear
-   `RuntimeError` at startup if the token is missing, pointing the
-   user back to `<base>/connect/hermes-agent`.
+1. **First restart is slow** (~10–30s) while the shim pip-installs
+   `shadownet-hermes-plugin` and its transitive deps (`mcp`,
+   `shadownet`) into Hermes' venv. Subsequent restarts are instant
+   because `_is_satisfied()` short-circuits.
+2. **Requires `pip` in Hermes' venv.** True for nearly all installs.
+   If `HERMES_DISABLE_LAZY_INSTALLS=1` is set (Hermes' documented
+   opt-out for runtime installs), the shim refuses to install and
+   prints the manual `pip install` command — honoring the user's
+   explicit choice rather than bypassing it.
+
+The shim never asks the user for the token: `SHADOWNET_CONNECT_URL`
+is pre-written to `~/.hermes/.env` before `plugins install` runs, so
+Hermes' `requires_env` prompt is silenced (it filters out already-set
+vars in `_prompt_plugin_env_vars`). If the env var is missing at
+startup, the real adapter's `check_shadownet_requirements` raises a
+clear error pointing back to `<base>/connect/hermes-agent`.
 
 ---
 
@@ -237,8 +254,7 @@ that the Sidecar pushes events to.
 2. Run `openclaw plugins install clawhub:shadownet`; paste endpoint + token.
 3. **Make the OpenClaw Gateway HTTP port publicly reachable** (the user
    needs this — OpenClaw does not ship a tunnel).
-4. Inside the agent, call `/shadownet:shadownet-setup` and register the
-   webhook URL via `social_set_webhook`.
+4. Inside the agent, call `/shadownet:shadownet-setup`.
 
 **Self-hosted Sidecar**: identical flow, just point at your own host.
 
@@ -263,8 +279,7 @@ host's documentation.
 ### What the user DOES still have to do (regression from the other two)
 
 - Make a public URL reachable from the Sidecar.
-- Run the in-agent `/shadownet:shadownet-setup` once so the webhook is
-  registered with `social_set_webhook`.
+- Run the in-agent `/shadownet:shadownet-setup` once.
 
 ### Inferred behaviors (OpenClaw docs gaps)
 
@@ -288,7 +303,7 @@ host's documentation.
 | Public URL required? | No | No | **Yes** |
 | Secret storage | Keychain | `~/.hermes/.env` | gateway config file |
 | Inbound transport | long-poll MCP tool (in-band) | long-poll MCP tool (in-band) | webhook (out-of-band) |
-| Native install command | `/plugin install` | `pip install` (entry-point) | `openclaw plugins install` |
+| Native install command | `/plugin install` | `hermes plugins install` (via shim repo) | `openclaw plugins install` |
 | Spec-supported one-paste connect-URL? | Not yet wired (`userConfig` doesn't accept `shadownet://`) | Yes via `SHADOWNET_CONNECT_URL` | Not wired |
 | Provider-agnostic? | Yes | Yes (`SHADOWNET_SIDECAR_BASE_URL`) | Yes (configSchema is plain endpoint) |
 

@@ -31,8 +31,6 @@ __all__ = [
     "RespondOutput",
     "SendInput",
     "SendOutput",
-    "SetWebhookInput",
-    "SetWebhookOutput",
 ]
 
 
@@ -181,8 +179,7 @@ class InboxWaitInput(BaseModel):
 class InboxWaitEvent(BaseModel):
     """A single event delivered through the long-poll channel.
 
-    Payload shape mirrors the corresponding webhook event 1:1 — receivers
-    that bridge both transports share one parser and dedupe on ``event_id``.
+    Payload shape mirrors the event schema defined in RFC-0007 § Events.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -241,21 +238,6 @@ class IdentityOutput(BaseModel):
     shadowname: str | None = None
     public_key: dict[str, str] = Field(alias="publicKey")
     credentials: list[str] = Field(default_factory=list)
-
-
-# --- social_set_webhook ------------------------------------------------------
-
-
-class SetWebhookInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    url: str
-    secret: str = Field(min_length=32)
-    events: list[str] | None = None
-
-
-class SetWebhookOutput(BaseModel):
-    ok: bool = True
 
 
 # --- optional tools ----------------------------------------------------------

@@ -1,13 +1,15 @@
 ---
 name: shadownet-coordinate
 description: Coordinate a meetup, call, or task between two Shadows via fully autonomous agent-to-agent negotiation. Both Shadows use their users' calendars and preferences to agree on a plan, then present it for one-tap user confirmation.
-version: 0.1.0
+version: 0.2.0
 allowed-tools:
   - mcp__shadownet__social_contacts
   - mcp__shadownet__social_contact_detail
-  - mcp__shadownet__social_send
+  - mcp__shadownet__social_coordinate
+  - mcp__shadownet__social_confirm_plan
+  - mcp__shadownet__social_accept_plan
   - mcp__shadownet__social_respond
-  - mcp__shadownet__social_inbox
+  - mcp__shadownet__social_inbox_wait
 disable-model-invocation: true
 metadata:
   hermes:
@@ -15,10 +17,11 @@ metadata:
     category: communication
     requires_tools:
       - mcp_shadownet_social_contacts
-      - mcp_shadownet_social_contact_detail
-      - mcp_shadownet_social_send
+      - mcp_shadownet_social_coordinate
+      - mcp_shadownet_social_confirm_plan
+      - mcp_shadownet_social_accept_plan
       - mcp_shadownet_social_respond
-      - mcp_shadownet_social_inbox
+      - mcp_shadownet_social_inbox_wait
 ---
 
 # Shadownet — Autonomous Coordination
@@ -30,8 +33,7 @@ agreed plan and confirm.
 
 This skill is **user-invocable only** (`disable-model-invocation: true`) —
 the model should not auto-trigger autonomous coordination on its own
-inference of intent. The user explicitly runs `/shadownet:shadownet-coordinate`
-or instructs the agent to coordinate.
+inference of intent.
 
 ## Roles
 
@@ -41,70 +43,48 @@ Every coordination has an **initiator** and a **receiver**.
 
 ## INITIATOR FLOW (your user asked to plan something)
 
-### Step 1 — Gather context and send a rich request
+### Step 1 — Start coordination
 
-Load the user's calendar / preference data from your local memory or
-profile skills. Then send a RICH request:
+Look up the contact, then call `social_coordinate`:
 
 ```
-social_send(
-  contact_id="<id>",
-  content=json.dumps({
-    "activity": "coffee",
-    "proposed_dates": ["Friday May 1", "Friday May 8"],
-    "proposed_times": ["9:00-12:00"],
-    "location_area": "Berlin Mitte",
-    "initiator_preferences": {
-      "interests": ["specialty coffee", "brunch"],
-      "dietary": "none",
-      "vibe": "casual, relaxed morning"
-    },
-    "initiator_availability": {
-      "Friday May 1": "free 9am-1pm",
-      "Friday May 8": "free 9am-11am"
-    },
-    "flexibility": "open to other suggestions"
-  }),
-  data_type="coordination_request"
-)
+social_contacts(query="<name>")
+social_coordinate(contactId="<id>", activity="coffee", details="Friday morning in Mitte")
 ```
+
+The sidecar sends a `coordination_request` to the receiver's Shadow. Their
+agent will negotiate autonomously and respond with an agreed plan.
 
 ### Step 2 — End the session
 
-> Sent a coordination request to **bob@sh4dow.org** with your availability
-> and preferences. I'll notify you when we've agreed on a plan.
+> Sent a coordination request to **bob@sh4dow.org**. I'll let you know
+> when we've agreed on a plan.
 
-DONE. Do NOT poll. The webhook handles the rest (per RFC-0007 §Inbound
-notifications). If the user has no webhook configured, run
-`/shadownet:shadownet-inbox` later to check.
+DONE. Do NOT poll. The `social_inbox_wait` long-poll handles delivery.
 
-### Step 3 — Handle the response (webhook session)
+### Step 3 — Response arrives (new session via inbox event)
 
-When the receiver's Shadow responds, it carries an **agreed plan** (the
-receiver's agent matched calendars and preferences autonomously).
+When the receiver's Shadow responds, it carries an **agreed plan**. Present
+ONE clean message to your user:
 
-Present ONE clean message to your user:
+> ☕ Agreed with **bob@sh4dow.org**: Coffee at The Daily Grind,
+> Friday at 10am. Confirm?
 
-> ☕ Agreed with **bob@sh4dow.org**: Coffee at Zazza (Lehrter Str 24e),
-> Friday May 1 at 10am. Confirm?
-
-### Step 4 — Send confirmation after the user approves
+### Step 4 — User confirms
 
 ```
-social_respond(
-  intent_id="<inbound id>",
-  content=json.dumps({
-    "status": "confirmed",
-    "plan": { ... the agreed plan ... }
-  }),
-  data_type="confirmation"
-)
+social_confirm_plan()
 ```
 
-### Step 5 — Final notification (webhook session)
+No arguments needed — it auto-finds the pending plan. End session.
 
-When the receiver responds with `confirmed` → "All set! Coffee Friday 10am
-at Zazza."
+### Step 5 — Final acceptance arrives (new session via inbox event)
+
+When the receiver accepts:
+
+> All set! Coffee Friday 10am at The Daily Grind.
+
+DONE.
 
 ---
 
@@ -132,50 +112,29 @@ DO NOT ask your user for input. YOU decide based on what you know.
 
 ```
 social_respond(
-  intent_id="<inbound id>",
-  content=json.dumps({
-    "status": "agreed",
-    "plan": {
-      "activity": "Coffee",
-      "date": "Friday May 1",
-      "time": "10:00 AM",
-      "location": "Zazza",
-      "address": "Lehrter Str 24e, Berlin Mitte",
-      "duration": "~1.5 hours",
-      "notes": "Great specialty coffee, opens 7:30am"
-    },
-    "reasoning": "Both free Friday May 1 morning. Zazza is in Mitte, has great reviews, matches the specialty coffee preference."
-  }),
-  data_type="response"
+  intentId="<inbound intent_id>",
+  payload={"type":"response","status":"agreed","plan":{"activity":"Coffee","date":"Friday","time":"10:00 AM","location":"The Daily Grind","notes":"Great spot in Mitte"}}
 )
 ```
 
 **CRITICAL: Do NOT write ANY text to the user during this phase.**
 Your only output is the `social_respond` tool call. Say nothing.
-Do not explain your reasoning. Do not narrate. The user will be notified
-later when the initiator's user confirms.
-
 End the session immediately after the tool call.
 
-### Step 4 — Confirmation arrives (webhook session)
+### Step 4 — Confirmation arrives (new session via inbox event)
 
-When you receive a message with `data_type="confirmation"` (or matching
-`confirm` substring), the initiator's user approved. NOW notify your user:
+When you receive a confirmation, NOW notify your user:
 
-> ☕ **alice@sh4dow.org** confirmed: Coffee at Zazza, Friday May 1 at 10am.
-> Sound good?
+> ☕ **alice@sh4dow.org** confirmed: Coffee at The Daily Grind, Friday 10am.
+> Accept?
 
-### Step 5 — User confirms → send final confirmation
+### Step 5 — User accepts
 
 ```
-social_respond(
-  intent_id="<inbound id>",
-  content='{"status": "confirmed"}',
-  data_type="confirmed"
-)
+social_accept_plan()
 ```
 
-DONE.
+No arguments needed — it auto-finds the pending confirmation. DONE.
 
 ---
 
@@ -183,7 +142,7 @@ DONE.
 
 | `data_type` | Sent by | Meaning |
 |---|---|---|
-| `coordination_request` | Initiator | Rich request with availability + preferences |
+| `coordination_request` | Initiator | Rich request with activity + details |
 | `response` | Receiver | Agreed plan (receiver negotiated autonomously) |
 | `confirmation` | Initiator | "My user approved" |
 | `confirmed` | Receiver | "My user approved too — we're set" |
@@ -194,16 +153,15 @@ DONE.
 
 - **ONE message per step.** Never multiple bot messages.
 - **No narration.** Don't say "Loading skill...", "Checking inbox...". Just do it.
-- **No step-by-step status.** Don't tell the user which step you're on.
 - **Be concise.** "Coffee at X, Friday 10am. Confirm?" — that's it.
-- **Include reasoning in the `social_respond` content** so it shows up in
+- **Include reasoning in the `social_respond` payload** so it shows up in
   the message log, but do NOT show it to the user.
 
 ## Pitfalls
 
 - **DO NOT ask the receiver's user during negotiation.** This is the #1
   rule. You have their preferences and calendar — use them.
-- **DO NOT poll.** Webhooks handle all notifications (RFC-0007 §Webhook).
+- **DO NOT poll with `social_inbox`.** The `social_inbox_wait` long-poll
+  handles all inbound delivery.
 - **STOP on `confirmed`.** Never respond to a `confirmed` message.
-- **Idempotency**: each inbound carries a `messageId`. If you've already
-  acted on it (e.g. webhook redelivery), do not re-act.
+- **One tool call per session** for coordination flows.

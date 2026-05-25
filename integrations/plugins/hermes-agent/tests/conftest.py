@@ -35,22 +35,45 @@ def _install_fake_hermes_module() -> None:
     platforms_pkg = types.ModuleType("gateway.platforms")
     platforms_pkg.__path__ = []  # type: ignore[attr-defined]
     base_module = types.ModuleType("gateway.platforms.base")
+    config_module = types.ModuleType("gateway.config")
+    session_module = types.ModuleType("gateway.session")
+
+    class Platform:
+        def __init__(self, value: str = "shadownet") -> None:
+            self.value = value
+
+        def __eq__(self, other: object) -> bool:
+            if isinstance(other, Platform):
+                return self.value == other.value
+            return NotImplemented
+
+        def __hash__(self) -> int:
+            return hash(self.value)
+
+    @dataclass
+    class SessionSource:
+        platform: Any = None
+        chat_id: str = ""
+        user_id: str = ""
+        user_name: str = ""
 
     @dataclass
     class MessageEvent:
-        platform: str
-        chat_id: str
-        sender_id: str
-        text: str
-        raw: dict[str, Any]
+        text: str = ""
+        source: Any = None
+        raw_message: Any = None
+        internal: bool = False
+        auto_skill: str | None = None
+        message_type: Any = None
 
     @dataclass
     class SendResult:
         success: bool
 
     class BasePlatformAdapter:
-        def __init__(self, config: Any) -> None:
+        def __init__(self, config: Any, platform: Any = None) -> None:
             self.config = config
+            self.platform = platform
             self.connected = False
             self.handled: list[MessageEvent] = []
 
@@ -66,11 +89,15 @@ def _install_fake_hermes_module() -> None:
     base_module.BasePlatformAdapter = BasePlatformAdapter  # type: ignore[attr-defined]
     base_module.MessageEvent = MessageEvent  # type: ignore[attr-defined]
     base_module.SendResult = SendResult  # type: ignore[attr-defined]
+    config_module.Platform = Platform  # type: ignore[attr-defined]
+    session_module.SessionSource = SessionSource  # type: ignore[attr-defined]
     platforms_pkg.base = base_module  # type: ignore[attr-defined]
 
     sys.modules["gateway"] = gateway_pkg
     sys.modules["gateway.platforms"] = platforms_pkg
     sys.modules["gateway.platforms.base"] = base_module
+    sys.modules["gateway.config"] = config_module
+    sys.modules["gateway.session"] = session_module
 
 
 _install_fake_hermes_module()

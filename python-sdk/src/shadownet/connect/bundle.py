@@ -33,8 +33,7 @@ class IntegrationBundle(BaseModel):
     in shadownet-specs.
 
     Capability discovery is via ``supported_features`` — plugins SHOULD check
-    ``supports_inbox_wait`` before opening the long-poll loop and
-    ``supports_webhook`` before issuing ``social_set_webhook``.
+    ``supports_inbox_wait`` before opening the long-poll loop.
     """
 
     # RFC-0008 schema sets ``additionalProperties: false``. Mirror that here:
@@ -49,7 +48,6 @@ class IntegrationBundle(BaseModel):
     # RFC-0005: local@provider form.
     shadowname: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,63}@[A-Za-z0-9.-]+$")
     mcp_endpoint: str = Field(pattern=r"^https://")
-    webhook_secret: str | None
     supported_features: list[str] = Field(default_factory=list)
     tool_names: list[str] = Field(default_factory=list)
     event_names: list[str] = Field(default_factory=list)
@@ -59,10 +57,6 @@ class IntegrationBundle(BaseModel):
     def supports_inbox_wait(self) -> bool:
         """Whether the sidecar advertises the ``social_inbox_wait`` long-poll tool."""
         return "inbox-wait" in self.supported_features
-
-    @property
-    def supports_webhook(self) -> bool:
-        return "webhook" in self.supported_features
 
     @property
     def supports_mcp_notifications(self) -> bool:

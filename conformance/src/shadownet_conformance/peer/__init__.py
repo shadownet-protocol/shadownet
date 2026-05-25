@@ -5,7 +5,6 @@ from shadownet_conformance.peer.server import (
     A2AReceived,
     Peer,
     PeerHandle,
-    WebhookDelivered,
     spawn_peer,
 )
 
@@ -14,6 +13,5 @@ __all__ = [
     "Peer",
     "PeerHandle",
     "PeerIdentity",
-    "WebhookDelivered",
     "spawn_peer",
 ]

@@ -14,7 +14,7 @@ Identity-anchored agent-to-agent communication via the
   byte-for-byte on what a connect URL means.
 - **Skills** (`skills/`) — namespaced under the plugin so they appear
   as `/shadownet:<name>`:
-  - `shadownet-setup` — verify the connection, register a webhook
+  - `shadownet-setup` — verify the connection, print identity
   - `shadownet-reach-out` — initiate contact with another Shadow
   - `shadownet-inbox` — triage incoming A2A messages
   - `shadownet-coordinate` — autonomous two-agent negotiation
@@ -81,7 +81,7 @@ the marketplace cache. You'll still get the `userConfig` prompt for
 
 ## Real-time inbound (RFC-0007 `social_inbox_wait`)
 
-Claude Code has no built-in webhook receiver model — historically the
+Claude Code has no built-in platform adapter model — historically the
 only way for the agent to know about a new A2A message was to call
 `social_inbox` and look. The plugin ships a background monitor that
 long-polls the sidecar's `social_inbox_wait` MCP tool from inside a
@@ -138,7 +138,7 @@ the env vars above are fallbacks.
 - ❌ Edit any YAML or JSON config by hand.
 - ❌ Export shell environment variables for normal install.
 - ❌ Run a separate token/endpoint command.
-- ❌ Configure a public webhook URL (long-poll is in-MCP, NAT-free).
+- ❌ Configure a public URL (long-poll is in-MCP, NAT-free).
 
 ## License
 

@@ -117,25 +117,6 @@ const GrantInput = Type.Object({
 
 const IdentityInput = Type.Object({});
 
-const SetWebhookInput = Type.Object({
-  url: Type.String({
-    format: "uri",
-    description:
-      "HTTPS URL (or http://localhost) to POST signed webhook events to.",
-  }),
-  secret: Type.String({
-    minLength: 32,
-    description:
-      "Webhook signing secret (≥32 chars). Mint via the connect-page Notifications card so it's stored encrypted server-side.",
-  }),
-  events: Type.Optional(
-    Type.Array(Type.String(), {
-      description:
-        "Event subset to subscribe to. Omit/null for all events (RFC-0007 default).",
-    }),
-  ),
-});
-
 // --- tool registry ---------------------------------------------------------
 
 interface InternalTool<S> {
@@ -235,13 +216,6 @@ export function tools(client: ShadownetClient): ShadownetTool[] {
         "Return the current Shadow's DID, Shadowname, public key, and held credentials. Useful for connection verification.",
       parameters: IdentityInput,
     }),
-    bind<typeof SetWebhookInput>(client, {
-      name: "shadownet_set_webhook",
-      mcpName: "social_set_webhook",
-      description:
-        "Register or update the host-agent webhook URL the Sidecar pushes inbound activity to (RFC-0007 §Inbound notifications).",
-      parameters: SetWebhookInput,
-    }),
   ];
 }
 
@@ -255,4 +229,3 @@ export type InboxParams = Static<typeof InboxInput>;
 export type RespondParams = Static<typeof RespondInput>;
 export type GrantParams = Static<typeof GrantInput>;
 export type IdentityParams = Static<typeof IdentityInput>;
-export type SetWebhookParams = Static<typeof SetWebhookInput>;

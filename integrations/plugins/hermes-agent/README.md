@@ -27,10 +27,32 @@ real Hermes Agent plugin per the
 
 ## Install
 
+### Canonical path: `hermes plugins install` via the shim repo
+
 Visit your sidecar's `/connect/hermes-agent` page (the page mints your
-account bearer token and hands you a paste-ready block). Inside your
-Hermes environment — Docker container, host shell, wherever Hermes
-runs — paste:
+account bearer token and hands you a paste-ready one-liner). Inside
+your Hermes environment — Docker container, host shell, wherever
+Hermes runs — paste:
+
+```sh
+echo 'SHADOWNET_CONNECT_URL=shadownet://connect?base=<sidecar>&token=<minted>' >> ~/.hermes/.env \
+  && hermes plugins install shadownet-protocol/hermes-plugin --enable \
+  && hermes gateway restart
+```
+
+Hermes' native `plugins install` clones the install shim at
+[`shadownet-protocol/hermes-plugin`](https://github.com/shadownet-protocol/hermes-plugin)
+into `~/.hermes/plugins/shadownet/`. The shim's `register(ctx)` runs
+`pip install shadownet-hermes-plugin~=X.Y.Z` into Hermes' venv on
+first start (~10–30s, one-time), then delegates to this package's
+`register()`. The pre-written `SHADOWNET_CONNECT_URL` in `~/.hermes/.env`
+silences Hermes' `requires_env` prompt — the whole flow is
+non-interactive.
+
+### Alternative: direct pip install
+
+If your Hermes deployment can't or won't allow runtime pip installs
+(e.g. `HERMES_DISABLE_LAZY_INSTALLS=1`), install this package directly:
 
 ```sh
 pip install shadownet-hermes-plugin
@@ -38,12 +60,13 @@ echo 'SHADOWNET_CONNECT_URL=shadownet://connect?base=<sidecar>&token=<minted>' >
 hermes gateway restart
 ```
 
-`~/.hermes/.env` is read at startup (`python-dotenv` is in Hermes'
-core deps). No shell `export`, no interactive prompts, no
-`mcp_servers` YAML editing, no `hermes webhook subscribe`. On startup
-the plugin's `register(ctx)` registers the skills and the Shadownet
-platform adapter; the adapter opens the outbound MCP session and
-starts the long-poll loop.
+The package ships `shadownet_hermes_plugin:register` as a
+`hermes_agent.plugins` entry point, so Hermes auto-discovers it on
+next start without the shim repo.
+
+In either path, `register(ctx)` registers the four skills and the
+Shadownet platform adapter; the adapter opens the outbound MCP
+session and starts the long-poll loop automatically.
 
 ### Configuration reference
 
@@ -57,17 +80,21 @@ must be set; the rest have sensible defaults.
 | `SHADOWNET_TOKEN` | one of these | — | Account bearer token (use instead of `SHADOWNET_CONNECT_URL` if you prefer separate values). |
 | `SHADOWNET_SIDECAR_BASE_URL` | no | `https://app.sh4dow.org` | Override for self-hosted sidecars (`shadownet-local`, internal deployments, …). Ignored when `SHADOWNET_CONNECT_URL` is set. |
 | `SHADOWNET_LONG_POLL_TIMEOUT_SECONDS` | no | `30` | Per-call timeout for the inbox long-poll. Server clamps to ≤90s. |
+| `SHADOWNET_NOTIFY_CHAT` | no | — | Cross-platform notification target for plan confirmations/invitations, format `platform:chat_id` (e.g. `telegram:123456`). When set, inbound coordination events are injected into this chat session so the user sees them and the agent has context for follow-up actions like `social_confirm_plan()`. Required for user-facing instances that participate in coordination flows. |
 
-### Why pip, not `hermes plugins install`
+### Why the shim repo exists
 
-`hermes plugins install owner/repo` (the Git-clone path) doesn't
-resolve Python dependencies for the cloned tree. The adapter imports
-`mcp.client.session` and the `shadownet` SDK transitively, so the
-install would proceed but `register()` would fail at startup with
-`ModuleNotFoundError`. The upstream Hermes plugin guide directs plugins
-with third-party Python deps to distribute via pip — that's the
-canonical path for our shape, and pip resolves all transitive deps
-(`mcp`, `shadownet`, `httpx`, `pydantic`) automatically.
+Hermes' `hermes plugins install owner/repo` flow is git-clone-only —
+it doesn't run pip on the cloned tree, and `_resolve_git_url` accepts
+no subdirectory specifiers. Our adapter imports `mcp.client.session`
+and the `shadownet` SDK transitively, so a naive `plugins install`
+pointed at this monorepo would proceed but `register()` would fail
+with `ModuleNotFoundError`; also, the clone would dump the entire
+monorepo (Go SDK, conformance suite, etc.) into
+`~/.hermes/plugins/shadownet/`. The
+[`shadownet-protocol/hermes-plugin`](https://github.com/shadownet-protocol/hermes-plugin)
+satellite repo is the bridge: ~60 LOC, `plugin.yaml` + `__init__.py`
+at the root, bootstraps this PyPI package on first `register()`.
 
 ## How inbound works (no NAT problem)
 
@@ -98,12 +125,12 @@ setting `SHADOWNET_SIDECAR_BASE_URL`.
 ## Outbound tools
 
 The plugin also lets Hermes invoke Shadownet's MCP tools (`social_send`,
-`social_inbox`, `social_resolve`, `social_set_webhook`, etc.). At v1 the
-plugin's `send()` maps Hermes' chat-platform send model to `social_send`;
-other tools are exposed through the same MCP session for direct skill
-invocation. Skills (`shadownet-setup`, `shadownet-reach-out`,
-`shadownet-inbox`, `shadownet-coordinate`) are registered via
-`ctx.register_skill` so `/skills/<name>` work out of the box.
+`social_inbox`, `social_resolve`, `social_coordinate`, `social_confirm_plan`,
+`social_accept_plan`, etc.). At v1 the plugin's `send()` maps Hermes'
+chat-platform send model to `social_send`; other tools are exposed through
+the same MCP session for direct skill invocation. Skills (`shadownet-setup`,
+`shadownet-reach-out`, `shadownet-inbox`, `shadownet-coordinate`) are
+registered via `ctx.register_skill` so `/skills/<name>` work out of the box.
 
 ## Updating
 
@@ -111,20 +138,6 @@ invocation. Skills (`shadownet-setup`, `shadownet-reach-out`,
 pip install --upgrade shadownet-hermes-plugin
 hermes gateway restart
 ```
-
-## Legacy install paths (still supported by the sidecar)
-
-The previous well-known + manual config flow continues to work for users
-on sidecars that haven't yet implemented RFC-0007 amendment D:
-
-```sh
-hermes skills install well-known:<base>/.well-known/skills/index.json
-# then hand-edit ~/.hermes/config.yaml to add mcp_servers.shadownet
-# then hermes webhook subscribe shadownet-inbound ...
-```
-
-This is documented for completeness — new installs should use the pip
-path above.
 
 ## License
 
