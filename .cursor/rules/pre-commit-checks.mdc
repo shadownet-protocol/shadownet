@@ -7,6 +7,10 @@ alwaysApply: true
 
 Before committing any changes in this monorepo, run the relevant CI checks locally and fix any failures.
 
+## No AI co-authorship trailers
+
+NEVER add `Co-authored-by: Cursor`, `Co-authored-by: Claude`, or any AI co-authorship attribution to commits. This is forbidden on `main` per CLAUDE.md.
+
 ## Python SDK (`python-sdk/`)
 
 ```bash

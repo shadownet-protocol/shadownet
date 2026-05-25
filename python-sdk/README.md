@@ -19,7 +19,6 @@ A reusable library — **not** a server, **not** a canonical core. It exposes th
 - **SCA client** — proof-session, issuance, freshness, callback-HMAC verification (RFC-0004).
 - **SNS client** — async resolver with TTL + negative cache, signed-record verification (RFC-0005).
 - **A2A profile** — session-token + Verifiable Presentation handshake; framework-agnostic verifier; optional FastAPI dependency (RFC-0006).
-- **Webhooks** — outbound dispatcher with the spec retry schedule + degraded-state tracking; receiver-side verifier (RFC-0007).
 - **MCP** — Pydantic models + a `Sidecar` Protocol + a one-call helper that wires every RFC-0007 tool onto a `FastMCP` server.
 
 It is consumed by [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) —
@@ -125,7 +124,7 @@ register_shadownet_tools(server, my_sidecar_implementation)
 # include_optional={"present", "audit"}
 ```
 
-The full set of public APIs is curated under `shadownet.{crypto, did, vc, sca, sns, trust, a2a, webhook, mcp}`. See the `tests/integration/test_birthday_flow.py` for an end-to-end Sarah → Lukas walkthrough.
+The full set of public APIs is curated under `shadownet.{crypto, did, vc, sca, sns, trust, a2a, mcp}`. See the `tests/integration/test_birthday_flow.py` for an end-to-end Sarah → Lukas walkthrough.
 
 ## Conformance
 

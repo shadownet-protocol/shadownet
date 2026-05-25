@@ -25,8 +25,6 @@ if TYPE_CHECKING:
         RespondOutput,
         SendInput,
         SendOutput,
-        SetWebhookInput,
-        SetWebhookOutput,
     )
 
 # RFC-0007 — the contract a Sidecar implementation fulfills so the registration
@@ -64,11 +62,8 @@ class Sidecar(Protocol):
 
     # Optional surfaces — implementations MAY provide these if they declare
     # the corresponding key in `include_optional` on registration.
-    # `webhook` — social_set_webhook (RFC-0007 § Optional)
     # `present` — social_present
     # `audit`   — social_audit
-    async def social_set_webhook(self, input: SetWebhookInput) -> SetWebhookOutput: ...
-
     async def social_present(self, input: PresentInput) -> PresentOutput: ...
 
     async def social_audit(self) -> AuditOutput: ...

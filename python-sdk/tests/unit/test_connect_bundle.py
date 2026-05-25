@@ -21,8 +21,7 @@ def _bundle_payload(**overrides: object) -> dict[str, object]:
         "did": "did:web:app.example",
         "shadowname": "alice@app.example",
         "mcp_endpoint": f"{BASE}/u/alice/mcp",
-        "webhook_secret": "wh-secret",
-        "supported_features": ["mcp", "webhook", "inbox-wait", "bundle"],
+        "supported_features": ["mcp", "inbox-wait", "bundle"],
         "tool_names": ["social_send", "social_inbox", "social_inbox_wait"],
         "event_names": ["inbox.message"],
         "version": "0.3.0",
@@ -50,7 +49,6 @@ async def test_round_trip() -> None:
         bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
     assert bundle.shadowname == "alice@app.example"
     assert bundle.supports_inbox_wait is True
-    assert bundle.supports_webhook is True
     assert "inbox-wait" in bundle.supported_features
 
 
@@ -62,17 +60,16 @@ async def test_strip_trailing_slash() -> None:
 
 async def test_bundle_without_inbox_wait() -> None:
     """Sidecar that pre-dates RFC-0007 amendment D: no 'inbox-wait' feature."""
-    payload = _bundle_payload(supported_features=["mcp", "webhook", "bundle"])
+    payload = _bundle_payload(supported_features=["mcp", "bundle"])
     async with _client_returning(json=payload) as client:
         bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
     assert bundle.supports_inbox_wait is False
-    assert bundle.supports_webhook is True
 
 
 async def test_bundle_with_mcp_notifications() -> None:
     """Sidecar advertising notifications/shadownet/* push (TS plugins use this)."""
     payload = _bundle_payload(
-        supported_features=["mcp", "webhook", "inbox-wait", "mcp-notifications", "bundle"]
+        supported_features=["mcp", "inbox-wait", "mcp-notifications", "bundle"]
     )
     async with _client_returning(json=payload) as client:
         bundle = await fetch_integration_bundle(client, base_url=BASE, token=TOKEN)
@@ -179,10 +176,3 @@ def test_bundle_accepts_did_key_for_individuals() -> None:
     payload = _bundle_payload(did="did:key:z6MkSubjectPubkey")
     bundle = IntegrationBundle.model_validate(payload)
     assert bundle.did.startswith("did:key:")
-
-
-def test_bundle_accepts_explicit_null_webhook_secret() -> None:
-    """webhook_secret field is present but null when sidecar doesn't support webhooks."""
-    payload = _bundle_payload(webhook_secret=None)
-    bundle = IntegrationBundle.model_validate(payload)
-    assert bundle.webhook_secret is None

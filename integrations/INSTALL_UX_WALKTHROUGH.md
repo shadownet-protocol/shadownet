@@ -237,8 +237,7 @@ that the Sidecar pushes events to.
 2. Run `openclaw plugins install clawhub:shadownet`; paste endpoint + token.
 3. **Make the OpenClaw Gateway HTTP port publicly reachable** (the user
    needs this — OpenClaw does not ship a tunnel).
-4. Inside the agent, call `/shadownet:shadownet-setup` and register the
-   webhook URL via `social_set_webhook`.
+4. Inside the agent, call `/shadownet:shadownet-setup`.
 
 **Self-hosted Sidecar**: identical flow, just point at your own host.
 
@@ -263,8 +262,7 @@ host's documentation.
 ### What the user DOES still have to do (regression from the other two)
 
 - Make a public URL reachable from the Sidecar.
-- Run the in-agent `/shadownet:shadownet-setup` once so the webhook is
-  registered with `social_set_webhook`.
+- Run the in-agent `/shadownet:shadownet-setup` once.
 
 ### Inferred behaviors (OpenClaw docs gaps)
 

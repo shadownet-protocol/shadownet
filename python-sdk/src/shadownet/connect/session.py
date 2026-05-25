@@ -49,8 +49,7 @@ _log = get_logger(__name__)
 class InboxEvent(BaseModel):
     """A single event delivered via `social_inbox_wait`.
 
-    Field shape matches the webhook payload (RFC-0007 §Webhook events) so
-    receivers can share one parser across transports.
+    Field shape matches the event payload defined in RFC-0007 § Events.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True, frozen=True)

@@ -13,7 +13,6 @@ const EXPECTED_NAMES = [
   "shadownet_respond",
   "shadownet_grant",
   "shadownet_identity",
-  "shadownet_set_webhook",
 ] as const;
 
 const EXPECTED_MCP_NAMES: Record<(typeof EXPECTED_NAMES)[number], string> = {
@@ -26,7 +25,6 @@ const EXPECTED_MCP_NAMES: Record<(typeof EXPECTED_NAMES)[number], string> = {
   shadownet_respond: "social_respond",
   shadownet_grant: "social_grant",
   shadownet_identity: "social_identity",
-  shadownet_set_webhook: "social_set_webhook",
 };
 
 function stubClient(): ShadownetClient {
