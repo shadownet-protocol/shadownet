@@ -203,10 +203,35 @@ def test_powershell_escape_handles_backticks_and_quotes() -> None:
     assert out == 'say `"hi`" ``back'
 
 
-def test_main_exits_silently_when_inbound_flag_unset(
+def test_main_runs_by_default_when_no_override_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Default behavior: with no inbound override, the monitor runs.
+
+    Token is also unset so config resolution fails fast at exit 1 — what
+    matters here is that we got past the inbound-gate (which would have
+    returned 0 silently) and into the run loop.
+    """
     monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
+    monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    assert inbound.main() == 1
+
+
+def test_main_exits_silently_when_explicitly_disabled_via_plugin_option(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "false")
+    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
+    assert inbound.main() == 0
+
+
+def test_main_exits_silently_when_explicitly_disabled_via_shell_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SHADOWNET_INBOUND", "0")
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
     assert inbound.main() == 0
 
@@ -214,25 +239,31 @@ def test_main_exits_silently_when_inbound_flag_unset(
 def test_main_propagates_config_error_to_exit_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("SHADOWNET_INBOUND", "1")
+    """When inbound is enabled (default) but token resolution fails, exit 1."""
+    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     assert inbound.main() == 1
 
 
-def test_claude_plugin_option_inbound_enabled_activates_monitor(
+def test_inbound_enabled_helper_accepts_various_falsy_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The userConfig-style env var also activates the monitor."""
-    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
-    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", "true")
-    monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
-    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
-    # Token unset, so config resolution fails -> exit 1 (NOT 0 which would
-    # mean the inbound gate kept it inactive).
-    assert inbound.main() == 1
+    """All standard truthy/falsy spellings disable when given as override."""
+    for falsy in ("0", "false", "False", "FALSE", "no", "off"):
+        monkeypatch.setenv("SHADOWNET_INBOUND", falsy)
+        assert inbound._inbound_enabled() is False, f"{falsy!r} should disable"
+    monkeypatch.delenv("SHADOWNET_INBOUND")
+    assert inbound._inbound_enabled() is True
+    # Non-empty non-falsy value (the historic "1") also enables, since we
+    # only disable on explicit falsy strings.
+    for truthy in ("1", "true", "yes", ""):
+        monkeypatch.setenv("SHADOWNET_INBOUND", truthy)
+        assert inbound._inbound_enabled() is True, (
+            f"{truthy!r} should leave inbound enabled (no falsy override)"
+        )
 
 
 async def test_resolve_config_falls_back_to_shadownet_env_when_userconfig_unset(
