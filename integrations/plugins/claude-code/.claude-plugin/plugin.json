@@ -30,7 +30,7 @@
       {
         "name": "shadownet-inbound",
         "command": "${CLAUDE_PLUGIN_ROOT}/monitors/inbound.py",
-        "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Emits one structured notification line per inbound message and (by default) fires an OS-level toast. Opt-in via the 'inbound_enabled' userConfig option."
+        "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Emits one structured notification line per inbound message and (by default) fires an OS-level toast. Enabled by default; flip the 'inbound_enabled' userConfig option to false to disable."
       }
     ]
   }
