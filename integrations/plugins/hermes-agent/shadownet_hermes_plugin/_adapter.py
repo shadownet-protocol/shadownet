@@ -88,6 +88,7 @@ def build_adapter_class() -> type:
 
         async def connect(self) -> bool:
             self._stack = AsyncExitStack()
+            self._gateway = getattr(self._message_handler, "__self__", None)
             try:
                 http_client = await self._stack.enter_async_context(_build_http_client())
                 bundle = await self._fetch_bundle(http_client)
@@ -236,9 +237,11 @@ def build_adapter_class() -> type:
             """Inject plan-related messages into the user's primary chat session.
 
             This creates a synthetic internal message on the user's Telegram
-            session so the agent has full context for follow-up actions like
-            social_confirm_plan(). Only actionable types (response, confirmation)
-            are injected; protocol noise is dropped.
+            (or other platform) session so the agent has context for follow-up
+            actions like social_confirm_plan() or social_accept_plan().
+
+            Uses the gateway's adapter registry (a public Dict[Platform, Adapter])
+            — the same interface that DeliveryRouter and channel_directory use.
             """
             if data_type not in ("response", "confirmation", "confirmed"):
                 _log.debug("Suppressed non-actionable %s from %s", data_type, sender_name)
@@ -262,17 +265,8 @@ def build_adapter_class() -> type:
                 return
             platform_name, chat_id = parts
 
-            handler = getattr(self, "_message_handler", None)
-            if handler is None:
-                _log.warning("No message handler available for session injection")
-                return
-            # HACK: Reaches into Hermes runner internals (handler.__self__.adapters)
-            # to locate the target platform adapter for cross-platform injection.
-            # Not part of Hermes's documented plugin API — will need updating if
-            # Hermes refactors its runner. Defensive getattr ensures graceful
-            # degradation (logs warning, skips injection) rather than crash.
-            gateway_runner = getattr(handler, "__self__", None)
-            if gateway_runner is None:
+            gateway = self._gateway
+            if gateway is None:
                 _log.warning("No gateway runner available for session injection")
                 return
 
@@ -280,7 +274,7 @@ def build_adapter_class() -> type:
             from gateway.session import SessionSource
 
             target_platform = Platform(platform_name)
-            adapter = gateway_runner.adapters.get(target_platform)
+            adapter = gateway.adapters.get(target_platform)
             if adapter is None:
                 _log.warning("No adapter for platform %s", platform_name)
                 return

@@ -39,3 +39,78 @@ Run `uv run ruff format .` in the affected directory, then re-check.
 - `B904`: Use `raise ... from err` or `raise ... from None` inside except clauses
 - `N806`: Variables inside functions must be lowercase (not `UPPER_CASE`)
 - Always run `ruff format` after editing Python files
+
+## Pre-Push: Deploy & E2E Verification (MANDATORY)
+
+Before pushing any changes that affect the Hermes plugin or sidecar behavior, you MUST deploy to the VPS and run an E2E coordination test. Do NOT push until the test passes.
+
+### Deploy Steps
+
+```bash
+# 1. Deploy sidecar (rebuilds containers on VPS)
+cd /path/to/workspace/shadownet-local
+bash deploy.sh
+
+# Also rebuild the test sidecar:
+ssh root@<YOUR_VPS_HOST> "cd /docker/shadownet && docker compose -f docker-compose.yml -f docker-compose.test.yml -f docker-compose.traefik.yml up -d --build shadownet-test"
+
+# 2. Deploy plugin to both Hermes instances
+# Rsync to staging (strip uv.lock and [tool.uv.sources] for container install):
+rsync -avz --delete --exclude '__pycache__/' --exclude '.venv/' --exclude '*.pyc' --exclude '.git/' \
+  /path/to/workspace/shadownet/integrations/plugins/hermes-agent/ \
+  root@<YOUR_VPS_HOST>:/tmp/shadownet-plugin-staging/
+
+# On VPS: remove uv sources + lock, copy into containers, reinstall:
+ssh root@<YOUR_VPS_HOST> "
+  sed -i '/\[tool.uv.sources\]/,/^$/d' /tmp/shadownet-plugin-staging/pyproject.toml
+  rm -f /tmp/shadownet-plugin-staging/uv.lock
+  docker cp /tmp/shadownet-plugin-staging/. hermes-agent-main:/tmp/hermes-agent/
+  docker cp /tmp/shadownet-plugin-staging/. hermes-agent-test:/tmp/hermes-plugin/
+  docker exec hermes-agent-main rm -f /tmp/hermes-agent/uv.lock
+  docker exec hermes-agent-test rm -f /tmp/hermes-plugin/uv.lock
+  docker exec hermes-agent-main uv pip install -e /tmp/hermes-agent/ --quiet
+  docker exec hermes-agent-test uv pip install -e /tmp/hermes-plugin/ --quiet
+"
+
+# 3. Restart both Hermes gateways
+ssh root@<YOUR_VPS_HOST> "docker restart hermes-agent-main hermes-agent-test"
+```
+
+### E2E Verification
+
+After deploy, verify the full coordination flow works:
+
+```bash
+# Clear state
+ssh root@<YOUR_VPS_HOST> "
+  docker exec shadownet python3 -c \"import sqlite3; c=sqlite3.connect('/app/data/shadownet.db'); c.execute('DELETE FROM interaction_contexts'); c.commit(); c.close()\"
+  docker exec shadownet-test python3 -c \"import sqlite3; c=sqlite3.connect('/app/data/shadownet.db'); c.execute('DELETE FROM interaction_contexts'); c.commit(); c.close()\"
+"
+
+# Step 1: Initiate coordination
+ssh root@<YOUR_VPS_HOST> "docker exec hermes-agent-main hermes chat -q 'coordinate coffee with test friend friday morning. use the shadownet-coordinate skill.' -Q --yolo --max-turns 5"
+
+# Wait 15s for autonomous negotiation (Step 2)
+sleep 15
+
+# Verify response arrived on main sidecar (should show 'response', 'inbound', 'received')
+ssh root@<YOUR_VPS_HOST> "docker exec shadownet python3 -c \"import sqlite3; c=sqlite3.connect('/app/data/shadownet.db'); [print(r) for r in c.execute('SELECT data_type, direction, status FROM interaction_contexts ORDER BY created_at DESC LIMIT 5').fetchall()]; c.close()\""
+
+# Step 4: Confirm
+ssh root@<YOUR_VPS_HOST> "docker exec hermes-agent-main hermes chat -q 'yes confirm it' -Q --yolo --max-turns 5"
+
+# Step 6: Accept (wait 5s for delivery)
+sleep 5
+ssh root@<YOUR_VPS_HOST> "docker exec hermes-agent-test hermes chat -q 'yes accept the plan' -Q --yolo --max-turns 5"
+
+# Verify final state: main should have confirmed inbound, test should show responded
+ssh root@<YOUR_VPS_HOST> "docker exec shadownet python3 -c \"import sqlite3; c=sqlite3.connect('/app/data/shadownet.db'); [print(r) for r in c.execute('SELECT data_type, direction, status FROM interaction_contexts ORDER BY created_at').fetchall()]; c.close()\""
+```
+
+Expected final state on main sidecar:
+- `coordination_request, outbound, sent`
+- `response, inbound, responded`
+- `confirmation, outbound, sent`
+- `confirmed, inbound, received`
+
+Only push when the full flow completes successfully.
