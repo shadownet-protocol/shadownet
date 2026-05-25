@@ -200,6 +200,38 @@ Print:
   (the Dockerfile uses `uv sync --no-sources` to ignore the in-repo
   `[tool.uv.sources]` override).
 
+## Satellite repos (out of this monorepo)
+
+Some published artefacts live in separate GitHub repos because their
+install model requires it. They're not subtrees, the release skill
+doesn't tag them directly, but cuts in this monorepo can require a
+follow-up bump there.
+
+### `shadownet-protocol/hermes-plugin` — Hermes Agent install shim
+
+Tiny git-clone-only repo (`plugin.yaml` + `__init__.py`) that Hermes'
+`hermes plugins install shadownet-protocol/hermes-plugin` flow clones
+into `~/.hermes/plugins/shadownet/`. Its `register(ctx)` bootstraps the
+PyPI package `shadownet-hermes-plugin` (built from
+`integrations/plugins/hermes-agent/` here, tagged
+`hermes-plugin/vX.Y.Z`) into Hermes' active venv before delegating.
+
+The shim pins the PyPI package with a compatible-release specifier in
+`__init__.py:_VERSION_SPECIFIER`. Coordination depends on which kind of
+bump just shipped to PyPI:
+
+| PyPI bump | Shim action needed |
+| --- | --- |
+| Patch (e.g. `0.1.1 → 0.1.2`) | **None.** Pin `~=0.1.1` already accepts it. Existing installs pick it up on next `hermes gateway restart` (the shim re-runs `_is_satisfied()` and re-pips). |
+| Minor (e.g. `0.1.x → 0.2.0`) | Bump `_VERSION_SPECIFIER` to `~=0.2.0` in the shim repo, bump `plugin.yaml:version`, commit + tag. Existing users must run `hermes plugins update shadownet` then restart to get the new pin. |
+| Major (e.g. `0.x → 1.0`) | Same as minor, plus consider whether the shim's own logic needs changes (signature of `register(ctx)`, new env vars, etc.). |
+
+When you ship a `hermes-plugin/v*` tag here that's a minor/major bump,
+include a reminder in the release notes to follow up in the satellite
+repo. The satellite has its own `smoketest.yml` workflow that exercises
+the pip-install path against PyPI, so a broken pin fails CI there
+before users see it.
+
 ## Lessons learned (the 0.2.0 release dance)
 
 If any of these recur, fix them at the workflow level so they don't recur
