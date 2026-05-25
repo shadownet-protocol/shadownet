@@ -17,7 +17,7 @@
 # manifest is still authoritative if the install path changes.
 
 name: shadownet
-version: "0.1.1"
+version: "0.2.0"
 description: >-
   Shadownet protocol integration for Hermes Agent. Adds identity-anchored
   agent-to-agent messaging via the Shadownet protocol (RFC-0007), including
