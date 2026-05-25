@@ -58,6 +58,7 @@ into one shape.
 | `core/pgstore/go.mod` | `core` (Go module proxy) | `require ... v0.X.Y` + in-repo `replace ../` for dev | `core/vX.Y.Z` MUST be on the Go proxy before tagging `core/pgstore/vX.Y.Z` |
 | `conformance/pyproject.toml` | `python-sdk` (PyPI) | `shadownet>=0.2.0,<0.3` + `[tool.uv.sources]` `path = "../python-sdk"` for dev | `shadownet vX.Y.Z` MUST be on PyPI before tagging `conformance/vX.Y.Z` (the Docker build resolves from PyPI via `uv sync --no-sources`) |
 | `conformance/fixtures/_regen/go-emit/go.mod` | `core` (Go module proxy) | `require ... + replace ../../../../core` | dev only — the binary is built on demand and never published |
+| `shadownet-protocol/hermes-plugin` (satellite) | `shadownet-hermes-plugin` (PyPI, built from `integrations/plugins/hermes-agent/`) | `_VERSION_SPECIFIER = "~=X.Y.Z"` in `__init__.py` | PyPI patch flows transparently; PyPI minor/major requires a follow-up pin-bump + tag in the satellite repo. See `/release` skill → "Satellite repos". |
 
 Topological release order: `python-sdk → conformance`, `core → core/pgstore`.
 The two columns are independent.
@@ -99,6 +100,11 @@ Tag scheme:
 - `conformance/vX.Y.Z` — `ghcr.io/shadownet-protocol/conformance` image
   (also what the published `shadownet-protocol/conformance-action@v0.X`
   consumes).
+- `hermes-plugin/vX.Y.Z` — PyPI `shadownet-hermes-plugin` via Trusted
+  Publishing. The Hermes Agent install shim at
+  [`shadownet-protocol/hermes-plugin`](https://github.com/shadownet-protocol/hermes-plugin)
+  (separate repo) pins this PyPI package with a compatible-release
+  specifier; minor/major bumps require a follow-up shim release.
 
 ## CI/CD gotchas we've already paid for
 
