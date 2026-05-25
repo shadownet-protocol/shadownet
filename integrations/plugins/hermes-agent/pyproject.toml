@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shadownet-hermes-plugin"
-version = "0.1.1"
+version = "0.2.0"
 description = "Shadownet protocol plugin for Hermes Agent."
 readme = "README.md"
 license = { text = "MIT" }
@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "shadownet>=0.3.0,<0.4",
+    "shadownet>=0.4.0,<0.5",
     "httpx>=0.27",
     "pydantic>=2.7",
 ]
