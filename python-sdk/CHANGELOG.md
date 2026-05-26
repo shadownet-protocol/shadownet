@@ -10,6 +10,20 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-27
+
+### Added
+
+- `ShadownetMCPSession` accepts an optional `mcp_endpoint` constructor
+  kwarg. When supplied, it overrides the synthesized
+  `{base_url}/u/{shadowname}/mcp` URL. Sidecars MAY serve MCP from a
+  different host than the dashboard (e.g., `api.example.org` for MCP vs
+  `app.example.org` for the integration-bundle endpoint); the bundle's
+  `mcp_endpoint` field is the canonical source per RFC-0007 amendment A.
+  Callers fetching the bundle SHOULD pass
+  `mcp_endpoint=bundle.mcp_endpoint`. Existing callers passing only
+  `base_url + shadowname` continue to work unchanged.
+
 ## [0.4.0] — 2026-05-25
 
 ### Removed
@@ -275,7 +289,8 @@ Initial pre-release. Implements the v0.1 RFC set:
 - Fully `mypy --strict`-clean; ships `py.typed`; ruff lint+format clean;
   176 tests at the cut.
 
-[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.4.0...HEAD
+[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.4.1...HEAD
+[0.4.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.1
 [0.4.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.0
 [0.3.2]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.2
 [0.2.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.2.0
