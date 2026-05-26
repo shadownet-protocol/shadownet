@@ -103,13 +103,13 @@ class FakeSidecar:
         return InboxWaitOutput(
             events=[
                 InboxWaitEvent(
-                    eventId="evt-1",
+                    event_id="evt-1",
                     event="inbox.message",
                     occurredAt=1,
                     data={"from": "alice@x.example", "body": "hi"},
                 )
             ],
-            nextEventId="evt-1",
+            next_event_id="evt-1",
         )
 
     async def social_present(self, input: PresentInput) -> PresentOutput:
@@ -210,12 +210,12 @@ async def test_inbox_wait_dispatches_to_sidecar() -> None:
     sidecar = FakeSidecar()
     register_shadownet_tools(server, sidecar, include_optional={"inbox_wait"})
     result = await server.call_tool(
-        "social_inbox_wait", {"timeout_seconds": 5, "lastEventId": "evt-0"}
+        "social_inbox_wait", {"timeout_seconds": 5, "last_event_id": "evt-0"}
     )
     body = result[0][0].text
     parsed = json.loads(body)
-    assert parsed["events"][0]["eventId"] == "evt-1"
-    assert parsed["nextEventId"] == "evt-1"
+    assert parsed["events"][0]["event_id"] == "evt-1"
+    assert parsed["next_event_id"] == "evt-1"
     # The sidecar received the InboxWaitInput with the cursor we passed.
     inbox_wait_calls = [c for c in sidecar.calls if c[0] == "social_inbox_wait"]
     assert len(inbox_wait_calls) == 1
