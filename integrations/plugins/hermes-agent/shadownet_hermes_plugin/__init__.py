@@ -23,6 +23,8 @@ Configuration is via environment variables (``SHADOWNET_TOKEN``,
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -75,6 +77,51 @@ def _skill_paths() -> dict[str, Path]:
     return {name: candidates[0] / name / "SKILL.md" for name in SKILL_NAMES}
 
 
+def _hermes_data_dir() -> Path:
+    """Resolve Hermes' data directory (canonical home for skill files).
+
+    Precedence: ``HERMES_DATA_DIR`` env var → container default
+    ``/opt/data`` if it exists → ``~/.hermes`` on bare-metal installs.
+    """
+    env = os.environ.get("HERMES_DATA_DIR")
+    if env:
+        return Path(env)
+    container_default = Path("/opt/data")
+    if container_default.is_dir():
+        return container_default
+    return Path.home() / ".hermes"
+
+
+def _materialize_skills_into_data_dir(skill_paths: dict[str, Path]) -> None:
+    """Copy each skill directory into ``<HERMES_DATA_DIR>/skills/<name>/``.
+
+    Hermes's ``ctx.register_skill(name, path)`` registers metadata only —
+    it does NOT materialize the SKILL.md (or sibling files in the skill
+    directory) into ``~/.hermes/skills/``, which is where the agent's
+    skill-loader actually reads from. Without this copy, the LLM's
+    available-skills prompt does not include our skills even though the
+    platform adapter is connected.
+    """
+    target_root = _hermes_data_dir() / "skills"
+    for name, src_skill_md in skill_paths.items():
+        if not src_skill_md.is_file():
+            continue
+        src_dir = src_skill_md.parent
+        dst_dir = target_root / name
+        try:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for src_file in src_dir.iterdir():
+                if src_file.is_file():
+                    shutil.copy2(src_file, dst_dir / src_file.name)
+        except OSError as e:
+            _log.warning(
+                "shadownet plugin: failed to materialize skill `%s` into %s: %s",
+                name,
+                dst_dir,
+                e,
+            )
+
+
 def register(ctx: Any) -> None:
     """Hermes plugin entry point — invoked once at Hermes startup.
 
@@ -93,7 +140,12 @@ def register(ctx: Any) -> None:
     else:
         for name, path in skill_paths.items():
             ctx.register_skill(name, path)
-        _log.debug("registered %d Shadownet skills", len(skill_paths))
+        _materialize_skills_into_data_dir(skill_paths)
+        _log.info(
+            "registered %d Shadownet skills (materialized into %s)",
+            len(skill_paths),
+            _hermes_data_dir() / "skills",
+        )
 
     adapter_class = build_adapter_class()
     ctx.register_platform(

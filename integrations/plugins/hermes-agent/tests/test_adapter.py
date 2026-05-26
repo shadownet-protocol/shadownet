@@ -280,6 +280,32 @@ def test_skill_paths_falls_back_to_shared_data(
         assert paths[name].is_file()
 
 
+def test_materialize_skills_into_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skills land under `<HERMES_DATA_DIR>/skills/<name>/` so the agent's
+    skill-loader picks them up (Hermes's `ctx.register_skill` is
+    metadata-only)."""
+    import shadownet_hermes_plugin as pkg
+
+    src_root = tmp_path / "src" / "skills"
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("HERMES_DATA_DIR", str(data_dir))
+
+    skill_paths: dict[str, Path] = {}
+    for name in pkg.SKILL_NAMES:
+        src_skill = src_root / name
+        src_skill.mkdir(parents=True)
+        (src_skill / "SKILL.md").write_text(f"# {name}")
+        (src_skill / "extra.md").write_text("sibling file")
+        skill_paths[name] = src_skill / "SKILL.md"
+
+    pkg._materialize_skills_into_data_dir(skill_paths)
+
+    for name in pkg.SKILL_NAMES:
+        assert (data_dir / "skills" / name / "SKILL.md").is_file()
+        # Sibling files in the skill directory should also be copied.
+        assert (data_dir / "skills" / name / "extra.md").is_file()
+
+
 def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
     """register(ctx) should register all 4 skills + 1 platform."""
     monkeypatch.setenv("SHADOWNET_TOKEN", "t")
