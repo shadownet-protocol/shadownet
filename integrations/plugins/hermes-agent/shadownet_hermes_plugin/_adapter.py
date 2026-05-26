@@ -98,6 +98,7 @@ def build_adapter_class() -> type:
                         base_url=self._sidecar_base_url,
                         shadowname=bundle.shadowname,
                         token=self._token,
+                        mcp_endpoint=bundle.mcp_endpoint,
                     )
                 )
                 self._inbox_task = asyncio.create_task(
