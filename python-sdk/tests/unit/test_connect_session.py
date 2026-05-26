@@ -263,6 +263,17 @@ def test_mcp_url_is_rfc_0007_path() -> None:
     assert wrapper.mcp_url == "https://app.example/u/alice@app.example/mcp"
 
 
+def test_mcp_endpoint_kwarg_overrides_synthesized_url() -> None:
+    """`mcp_endpoint` from the integration bundle wins over base+shadowname."""
+    wrapper = ShadownetMCPSession(
+        base_url="https://app.example",
+        shadowname="alice@app.example",
+        token="t",
+        mcp_endpoint="https://api.example.org/u/alice/mcp",
+    )
+    assert wrapper.mcp_url == "https://api.example.org/u/alice/mcp"
+
+
 # --- helpers ----------------------------------------------------------------
 
 

@@ -100,12 +100,14 @@ class ShadownetMCPSession:
         base_url: str,
         shadowname: str,
         token: str,
+        mcp_endpoint: str | None = None,
         client_name: str = "shadownet-python-sdk",
         client_version: str = "0.3.0",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._shadowname = shadowname
         self._token = token
+        self._mcp_endpoint = mcp_endpoint
         self._client_name = client_name
         self._client_version = client_version
         self._stack: AsyncExitStack | None = None
@@ -113,7 +115,15 @@ class ShadownetMCPSession:
 
     @property
     def mcp_url(self) -> str:
-        """The per-tenant MCP endpoint (RFC-0007)."""
+        """The per-tenant MCP endpoint (RFC-0007).
+
+        Returns the explicit `mcp_endpoint` from the integration bundle when
+        the caller supplied one; otherwise synthesizes
+        `{base_url}/u/{shadowname}/mcp` (legacy behavior, fine for
+        deployments where MCP shares the dashboard host).
+        """
+        if self._mcp_endpoint is not None:
+            return self._mcp_endpoint
         # Shadowname format is `local@host`. URL-safe encoding of the local
         # part is the caller's responsibility — we don't second-guess.
         return f"{self._base_url}/u/{self._shadowname}/mcp"
