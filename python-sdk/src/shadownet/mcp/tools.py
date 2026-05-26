@@ -173,7 +173,7 @@ class InboxWaitInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     timeout_seconds: int = Field(default=INBOX_WAIT_DEFAULT_TIMEOUT_SECONDS, ge=0)
-    last_event_id: str | None = Field(default=None, alias="lastEventId")
+    last_event_id: str | None = None
 
 
 class InboxWaitEvent(BaseModel):
@@ -184,7 +184,7 @@ class InboxWaitEvent(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    event_id: str = Field(min_length=1, alias="eventId")
+    event_id: str = Field(min_length=1)
     event: str = Field(min_length=1)
     occurred_at: int = Field(ge=0, alias="occurredAt")
     data: dict[str, Any]
@@ -194,7 +194,7 @@ class InboxWaitOutput(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     events: list[InboxWaitEvent] = Field(default_factory=list)
-    next_event_id: str | None = Field(default=None, alias="nextEventId")
+    next_event_id: str | None = None
 
 
 # --- social_respond ----------------------------------------------------------

@@ -160,14 +160,14 @@ def register_shadownet_tools(
         )
         async def _inbox_wait(
             timeout_seconds: int = 30,
-            lastEventId: str | None = None,
+            last_event_id: str | None = None,
         ) -> InboxWaitOutput:
             # Clamp server-side per RFC-0007 amendment D so misbehaving clients
             # can't pin a connection beyond the documented limit.
             clamped = max(0, min(timeout_seconds, INBOX_WAIT_MAX_TIMEOUT_SECONDS))
             return await sidecar.social_inbox_wait(
                 InboxWaitInput.model_validate(
-                    {"timeout_seconds": clamped, "lastEventId": lastEventId}
+                    {"timeout_seconds": clamped, "last_event_id": last_event_id}
                 )
             )
 

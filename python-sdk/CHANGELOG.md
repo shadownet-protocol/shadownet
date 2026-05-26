@@ -10,6 +10,28 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-27
+
+### Fixed
+
+- `mcp.tools.InboxWaitEvent.event_id` and
+  `mcp.tools.InboxWaitOutput.next_event_id` had incorrect Pydantic
+  `alias="eventId"` / `alias="nextEventId"` annotations that produced a
+  non-spec wire format. The normative
+  [`schemas/tools/social-inbox-wait-result.schema.json`](https://github.com/shadownet-protocol/shadownet-specs/blob/main/schemas/tools/social-inbox-wait-result.schema.json)
+  requires both fields to be snake_case on the wire (only `occurredAt` is
+  camelCase). The aliases are removed; the wire now matches the spec
+  (`event_id`, `next_event_id`).
+
+  **Wire-breaking for sidecars that were relying on the wrong aliases.**
+  Sidecars using `InboxWaitEvent.model_validate({"eventId": ...})` to
+  build events MUST switch to spec-compliant snake_case keys
+  (`{"event_id": ...}`) or keyword construction
+  (`InboxWaitEvent(event_id=..., ...)`).
+
+  Cross-impl conformance (`conformance/`) was already asserting against
+  the snake_case schema; this brings the SDK back into alignment.
+
 ## [0.4.1] — 2026-05-27
 
 ### Added
@@ -289,7 +311,8 @@ Initial pre-release. Implements the v0.1 RFC set:
 - Fully `mypy --strict`-clean; ships `py.typed`; ruff lint+format clean;
   176 tests at the cut.
 
-[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.4.1...HEAD
+[Unreleased]: https://github.com/shadownet-protocol/shadownet/compare/python-sdk/v0.4.2...HEAD
+[0.4.2]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.2
 [0.4.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.1
 [0.4.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.0
 [0.3.2]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.3.2
