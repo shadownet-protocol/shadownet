@@ -23,6 +23,7 @@ Configuration is via environment variables (``SHADOWNET_TOKEN``,
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -44,16 +45,34 @@ SKILL_NAMES = (
 )
 
 
+def _skill_root_candidates() -> tuple[Path, ...]:
+    """Candidate roots containing ``<name>/SKILL.md``, in priority order.
+
+    1. Sibling to the package (``<pkg>/../skills/``) — used by
+       ``hermes plugins install <repo>`` (git-clone layout) and editable
+       installs.
+    2. ``<sys.prefix>/share/hermes-plugins/shadownet/skills/`` — where
+       wheel installs land the shared-data tree, per ``pyproject.toml``'s
+       ``[tool.hatch.build.targets.wheel.shared-data]``.
+    """
+    return (
+        Path(__file__).resolve().parent.parent / "skills",
+        Path(sys.prefix) / "share" / "hermes-plugins" / "shadownet" / "skills",
+    )
+
+
 def _skill_paths() -> dict[str, Path]:
     """Resolve absolute paths to bundled SKILL.md files.
 
-    The plugin ships ``skills/<name>/SKILL.md`` next to its package root
-    so ``hermes plugins install <repo>`` picks them up. We resolve
-    relative to ``__file__`` so the path works regardless of how the
-    package was installed (sdist, wheel, editable, git clone).
+    Returns paths under the first candidate root that contains the
+    canonical SKILL.md files; falls back to the primary (sibling-package)
+    location if none match, so any warning message names a useful path.
     """
-    root = Path(__file__).resolve().parent.parent / "skills"
-    return {name: root / name / "SKILL.md" for name in SKILL_NAMES}
+    candidates = _skill_root_candidates()
+    for root in candidates:
+        if (root / SKILL_NAMES[0] / "SKILL.md").is_file():
+            return {name: root / name / "SKILL.md" for name in SKILL_NAMES}
+    return {name: candidates[0] / name / "SKILL.md" for name in SKILL_NAMES}
 
 
 def register(ctx: Any) -> None:

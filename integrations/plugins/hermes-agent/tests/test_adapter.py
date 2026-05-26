@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # The conftest installs a fake gateway.platforms.base before this import.
 from shadownet_hermes_plugin._adapter import (
@@ -253,6 +256,28 @@ def test_register_skill_paths_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     for name in expected:
         assert (skills_dir / name / "SKILL.md").is_file(), name
+
+
+def test_skill_paths_falls_back_to_shared_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the package has no sibling `skills/` (wheel install layout),
+    `_skill_paths()` must find them under `<sys.prefix>/share/...`."""
+    import shadownet_hermes_plugin as pkg
+
+    nonexistent = tmp_path / "no-sibling-here"
+    shared = tmp_path / "share" / "hermes-plugins" / "shadownet" / "skills"
+    for name in pkg.SKILL_NAMES:
+        d = shared / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("# stub")
+
+    monkeypatch.setattr(pkg, "_skill_root_candidates", lambda: (nonexistent, shared))
+
+    paths = pkg._skill_paths()
+    for name in pkg.SKILL_NAMES:
+        assert paths[name] == shared / name / "SKILL.md"
+        assert paths[name].is_file()
 
 
 def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
