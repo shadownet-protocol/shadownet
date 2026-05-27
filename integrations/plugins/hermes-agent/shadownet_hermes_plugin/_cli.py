@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import argparse
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shadownet_hermes_plugin import _env, _mcp_config, _skills
+
+if TYPE_CHECKING:
+    import argparse
 
 __all__ = ["do_doctor", "do_logout", "do_status", "do_sync", "handle", "setup"]
 
@@ -144,14 +146,18 @@ def do_logout() -> str:
     """Remove the connection state from this Hermes install."""
     removed_mcp = _mcp_config.remove_mcp_server_from_config()
     cleared_env = _env.strip_connect_url_from_env()
-    disabled = _mcp_config.set_platform_enabled("shadownet", False)
     actions: list[str] = []
     if removed_mcp:
         actions.append("removed config.yaml mcp_servers.shadownet")
     if cleared_env:
         actions.append("cleared SHADOWNET_CONNECT_URL from .env")
-    if disabled:
-        actions.append("set gateway.platforms.shadownet.enabled=false")
+    # Only touch gateway.platforms.shadownet.enabled when there was real
+    # state to disconnect — otherwise we'd materialize a phantom config.yaml
+    # on a fresh, never-connected install.
+    if actions:
+        disabled = _mcp_config.set_platform_enabled("shadownet", False)
+        if disabled:
+            actions.append("set gateway.platforms.shadownet.enabled=false")
     if not actions:
         return (
             "shadownet plugin: already disconnected (nothing to remove). "

@@ -26,7 +26,7 @@ def config_path() -> Any:
 
 def _load_yaml_module() -> Any | None:
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
     except ImportError:
         _log.warning("shadownet plugin: pyyaml not installed; cannot read/write config.yaml")
         return None
@@ -91,8 +91,7 @@ def ensure_mcp_server_in_config() -> None:
         from shadownet.connect.url import parse_connect_url
     except ImportError as e:
         _log.warning(
-            "shadownet plugin: shadownet SDK not importable (%s); "
-            "skipping MCP config write",
+            "shadownet plugin: shadownet SDK not importable (%s); skipping MCP config write",
             e,
         )
         return

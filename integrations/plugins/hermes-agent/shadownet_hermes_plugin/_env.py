@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shadownet_hermes_plugin._skills import hermes_data_dir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = [
     "env_path",
