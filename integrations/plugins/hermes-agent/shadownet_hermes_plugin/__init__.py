@@ -81,7 +81,8 @@ def register(ctx: Any) -> None:
     _mcp_config.ensure_mcp_server_in_config()
 
     adapter_class = build_adapter_class()
-    ctx.register_platform(
+    _register_platform_compat(
+        ctx,
         name="shadownet",
         label="Shadownet",
         adapter_factory=lambda cfg: adapter_class(cfg),
@@ -102,6 +103,44 @@ def register(ctx: Any) -> None:
         _log.info("registered %d shadownet slash commands", command_count)
 
     _safe_register_cli_command(ctx)
+
+
+def _register_platform_compat(ctx: Any, **kwargs: Any) -> None:
+    """Call ``ctx.register_platform`` tolerating older Hermes runtimes.
+
+    Newer Hermes versions accept ``platform_hint``, ``env_enablement_fn``,
+    ``cron_deliver_env_var``, etc. via ``**entry_kwargs`` forwarded to
+    ``PlatformEntry``. Older runtimes' ``PlatformEntry.__init__`` raises
+    ``TypeError`` on unknown kwargs and aborts plugin load entirely.
+    Drop the offending kwarg and retry until the call succeeds — every
+    one of these is optional metadata; the platform still works without
+    them. Required kwargs (``name``, ``label``, ``adapter_factory``,
+    ``check_fn``) are protected from removal.
+    """
+    required = {"name", "label", "adapter_factory", "check_fn"}
+    attempt_kwargs = dict(kwargs)
+    while True:
+        try:
+            ctx.register_platform(**attempt_kwargs)
+            return
+        except TypeError as e:
+            msg = str(e)
+            dropped: str | None = None
+            for kw in list(attempt_kwargs):
+                if kw in required:
+                    continue
+                if f"'{kw}'" in msg:
+                    attempt_kwargs.pop(kw)
+                    dropped = kw
+                    break
+            if dropped is None:
+                raise
+            _log.warning(
+                "shadownet plugin: register_platform rejected `%s` (%s) on this "
+                "Hermes runtime; retrying without it",
+                dropped,
+                e,
+            )
 
 
 def _safe_register_hook(ctx: Any, name: str, callback: Any) -> None:

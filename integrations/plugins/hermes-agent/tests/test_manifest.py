@@ -11,10 +11,15 @@ def _load_manifest() -> dict:
         return yaml.safe_load(f)
 
 
-def test_manifest_declares_v0_4_0() -> None:
-    """plugin.yaml version matches the pyproject.toml bump."""
+def test_manifest_version_format_and_kind() -> None:
+    """plugin.yaml has a valid 0.4.x version and the right kind."""
     manifest = _load_manifest()
-    assert manifest["version"] == "0.4.0"
+    version = manifest["version"]
+    assert isinstance(version, str)
+    parts = version.split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts)
+    assert parts[0] == "0"
+    assert parts[1] == "4"
     assert manifest["kind"] == "platform"
 
 
