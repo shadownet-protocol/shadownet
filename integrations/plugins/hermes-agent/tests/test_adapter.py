@@ -125,33 +125,89 @@ def test_adapter_class_constructs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert hasattr(instance, "_mark_connected")
 
 
-async def test_on_event_dispatches_inbox_message_only(
+class _Event:
+    """Test double for the SDK's InboxEvent shape."""
+
+    def __init__(self, event_type: str, data: dict[str, Any] | None = None) -> None:
+        self.event = event_type
+        self.event_id = "evt-1"
+        self.data = data or {
+            "from": "alice@x",
+            "body": "hi",
+            "data_type": "coordination_request",
+            "contactId": "c1",
+            "intentId": "i1",
+        }
+
+
+async def test_on_event_dispatches_coordination_request_to_self(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only inbox.message events drive a turn at v1; others are dropped."""
+    """coordination_request → handle_message into shadownet's own session."""
     monkeypatch.setenv("SHADOWNET_TOKEN", "t")
     monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
     AdapterCls = build_adapter_class()
     adapter = AdapterCls(_PlatformConfig({"token": "t"}))
 
-    class _Event:
-        def __init__(self, event_type: str, data: dict[str, Any] | None = None) -> None:
-            self.event = event_type
-            self.event_id = "evt-1"
-            self.data = data or {
-                "from": "alice@x",
-                "body": "hi",
-                "data_type": "coordination_request",
-                "contactId": "c1",
-                "intentId": "i1",
-            }
-
     await adapter._on_event(_Event("inbox.message"))
-    await adapter._on_event(_Event("task.update"))
+    # task.update with no notify target is a no-op; freshness.expired ignored.
+    await adapter._on_event(_Event("task.update", data={"intentId": "i1", "status": "agreed"}))
     await adapter._on_event(_Event("freshness.expired"))
 
     assert len(adapter.handled) == 1
-    assert "COORDINATION REQUEST" in adapter.handled[0].text
+    event = adapter.handled[0]
+    assert "COORDINATION REQUEST" in event.text
+    # Plain-text intent_id / contact_id so session_search can recall later.
+    assert "intent_id: i1" in event.text
+    assert "contact_id: c1" in event.text
+    # Hermes auto-loads this skill on a new session — single source of truth.
+    assert getattr(event, "auto_skill", None) == "shadownet-coordinate"
+
+
+async def test_task_update_no_notify_target_is_silent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """task.update without SHADOWNET_NOTIFY_CHAT logs but does nothing."""
+    monkeypatch.setenv("SHADOWNET_TOKEN", "t")
+    monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+    AdapterCls = build_adapter_class()
+    adapter = AdapterCls(_PlatformConfig({"token": "t"}))
+
+    await adapter._on_event(
+        _Event("task.update", data={"intentId": "i1", "contactId": "c1", "status": "agreed"})
+    )
+    assert adapter.handled == []  # no self-dispatch, no inject
+
+
+def test_build_task_update_inject_text_contains_correlation_ids() -> None:
+    """The task.update inject text must carry intent_id / contact_id /
+    task_id / status as plain-text lines for session_search recall."""
+    from shadownet_hermes_plugin._adapter import _build_task_update_inject
+
+    text = _build_task_update_inject(
+        intent_id="urn:uuid:int-001",
+        contact_id="alice@x",
+        task_id="task-42",
+        status="confirmed",
+    )
+    assert "intent_id: urn:uuid:int-001" in text
+    assert "contact_id: alice@x" in text
+    assert "task_id: task-42" in text
+    assert "status: confirmed" in text
+
+
+def test_build_initiator_inject_includes_correlation_ids() -> None:
+    """Plan responses must carry intent_id / contact_id for recall."""
+    from shadownet_hermes_plugin._adapter import _build_initiator_inject
+
+    text = _build_initiator_inject(
+        sender_name="alice@x",
+        body='{"plan": {"activity": "dinner"}}',
+        data_type="response",
+        intent_id="urn:uuid:int-001",
+        contact_id="alice@x",
+    )
+    assert "intent_id: urn:uuid:int-001" in text or "urn:uuid:int-001" in text
 
 
 async def test_send_routes_to_social_send(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -300,10 +356,15 @@ def test_materialize_skills_into_data_dir(tmp_path: Path, monkeypatch: pytest.Mo
 
     pkg._materialize_skills_into_data_dir(skill_paths)
 
+    # Skills land under the `shadownet` category subdir so Hermes' skill
+    # listing groups them (same convention as built-in `github/`).
+    cat = pkg.SHADOWNET_CATEGORY
     for name in pkg.SKILL_NAMES:
-        assert (data_dir / "skills" / name / "SKILL.md").is_file()
+        assert (data_dir / "skills" / cat / name / "SKILL.md").is_file()
         # Sibling files in the skill directory should also be copied.
-        assert (data_dir / "skills" / name / "extra.md").is_file()
+        assert (data_dir / "skills" / cat / name / "extra.md").is_file()
+    # A category-level DESCRIPTION.md is written so the group has a label.
+    assert (data_dir / "skills" / cat / "DESCRIPTION.md").is_file()
 
 
 def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:

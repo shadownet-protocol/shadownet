@@ -38,6 +38,21 @@ __all__ = ["register"]
 
 _log = logging.getLogger(__name__)
 
+# Hermes' "category" for grouping skills in `hermes skills list` is derived
+# from the parent directory name under ~/.hermes/skills/. Matching the
+# convention used by `github/github-auth/`, `apple/macos-computer-use/`, etc.
+SHADOWNET_CATEGORY = "shadownet"
+
+# Brief category-level description rendered at the top of `~/.hermes/skills/
+# <category>/DESCRIPTION.md`, mirroring Hermes' built-in convention (see
+# `~/.hermes/skills/github/DESCRIPTION.md`).
+SHADOWNET_CATEGORY_DESCRIPTION = (
+    "Identity-anchored agent-to-agent messaging via the Shadownet protocol.\n"
+    "Open an MCP session to the configured sidecar and use these skills to\n"
+    "verify identity, reach out to contacts, triage the inbox, and run the\n"
+    "two-sided coordination flow.\n"
+)
+
 # Skill names match `integrations/skills/<name>/SKILL.md` exactly.
 SKILL_NAMES = (
     "shadownet-setup",
@@ -93,21 +108,43 @@ def _hermes_data_dir() -> Path:
 
 
 def _materialize_skills_into_data_dir(skill_paths: dict[str, Path]) -> None:
-    """Copy each skill directory into ``<HERMES_DATA_DIR>/skills/<name>/``.
+    """Copy each skill directory into the Hermes ``skills`` tree.
 
-    Hermes's ``ctx.register_skill(name, path)`` registers metadata only —
-    it does NOT materialize the SKILL.md (or sibling files in the skill
-    directory) into ``~/.hermes/skills/``, which is where the agent's
-    skill-loader actually reads from. Without this copy, the LLM's
-    available-skills prompt does not include our skills even though the
-    platform adapter is connected.
+    Lands at ``<HERMES_DATA_DIR>/skills/<category>/<name>/`` so Hermes's
+    skill-loader picks them up AND groups them under the ``shadownet``
+    category in ``hermes skills list`` (Hermes derives the category from
+    the parent directory name — same convention as the built-in
+    ``github/github-auth/``, ``apple/macos-computer-use/`` etc.).
+
+    Also writes ``<category>/DESCRIPTION.md`` so the category itself has
+    a one-line description like other built-in groupings.
+
+    ``ctx.register_skill(name, path)`` registers metadata only; it does
+    NOT physically write to ``~/.hermes/skills/``. Without this copy the
+    LLM's available-skills prompt never includes our skills.
     """
-    target_root = _hermes_data_dir() / "skills"
+    category_root = _hermes_data_dir() / "skills" / SHADOWNET_CATEGORY
+    try:
+        category_root.mkdir(parents=True, exist_ok=True)
+        description_path = category_root / "DESCRIPTION.md"
+        # Always overwrite — the description is canonical, not user-edited.
+        description_path.write_text(
+            f"---\ndescription: {SHADOWNET_CATEGORY_DESCRIPTION.splitlines()[0]}\n---\n\n"
+            f"# Shadownet\n\n{SHADOWNET_CATEGORY_DESCRIPTION}"
+        )
+    except OSError as e:
+        _log.warning(
+            "shadownet plugin: failed to prepare category dir %s: %s",
+            category_root,
+            e,
+        )
+        return
+
     for name, src_skill_md in skill_paths.items():
         if not src_skill_md.is_file():
             continue
         src_dir = src_skill_md.parent
-        dst_dir = target_root / name
+        dst_dir = category_root / name
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
             for src_file in src_dir.iterdir():
@@ -144,7 +181,7 @@ def register(ctx: Any) -> None:
         _log.info(
             "registered %d Shadownet skills (materialized into %s)",
             len(skill_paths),
-            _hermes_data_dir() / "skills",
+            _hermes_data_dir() / "skills" / SHADOWNET_CATEGORY,
         )
 
     adapter_class = build_adapter_class()

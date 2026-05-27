@@ -86,6 +86,24 @@ def _install_fake_hermes_module() -> None:
         async def handle_message(self, event: MessageEvent) -> None:
             self.handled.append(event)
 
+        def build_source(
+            self,
+            chat_id: str,
+            chat_name: str | None = None,
+            chat_type: str = "dm",
+            user_id: str | None = None,
+            user_name: str | None = None,
+            thread_id: str | None = None,
+            **kwargs: Any,
+        ) -> SessionSource:
+            """Mirror Hermes' `BasePlatformAdapter.build_source` enough for tests."""
+            return SessionSource(
+                platform=self.platform,
+                chat_id=chat_id,
+                user_id=user_id or "",
+                user_name=user_name or "",
+            )
+
     base_module.BasePlatformAdapter = BasePlatformAdapter  # type: ignore[attr-defined]
     base_module.MessageEvent = MessageEvent  # type: ignore[attr-defined]
     base_module.SendResult = SendResult  # type: ignore[attr-defined]

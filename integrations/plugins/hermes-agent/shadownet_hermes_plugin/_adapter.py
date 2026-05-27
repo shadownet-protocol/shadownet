@@ -173,17 +173,36 @@ def build_adapter_class() -> type:
             return {"id": chat_id, "platform": "shadownet"}
 
         async def _on_event(self, event: Any) -> None:
-            """Route inbound Shadownet messages by type.
+            """Route inbound Shadownet events by type.
 
-            - coordination_request → always process autonomously via handle_message
-              (agent negotiates and calls social_respond, no user involvement)
-            - response/confirmation/confirmed → inject into user's primary chat
-              session (agent presents plan, user confirms/accepts)
-            - other (message, noise) → suppress
+            Event taxonomy per RFC-0007 § Events:
+
+            - ``inbox.message`` with ``data_type=coordination_request`` →
+              dispatch into a synthetic ``shadownet`` session for the
+              receiving agent to negotiate autonomously.
+            - ``inbox.message`` with ``data_type ∈ {response, confirmation,
+              confirmed}`` → inject into the initiator's user-facing chat
+              session (via ``SHADOWNET_NOTIFY_CHAT``) so the agent can
+              present the plan to the user.
+            - ``task.update`` → inject the intent-state transition into
+              the user-facing chat session so the agent (and user) see
+              status changes as they happen.
+            - other event types or unknown data_types → suppress.
             """
-            if event.event != "inbox.message":
-                _log.debug("ignoring %s event (v1 dispatches inbox.message only)", event.event)
+            import os
+
+            notify_target = os.environ.get("SHADOWNET_NOTIFY_CHAT", "")
+
+            if event.event == "task.update":
+                await self._inject_task_update(event, notify_target)
                 return
+
+            if event.event != "inbox.message":
+                _log.debug(
+                    "ignoring %s event (v1 dispatches inbox.message + task.update)", event.event
+                )
+                return
+
             data = event.data or {}
             contact_id = data.get("contactId") or "unknown"
             sender_name = data.get("from") or contact_id
@@ -194,18 +213,14 @@ def build_adapter_class() -> type:
             if not body:
                 return
 
-            import os
-
-            notify_target = os.environ.get("SHADOWNET_NOTIFY_CHAT", "")
-
             if data_type == "coordination_request":
-                text = _build_receiver_prompt(body, data_type, intent_id, sender_name)
-                from gateway.config import Platform
-                from gateway.session import SessionSource
-
-                source = SessionSource(
-                    platform=Platform("shadownet"),
+                text = _build_receiver_prompt(body, data_type, intent_id, contact_id, sender_name)
+                # Synthetic shadownet session — per-contact chat scoping so each
+                # peer gets an isolated thread. `build_source` is the documented
+                # helper that constructs a `SessionSource` for `self.platform`.
+                source = self.build_source(
                     chat_id=contact_id,
+                    chat_type="dm",
                     user_id=contact_id,
                     user_name=sender_name,
                 )
@@ -214,6 +229,9 @@ def build_adapter_class() -> type:
                         text=text,
                         source=source,
                         raw_message={"event_id": event.event_id, "data": data},
+                        # On a new session, Hermes auto-loads this skill so the
+                        # agent has the receiver-branch protocol context.
+                        auto_skill="shadownet-coordinate",
                     )
                     await self.handle_message(msg_event)
                 except Exception:
@@ -221,7 +239,9 @@ def build_adapter_class() -> type:
 
             elif data_type in ("response", "confirmation", "confirmed"):
                 if notify_target:
-                    await self._inject_to_user_session(sender_name, body, data_type, notify_target)
+                    await self._inject_to_user_session(
+                        sender_name, body, data_type, notify_target, intent_id, contact_id
+                    )
                 else:
                     _log.warning(
                         "Got %s from %s but SHADOWNET_NOTIFY_CHAT not set — cannot notify user",
@@ -233,23 +253,30 @@ def build_adapter_class() -> type:
                 _log.debug("Suppressed %s event from %s", data_type, sender_name)
 
         async def _inject_to_user_session(
-            self, sender_name: str, body: str, data_type: str, notify_target: str
+            self,
+            sender_name: str,
+            body: str,
+            data_type: str,
+            notify_target: str,
+            intent_id: str,
+            contact_id: str,
         ) -> None:
             """Inject plan-related messages into the user's primary chat session.
 
-            This creates a synthetic internal message on the user's Telegram
-            (or other platform) session so the agent has context for follow-up
-            actions like social_confirm_plan() or social_accept_plan().
-
-            Uses the gateway's adapter registry (a public Dict[Platform, Adapter])
-            — the same interface that DeliveryRouter and channel_directory use.
+            Builds a synthetic ``MessageEvent`` with ``internal=True`` (which
+            ``MessageEvent`` documents as "synthetic events that must bypass
+            user authorization checks") and dispatches it via the target
+            adapter's ``handle_message``. The injected text carries
+            ``intent_id`` and ``contact_id`` as plain-text lines so Hermes'
+            built-in ``session_search`` tool can recall the thread when the
+            agent's context window has rolled.
             """
             if data_type not in ("response", "confirmation", "confirmed"):
                 _log.debug("Suppressed non-actionable %s from %s", data_type, sender_name)
                 return
 
             now = time.time()
-            dedup_key = f"{sender_name}:{data_type}"
+            dedup_key = f"{sender_name}:{data_type}:{intent_id}"
             last = self._notify_timestamps.get(dedup_key, 0)
             notify_cooldown = int(os.environ.get("SHADOWNET_NOTIFY_COOLDOWN_SECONDS", "60"))
             if now - last < notify_cooldown:
@@ -258,29 +285,16 @@ def build_adapter_class() -> type:
             self._notify_timestamps[dedup_key] = now
             self._evict_stale_timestamps(self._notify_timestamps, notify_cooldown * 2)
 
-            parts = notify_target.split(":", 1)
-            if len(parts) != 2:
-                _log.warning(
-                    "SHADOWNET_NOTIFY_CHAT must be 'platform:chat_id', got %r", notify_target
-                )
+            target = self._resolve_notify_target(notify_target)
+            if target is None:
                 return
-            platform_name, chat_id = parts
+            target_platform, chat_id, adapter = target
 
-            gateway = self._gateway
-            if gateway is None:
-                _log.warning("No gateway runner available for session injection")
-                return
+            inject_text = _build_initiator_inject(
+                sender_name, body, data_type, intent_id, contact_id
+            )
 
-            from gateway.config import Platform
             from gateway.session import SessionSource
-
-            target_platform = Platform(platform_name)
-            adapter = gateway.adapters.get(target_platform)
-            if adapter is None:
-                _log.warning("No adapter for platform %s", platform_name)
-                return
-
-            inject_text = _build_initiator_inject(sender_name, body, data_type)
 
             source = SessionSource(
                 platform=target_platform,
@@ -293,17 +307,142 @@ def build_adapter_class() -> type:
                     text=inject_text,
                     source=source,
                     internal=True,
+                    raw_message={
+                        "intent_id": intent_id,
+                        "contact_id": contact_id,
+                        "data_type": data_type,
+                    },
+                    # Auto-load the coordinate skill on new sessions so the
+                    # agent has the initiator-branch protocol context.
+                    auto_skill="shadownet-coordinate",
                 )
                 await adapter.handle_message(synth_event)
                 _log.info(
-                    "Injected %s from %s into %s:%s session",
+                    "Injected %s from %s (intent=%s) into %s:%s session",
                     data_type,
                     sender_name,
-                    platform_name,
+                    intent_id,
+                    target_platform.value,
                     chat_id,
                 )
             except Exception:
-                _log.exception("Failed to inject into %s:%s session", platform_name, chat_id)
+                _log.exception(
+                    "Failed to inject into %s:%s session", target_platform.value, chat_id
+                )
+
+        async def _inject_task_update(self, event: Any, notify_target: str) -> None:
+            """Inject a ``task.update`` event into the user-facing session.
+
+            Per RFC-0007 § Events, ``task.update`` carries
+            ``{intentId, contactId, taskId, status}`` and fires whenever
+            the cloud transitions an intent's task (e.g., pending → agreed
+            → confirmed → done). We surface those transitions to the user-
+            facing session so the agent (and user) see status changes in
+            real time. Dedup is keyed on (intentId, status) so repeated
+            polling doesn't spam.
+            """
+            data = event.data or {}
+            intent_id = data.get("intentId") or ""
+            contact_id = data.get("contactId") or ""
+            task_id = data.get("taskId") or ""
+            status = data.get("status") or "unknown"
+
+            if not intent_id:
+                _log.debug("task.update without intentId, ignoring: %s", event.event_id)
+                return
+
+            if not notify_target:
+                _log.debug(
+                    "task.update for intent %s (status=%s) but SHADOWNET_NOTIFY_CHAT "
+                    "not set — nothing to notify",
+                    intent_id,
+                    status,
+                )
+                return
+
+            now = time.time()
+            dedup_key = f"task.update:{intent_id}:{status}"
+            last = self._notify_timestamps.get(dedup_key, 0)
+            notify_cooldown = int(os.environ.get("SHADOWNET_NOTIFY_COOLDOWN_SECONDS", "60"))
+            if now - last < notify_cooldown:
+                _log.debug("Dedup suppressed task.update: %s (%.1fs ago)", dedup_key, now - last)
+                return
+            self._notify_timestamps[dedup_key] = now
+            self._evict_stale_timestamps(self._notify_timestamps, notify_cooldown * 2)
+
+            target = self._resolve_notify_target(notify_target)
+            if target is None:
+                return
+            target_platform, chat_id, adapter = target
+
+            inject_text = _build_task_update_inject(intent_id, contact_id, task_id, status)
+
+            from gateway.session import SessionSource
+
+            source = SessionSource(
+                platform=target_platform,
+                chat_id=chat_id,
+                user_id=chat_id,
+                user_name="shadownet",
+            )
+            try:
+                synth_event = message_event_cls(
+                    text=inject_text,
+                    source=source,
+                    internal=True,
+                    raw_message={
+                        "intent_id": intent_id,
+                        "contact_id": contact_id,
+                        "task_id": task_id,
+                        "status": status,
+                        "event_type": "task.update",
+                    },
+                )
+                await adapter.handle_message(synth_event)
+                _log.info(
+                    "Injected task.update intent=%s status=%s into %s:%s session",
+                    intent_id,
+                    status,
+                    target_platform.value,
+                    chat_id,
+                )
+            except Exception:
+                _log.exception(
+                    "Failed to inject task.update into %s:%s session",
+                    target_platform.value,
+                    chat_id,
+                )
+
+        def _resolve_notify_target(self, notify_target: str) -> tuple[Any, str, Any] | None:
+            """Resolve ``platform:chat_id`` env target into (Platform, chat_id, adapter).
+
+            Returns None and logs a warning if the target is malformed, the
+            gateway runner is unavailable, or no adapter is registered for
+            the named platform. The adapter handle is required for the
+            cross-platform synthetic-message injection used by ``task.update``
+            and the response/confirmation/confirmed flows.
+            """
+            parts = notify_target.split(":", 1)
+            if len(parts) != 2:
+                _log.warning(
+                    "SHADOWNET_NOTIFY_CHAT must be 'platform:chat_id', got %r", notify_target
+                )
+                return None
+            platform_name, chat_id = parts
+
+            gateway = self._gateway
+            if gateway is None:
+                _log.warning("No gateway runner available for session injection")
+                return None
+
+            from gateway.config import Platform
+
+            target_platform = Platform(platform_name)
+            adapter = gateway.adapters.get(target_platform)
+            if adapter is None:
+                _log.warning("No adapter for platform %s", platform_name)
+                return None
+            return target_platform, chat_id, adapter
 
         async def _fetch_bundle(self, http: httpx.AsyncClient) -> IntegrationBundle:
             return await fetch_integration_bundle(
@@ -336,16 +475,21 @@ def build_adapter_class() -> type:
     return ShadownetAdapter
 
 
-def _build_receiver_prompt(body: str, data_type: str, intent_id: str, sender_name: str) -> str:
+def _build_receiver_prompt(
+    body: str, data_type: str, intent_id: str, contact_id: str, sender_name: str
+) -> str:
     """Build a protocol-aware prompt for the receiving agent.
 
-    When a coordination_request arrives, we wrap it with instructions so the
-    agent knows to use social_respond instead of generating free-form text.
+    Emits ``intent_id`` and ``contact_id`` as separate plain-text lines so
+    Hermes' built-in ``session_search`` tool can recall the thread on
+    later turns (cross-session lookup is just full-text search over stored
+    message bodies).
     """
     if data_type == "coordination_request":
         return (
             f"[SHADOWNET COORDINATION REQUEST from {sender_name}]\n"
-            f"Intent ID: {intent_id}\n"
+            f"intent_id: {intent_id}\n"
+            f"contact_id: {contact_id}\n"
             f"Request: {body}\n\n"
             f"INSTRUCTIONS: You are the RECEIVER in a Shadownet coordination.\n"
             f"1. Read the request above (activity + details).\n"
@@ -360,6 +504,8 @@ def _build_receiver_prompt(body: str, data_type: str, intent_id: str, sender_nam
     if data_type == "confirmation":
         return (
             f"[SHADOWNET PLAN CONFIRMED by {sender_name}]\n"
+            f"intent_id: {intent_id}\n"
+            f"contact_id: {contact_id}\n"
             f"{body}\n\n"
             f"The initiator's user has confirmed the plan. Notify YOUR user:\n"
             f"Present the plan details and ask them to accept.\n"
@@ -368,8 +514,15 @@ def _build_receiver_prompt(body: str, data_type: str, intent_id: str, sender_nam
     return body
 
 
-def _build_initiator_inject(sender_name: str, body: str, data_type: str) -> str:
-    """Build the text injected into the user's chat session for plan events."""
+def _build_initiator_inject(
+    sender_name: str, body: str, data_type: str, intent_id: str, contact_id: str
+) -> str:
+    """Build the text injected into the user's chat session for plan events.
+
+    Emits ``intent_id`` and ``contact_id`` as plain-text lines so the
+    agent can find the thread later via Hermes' built-in ``session_search``
+    even when the live context window has rolled past the original turn.
+    """
     import json as _json
 
     if data_type == "response":
@@ -399,6 +552,8 @@ def _build_initiator_inject(sender_name: str, body: str, data_type: str) -> str:
 
         return (
             f"[SHADOWNET PLAN RECEIVED from {sender_name}]\n"
+            f"intent_id: {intent_id}\n"
+            f"contact_id: {contact_id}\n"
             f"Plan: {plan_summary}\n\n"
             f"INSTRUCTIONS: Present this plan to the user in a concise, friendly message. "
             f"Ask them to confirm. When they say yes/confirm/ok, call: "
@@ -430,6 +585,8 @@ def _build_initiator_inject(sender_name: str, body: str, data_type: str) -> str:
 
         return (
             f"[SHADOWNET: Invitation from {sender_name}]\n"
+            f"intent_id: {intent_id}\n"
+            f"contact_id: {contact_id}\n"
             f"Plan: {plan_summary}\n\n"
             f"INSTRUCTIONS: {sender_name} is inviting your user to this plan. "
             f"Present the details (what, where, when) and ask your user if they want to accept.\n"
@@ -442,12 +599,38 @@ def _build_initiator_inject(sender_name: str, body: str, data_type: str) -> str:
     if data_type == "confirmed":
         return (
             f"[SHADOWNET: {sender_name} ACCEPTED the plan]\n"
+            f"intent_id: {intent_id}\n"
+            f"contact_id: {contact_id}\n"
             f"Both sides have accepted. The plan is fully confirmed.\n\n"
             f"INSTRUCTIONS: Tell your user the plan is confirmed — {sender_name} accepted. "
             f"Be brief and celebratory. No tool calls needed."
         )
 
     return body
+
+
+def _build_task_update_inject(intent_id: str, contact_id: str, task_id: str, status: str) -> str:
+    """Build the inject text for an RFC-0007 ``task.update`` event.
+
+    Emits ``intent_id``, ``contact_id``, ``task_id``, and ``status`` as
+    plain-text lines for ``session_search`` recall, plus a one-line
+    instruction so the agent surfaces the state change to the user
+    when it's worth surfacing (typically once a coordination reaches
+    ``confirmed`` or ``done``).
+    """
+    return (
+        f"[SHADOWNET TASK UPDATE]\n"
+        f"intent_id: {intent_id}\n"
+        f"contact_id: {contact_id}\n"
+        f"task_id: {task_id}\n"
+        f"status: {status}\n\n"
+        f"INSTRUCTIONS: A coordination's task state changed. If this is the "
+        f"first time the user is hearing about this status (or it's a "
+        f"terminal state like 'confirmed', 'completed', 'declined', or "
+        f"'failed'), tell them concisely. Otherwise stay silent — no tool "
+        f"calls, no acknowledgement. Reference the intent_id above if the "
+        f"user asks for more detail."
+    )
 
 
 def _resolve_config(config: Any) -> tuple[str, str, int]:
