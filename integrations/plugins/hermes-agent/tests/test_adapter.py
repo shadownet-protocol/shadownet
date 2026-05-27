@@ -320,6 +320,7 @@ def test_skill_paths_falls_back_to_shared_data(
     """When the package has no sibling `skills/` (wheel install layout),
     `_skill_paths()` must find them under `<sys.prefix>/share/...`."""
     import shadownet_hermes_plugin as pkg
+    from shadownet_hermes_plugin import _skills
 
     nonexistent = tmp_path / "no-sibling-here"
     shared = tmp_path / "share" / "hermes-plugins" / "shadownet" / "skills"
@@ -328,7 +329,7 @@ def test_skill_paths_falls_back_to_shared_data(
         d.mkdir(parents=True)
         (d / "SKILL.md").write_text("# stub")
 
-    monkeypatch.setattr(pkg, "_skill_root_candidates", lambda: (nonexistent, shared))
+    monkeypatch.setattr(_skills, "skill_root_candidates", lambda: (nonexistent, shared))
 
     paths = pkg._skill_paths()
     for name in pkg.SKILL_NAMES:
@@ -368,20 +369,10 @@ def test_materialize_skills_into_data_dir(tmp_path: Path, monkeypatch: pytest.Mo
 
 
 def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
-    """register(ctx) should register all 4 skills + 1 platform."""
+    """register(ctx) wires every applicable Hermes surface in one pass."""
     monkeypatch.setenv("SHADOWNET_TOKEN", "t")
     from shadownet_hermes_plugin import register
-
-    class FakeCtx:
-        def __init__(self) -> None:
-            self.skills: list[tuple[str, str]] = []
-            self.platforms: list[dict[str, Any]] = []
-
-        def register_skill(self, name: str, path: str) -> None:
-            self.skills.append((name, path))
-
-        def register_platform(self, **kwargs: Any) -> None:
-            self.platforms.append(kwargs)
+    from tests.conftest import FakeCtx
 
     ctx = FakeCtx()
     register(ctx)
@@ -396,6 +387,25 @@ def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
     assert p["name"] == "shadownet"
     assert callable(p["adapter_factory"])
     assert callable(p["check_fn"])
+    assert callable(p["env_enablement_fn"])
+    assert "platform_hint" in p
+    assert "mcp_shadownet_" in p["platform_hint"]
+    # Three hooks: on_session_start, pre_llm_call, on_session_end.
+    hook_names = {name for name, _ in ctx.hooks}
+    assert hook_names == {"on_session_start", "pre_llm_call", "on_session_end"}
+    # Six slash commands.
+    command_names = {c.name for c in ctx.commands}
+    assert command_names == {
+        "shadownet-setup",
+        "shadownet-inbox",
+        "shadownet-reach-out",
+        "shadownet-coordinate",
+        "shadownet-status",
+        "shadownet-logout",
+    }
+    # Exactly one CLI subcommand: `hermes shadownet ...`.
+    assert len(ctx.cli_commands) == 1
+    assert ctx.cli_commands[0].name == "shadownet"
 
 
 # Default cleanup: each test starts with no Shadownet env vars. Tests that
