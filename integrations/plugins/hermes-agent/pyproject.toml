@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shadownet-hermes-plugin"
-version = "0.3.0"
+version = "0.4.0"
 description = "Shadownet protocol plugin for Hermes Agent."
 readme = "README.md"
 license = { text = "MIT" }
@@ -64,6 +64,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.7",
     "mypy>=1.13",
+    "pyyaml>=6.0",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -75,7 +77,7 @@ select = ["E", "W", "F", "I", "B", "UP", "ASYNC", "S", "N", "TC", "TID"]
 ignore = ["E501", "S101"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "N"]
+"tests/**" = ["S", "N", "TC"]
 
 [tool.ruff.format]
 quote-style = "double"
