@@ -17,14 +17,41 @@
 # manifest is still authoritative if the install path changes.
 
 name: shadownet
-version: "0.3.0"
+version: "0.4.0"
 description: >-
   Shadownet protocol integration for Hermes Agent. Adds identity-anchored
-  agent-to-agent messaging via the Shadownet protocol (RFC-0007), including
-  outbound MCP tools, four skills, and a NAT-free inbound channel via the
-  long-poll social_inbox_wait tool.
+  agent-to-agent messaging via the Shadownet protocol (RFC-0007): outbound
+  MCP tools, four skills, a NAT-free inbound channel via the long-poll
+  social_inbox_wait tool, six slash commands, lifecycle hooks, and a
+  `hermes shadownet` CLI subcommand.
 
 kind: platform
+
+# Declarative — the guide states these are documentation and are not
+# enforced against actual register_* calls. Listed for plugin-discovery
+# tooling and for users running `hermes plugins list --verbose`.
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - on_session_end
+
+provides_commands:
+  - shadownet-setup
+  - shadownet-inbox
+  - shadownet-reach-out
+  - shadownet-coordinate
+  - shadownet-status
+  - shadownet-logout
+
+provides_skills:
+  - shadownet:shadownet-setup
+  - shadownet:shadownet-reach-out
+  - shadownet:shadownet-inbox
+  - shadownet:shadownet-coordinate
+
+# MCP tools intentionally NOT under provides_tools — they come from
+# `~/.hermes/config.yaml` mcp_servers.shadownet, which is a different
+# surface per the Hermes plugin guide.
 
 # Hermes prompts the user for these during `hermes plugins install` and
 # verifies they are set at startup. SHADOWNET_TOKEN is the only one without
