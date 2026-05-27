@@ -8,10 +8,12 @@ back through the tool registry (e.g. ``skill_view`` via
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shadownet_hermes_plugin import _cli
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = ["build_slash_command_specs", "register_slash_commands"]
 
