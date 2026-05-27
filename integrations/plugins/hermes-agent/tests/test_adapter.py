@@ -408,6 +408,60 @@ def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctx.cli_commands[0].name == "shadownet"
 
 
+def test_register_drops_unknown_platform_kwargs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Older Hermes runtimes reject env_enablement_fn / platform_hint kwargs.
+
+    Plugin must drop the rejected kwarg(s) and retry until register_platform
+    succeeds, instead of failing to load entirely (regression for the
+    `PlatformEntry.__init__() got an unexpected keyword argument
+    'env_enablement_fn'` error seen in production after the 0.4.0 release).
+    """
+    monkeypatch.setenv("SHADOWNET_TOKEN", "t")
+    from shadownet_hermes_plugin import register
+    from tests.conftest import FakeCtx
+
+    rejected = {"env_enablement_fn", "platform_hint"}
+
+    class _StrictCtx(FakeCtx):
+        def register_platform(self, **kwargs: Any) -> None:
+            for kw in rejected:
+                if kw in kwargs:
+                    raise TypeError(
+                        f"PlatformEntry.__init__() got an unexpected keyword argument '{kw}'"
+                    )
+            super().register_platform(**kwargs)
+
+    ctx = _StrictCtx()
+    register(ctx)
+    assert len(ctx.platforms) == 1
+    p = ctx.platforms[0]
+    # Required kwargs survive; optional ones the runtime rejected are gone.
+    assert p["name"] == "shadownet"
+    assert callable(p["adapter_factory"])
+    assert "env_enablement_fn" not in p
+    assert "platform_hint" not in p
+
+
+def test_register_propagates_unknown_required_kwarg_failure() -> None:
+    """If TypeError mentions a kwarg the plugin can't drop, surface it."""
+    from shadownet_hermes_plugin import _register_platform_compat
+    from tests.conftest import FakeCtx
+
+    class _AlwaysRaises(FakeCtx):
+        def register_platform(self, **kwargs: Any) -> None:
+            raise TypeError("unrelated TypeError that doesn't name any kwarg")
+
+    with pytest.raises(TypeError, match="unrelated TypeError"):
+        _register_platform_compat(
+            _AlwaysRaises(),
+            name="shadownet",
+            label="Shadownet",
+            adapter_factory=lambda cfg: None,
+            check_fn=lambda: True,
+            platform_hint="x",
+        )
+
+
 # Default cleanup: each test starts with no Shadownet env vars. Tests that
 # need them set use the per-test monkeypatch.setenv calls above; monkeypatch
 # unwinds those automatically at end-of-test. This autouse fixture only

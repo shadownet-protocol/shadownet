@@ -6,6 +6,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-28
+
+### Fixed
+
+- `register_platform` is now tolerant of older Hermes runtimes whose
+  `PlatformEntry.__init__` does not accept the v0.4.0 optional kwargs
+  (`env_enablement_fn`, `platform_hint`, `allowed_users_env`,
+  `allow_all_env`, …). The plugin used to fail to load entirely on
+  those runtimes with
+  `TypeError: PlatformEntry.__init__() got an unexpected keyword argument 'env_enablement_fn'`;
+  it now warns and retries without the offending kwarg, dropping
+  optional metadata one at a time until the call succeeds.
+
+[0.4.1]: https://github.com/shadownet-protocol/shadownet/releases/tag/hermes-plugin%2Fv0.4.1
+
 ## [0.4.0] — 2026-05-28
 
 ### Added
