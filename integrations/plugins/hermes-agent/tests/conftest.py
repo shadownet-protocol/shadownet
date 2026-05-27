@@ -119,3 +119,78 @@ def _install_fake_hermes_module() -> None:
 
 
 _install_fake_hermes_module()
+
+
+@dataclass
+class _CommandSpec:
+    name: str
+    handler: Any
+    description: str
+
+
+@dataclass
+class _CliSpec:
+    name: str
+    help: str
+    setup_fn: Any
+    handler_fn: Any
+
+
+class FakeCtx:
+    """Recording fake for Hermes' PluginContext.
+
+    Captures every ``register_*`` call into a list so tests can assert
+    on names, args, and call counts without standing up Hermes.
+    ``dispatch_tool`` is recorded and returns a placeholder string;
+    individual tests can swap it for a Mock if they need different
+    behavior.
+    """
+
+    def __init__(self) -> None:
+        self.skills: list[tuple[str, Any]] = []
+        self.platforms: list[dict[str, Any]] = []
+        self.tools: list[dict[str, Any]] = []
+        self.hooks: list[tuple[str, Any]] = []
+        self.commands: list[_CommandSpec] = []
+        self.cli_commands: list[_CliSpec] = []
+        self.dispatched: list[tuple[str, dict[str, Any]]] = []
+        self._dispatch_return: Any = "<dispatched>"
+
+    def register_skill(self, name: str, path: Any) -> None:
+        self.skills.append((name, path))
+
+    def register_platform(self, **kwargs: Any) -> None:
+        self.platforms.append(kwargs)
+
+    def register_tool(self, **kwargs: Any) -> None:
+        self.tools.append(kwargs)
+
+    def register_hook(self, event_name: str, callback: Any) -> None:
+        self.hooks.append((event_name, callback))
+
+    def register_command(
+        self, name: str, handler: Any, description: str = ""
+    ) -> None:
+        self.commands.append(
+            _CommandSpec(name=name, handler=handler, description=description)
+        )
+
+    def register_cli_command(
+        self,
+        name: str,
+        help: str,  # noqa: A002 — matches Hermes API
+        setup_fn: Any,
+        handler_fn: Any | None = None,
+    ) -> None:
+        self.cli_commands.append(
+            _CliSpec(name=name, help=help, setup_fn=setup_fn, handler_fn=handler_fn)
+        )
+
+    def dispatch_tool(
+        self, name: str, args: dict[str, Any], *, parent_agent: Any = None
+    ) -> Any:
+        self.dispatched.append((name, args))
+        return self._dispatch_return
+
+    def set_dispatch_return(self, value: Any) -> None:
+        self._dispatch_return = value

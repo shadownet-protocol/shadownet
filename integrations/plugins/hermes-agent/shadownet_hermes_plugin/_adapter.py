@@ -698,3 +698,19 @@ def check_shadownet_requirements() -> bool:
     import os
 
     return bool(os.environ.get("SHADOWNET_TOKEN") or os.environ.get("SHADOWNET_CONNECT_URL"))
+
+
+def env_enablement() -> dict[str, Any] | None:
+    """Surface the plugin in ``hermes gateway status`` from env alone.
+
+    Returns an empty extras dict when ``SHADOWNET_CONNECT_URL`` (or
+    ``SHADOWNET_TOKEN``) is set, so the gateway picks the platform up
+    without needing an explicit ``gateway.platforms.shadownet`` config
+    block. The actual token/base-url resolution still happens inside
+    ``_resolve_config`` at adapter ``__init__`` time.
+    """
+    import os
+
+    if os.environ.get("SHADOWNET_CONNECT_URL") or os.environ.get("SHADOWNET_TOKEN"):
+        return {}
+    return None
