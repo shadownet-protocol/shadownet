@@ -14,7 +14,7 @@ disable-model-invocation: true
 metadata:
   hermes:
     tags: [shadownet, coordination, meetups, scheduling, a2a]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-reach-out, shadownet-inbox]
     requires_tools:
       - mcp_shadownet_social_contacts
       - mcp_shadownet_social_coordinate
