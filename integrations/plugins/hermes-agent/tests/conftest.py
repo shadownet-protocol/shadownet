@@ -168,12 +168,8 @@ class FakeCtx:
     def register_hook(self, event_name: str, callback: Any) -> None:
         self.hooks.append((event_name, callback))
 
-    def register_command(
-        self, name: str, handler: Any, description: str = ""
-    ) -> None:
-        self.commands.append(
-            _CommandSpec(name=name, handler=handler, description=description)
-        )
+    def register_command(self, name: str, handler: Any, description: str = "") -> None:
+        self.commands.append(_CommandSpec(name=name, handler=handler, description=description))
 
     def register_cli_command(
         self,
@@ -186,9 +182,7 @@ class FakeCtx:
             _CliSpec(name=name, help=help, setup_fn=setup_fn, handler_fn=handler_fn)
         )
 
-    def dispatch_tool(
-        self, name: str, args: dict[str, Any], *, parent_agent: Any = None
-    ) -> Any:
+    def dispatch_tool(self, name: str, args: dict[str, Any], *, parent_agent: Any = None) -> Any:
         self.dispatched.append((name, args))
         return self._dispatch_return
 
