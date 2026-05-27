@@ -8,8 +8,8 @@ allowed-tools:
 disable-model-invocation: false
 metadata:
   hermes:
-    tags: [shadownet, setup, verify]
-    category: setup
+    tags: [shadownet, setup, verify, a2a]
+    related_skills: [shadownet-reach-out, shadownet-inbox, shadownet-coordinate]
     requires_tools:
       - mcp_shadownet_social_identity
       - mcp_shadownet_social_contacts

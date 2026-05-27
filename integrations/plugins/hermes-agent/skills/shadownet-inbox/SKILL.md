@@ -11,7 +11,7 @@ disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, inbox, triage, a2a]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-reach-out, shadownet-coordinate]
     requires_tools:
       - mcp_shadownet_social_inbox
       - mcp_shadownet_social_inbox_wait
@@ -38,15 +38,14 @@ propose a reply, and send it after the user confirms.
 social_inbox(limit=10)
 ```
 
-Optional filters: `contactId=<id>`, `interaction=<uri>`, `since=<timestamp>`.
-Default returns the most recent 10 across all contacts.
+Optional filters: `contact_id=<id>`, `data_type=<type>`. Default returns
+the most recent 10 across all contacts.
 
 ### 2. Identify the most recent unhandled
 
-Look at each item's `receivedAt` and whether you've already called
-`social_respond` on its `intentId`. The newest un-responded item is
-your primary candidate. If the user asked about a specific message,
-prefer that one.
+Inbound rows that have already been responded to are still listed; treat as
+"unhandled" anything that has `status: "received"` (not "responded").
+If the user asked about a specific message, prefer that one.
 
 If the inbox is empty, say so plainly — do NOT poll repeatedly.
 
@@ -82,7 +81,7 @@ the user's behalf.
 ```
 social_respond(
   intentId="<intent_id from inbox item>",
-  payload={"text": "Friday 10am works — a cafe in Mitte?"}
+  payload='{"type":"response","text":"Friday 10am works — a cafe in Mitte?"}'
 )
 ```
 
@@ -91,6 +90,8 @@ Confirm to the user that the response was sent.
 ## Pitfalls
 
 - **Don't auto-send replies.** The user always confirms.
+- **Match the `data_type` contract.** If the inbound was
+  `coordination_request`, include `"type": "response"` in your payload.
 - **Don't loop on inbox empty.** If `social_inbox` returns an empty list,
   tell the user "nothing pending" and end the session.
 - **Use `social_inbox_wait` for event-driven delivery.** Don't poll

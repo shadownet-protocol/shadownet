@@ -15,7 +15,7 @@ disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, a2a, reach-out, agent-communication]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-inbox, shadownet-coordinate]
     requires_tools:
       - mcp_shadownet_social_resolve
       - mcp_shadownet_social_add_contact
@@ -79,7 +79,7 @@ social_add_contact(
 ```
 social_send(
   contactId="<id>",
-  payload={"text": "Hey, are you free Friday morning for coffee?"}
+  payload={"text": "Hey, are you free Friday morning for coffee?", "type": "message"}
 )
 ```
 
@@ -109,8 +109,8 @@ Once the reply arrives (new session from inbox event), summarise:
 
 - **Do not skip the acknowledgement.** Never fire `social_send` without first
   telling the user you're doing so.
-- **`payload` must be a dict.** At minimum include a `text` field. Optional
-  `hints` can carry metadata (deadline, priority) for the receiver's LLM.
+- **`payload` must be a dict (or JSON string).** Include a `type` field to
+  help the receiver route the message.
 - **Check grants** if the contact has restricted access. `social_contact_detail`
   shows the grants. A denied grant means the message will be rejected.
 - **Prefer event-driven delivery.** Don't poll `social_inbox` in a loop —

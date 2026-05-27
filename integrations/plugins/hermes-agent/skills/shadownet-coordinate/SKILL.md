@@ -14,7 +14,7 @@ disable-model-invocation: true
 metadata:
   hermes:
     tags: [shadownet, coordination, meetups, scheduling, a2a]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-reach-out, shadownet-inbox]
     requires_tools:
       - mcp_shadownet_social_contacts
       - mcp_shadownet_social_coordinate
@@ -113,7 +113,7 @@ DO NOT ask your user for input. YOU decide based on what you know.
 ```
 social_respond(
   intentId="<inbound intent_id>",
-  payload={"type":"response","status":"agreed","plan":{"activity":"Coffee","date":"Friday","time":"10:00 AM","location":"The Daily Grind","notes":"Great spot in Mitte"}}
+  payload='{"type":"response","status":"agreed","plan":{"activity":"Coffee","date":"Friday","time":"10:00 AM","location":"The Daily Grind","notes":"Great spot in Mitte"}}'
 )
 ```
 

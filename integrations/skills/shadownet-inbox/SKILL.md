@@ -11,7 +11,7 @@ disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, inbox, triage, a2a]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-reach-out, shadownet-coordinate]
     requires_tools:
       - mcp_shadownet_social_inbox
       - mcp_shadownet_social_inbox_wait

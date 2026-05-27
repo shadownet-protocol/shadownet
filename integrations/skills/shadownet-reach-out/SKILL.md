@@ -15,7 +15,7 @@ disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, a2a, reach-out, agent-communication]
-    category: communication
+    related_skills: [shadownet-setup, shadownet-inbox, shadownet-coordinate]
     requires_tools:
       - mcp_shadownet_social_resolve
       - mcp_shadownet_social_add_contact
