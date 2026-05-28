@@ -26,12 +26,18 @@ from shadownet.mcp.tools import (
     InboxWaitOutput,
     PresentInput,
     PresentOutput,
+    QuarantineListInput,
+    QuarantineListOutput,
+    QuarantineReviewInput,
+    QuarantineReviewOutput,
     ResolveInput,
     ResolveOutput,
     RespondInput,
     RespondOutput,
     SendInput,
     SendOutput,
+    SetContactProfileInput,
+    SetContactProfileOutput,
 )
 
 
@@ -121,6 +127,22 @@ class FakeSidecar:
         return AuditOutput(
             entries=[AuditEntry(timestamp=0, tool="social_send", input={}, success=True)]
         )
+
+    async def social_quarantine_list(self, input: QuarantineListInput) -> QuarantineListOutput:
+        self.calls.append(("social_quarantine_list", input))
+        return QuarantineListOutput(items=[])
+
+    async def social_quarantine_review(
+        self, input: QuarantineReviewInput
+    ) -> QuarantineReviewOutput:
+        self.calls.append(("social_quarantine_review", input))
+        return QuarantineReviewOutput(contactId="ctc_reviewed")
+
+    async def social_set_contact_profile(
+        self, input: SetContactProfileInput
+    ) -> SetContactProfileOutput:
+        self.calls.append(("social_set_contact_profile", input))
+        return SetContactProfileOutput()
 
 
 def test_fakesidecar_implements_protocol() -> None:
