@@ -27,6 +27,7 @@ CONTEXT_W3C_CRED_V2 = "https://www.w3.org/ns/credentials/v2"
 CONTEXT_SHADOWNET_V1 = "https://sh4dow.org/contexts/v1"
 TYPE_VC = "VerifiableCredential"
 TYPE_SUBJECT_CRED = "ShadownetSubjectCredential"
+TYPE_AFFILIATION_CRED = "ShadownetAffiliationCredential"
 TYPE_VP = "VerifiablePresentation"
 TYPE_STATUS_LIST_CRED = "BitstringStatusListCredential"
 TYPE_STATUS_LIST = "BitstringStatusList"
@@ -106,6 +107,55 @@ def emit_credential(spec: dict[str, Any]) -> bytes:
             "level": level,
             "subjectType": subject_type,
         },
+    }
+    status = spec.get("status")
+    if status is not None:
+        vc["credentialStatus"] = {
+            "type": "BitstringStatusListEntry",
+            "statusListIndex": status["status_list_index"],
+            "statusListCredential": status["status_list_credential"],
+        }
+    claims = {
+        "iss": issuer,
+        "sub": subject,
+        "iat": iat,
+        "exp": exp,
+        "jti": jti,
+        "shadownet:v": "0.1",
+        "vc": vc,
+    }
+    token = sign_jwt(
+        claims,
+        _key_for(issuer_seed_hex),
+        header_extras={"typ": "vc+jwt", "kid": issuer_kid},
+    )
+    return token.encode()
+
+
+@_register("affiliation_credential")
+def emit_affiliation_credential(spec: dict[str, Any]) -> bytes:
+    issuer = spec["issuer"]
+    issuer_kid = spec["issuer_kid"]
+    subject = spec["subject"]
+    affiliation = spec["affiliation"]
+    iat = int(spec["iat"])
+    exp = int(spec["exp"])
+    jti = spec["jti"]
+    issuer_seed_hex = spec["issuer_seed_hex"]
+
+    credential_subject: dict[str, Any] = {
+        "id": subject,
+        "affiliation": affiliation,
+    }
+    if "role" in spec and spec["role"] is not None:
+        credential_subject["role"] = spec["role"]
+    if "groups" in spec and spec["groups"] is not None:
+        credential_subject["groups"] = list(spec["groups"])
+
+    vc: dict[str, Any] = {
+        "@context": [CONTEXT_W3C_CRED_V2, CONTEXT_SHADOWNET_V1],
+        "type": [TYPE_VC, TYPE_AFFILIATION_CRED],
+        "credentialSubject": credential_subject,
     }
     status = spec.get("status")
     if status is not None:

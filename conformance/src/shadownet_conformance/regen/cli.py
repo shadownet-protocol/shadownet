@@ -182,6 +182,16 @@ def _resolve_spec(
             spec["subject"] = spec.pop("subject_did")
         return spec
 
+    if entry.kind == "affiliation_credential":
+        issuer_seed = spec.pop("issuer_seed")
+        spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
+        if "subject_seed" in spec:
+            subject_seed = spec.pop("subject_seed")
+            spec["subject"] = derived["dids"][subject_seed]
+        else:
+            spec["subject"] = spec.pop("subject_did")
+        return spec
+
     if entry.kind == "freshness":
         issuer_seed = spec.pop("issuer_seed")
         spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
