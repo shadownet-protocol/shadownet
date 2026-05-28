@@ -24,6 +24,10 @@ _log = logging.getLogger(__name__)
 # Cleared in on_session_end to avoid unbounded growth.
 _pending_inbox: dict[str, int] = {}
 
+# session_id → pending quarantine (invitation) count. Same lifecycle as the
+# inbox counter; the two counts are reported together in pre_llm_call.
+_pending_quarantine: dict[str, int] = {}
+
 # Platform names that should NOT receive shadownet inbox injections. We
 # only nudge user-facing platforms; the shadownet platform itself runs
 # synthetic agent-to-agent sessions and shouldn't be told about its own
@@ -80,6 +84,57 @@ def _fetch_pending_inbox_count() -> int:
     return 0
 
 
+def _fetch_pending_quarantine_count() -> int:
+    """Best-effort count of pending quarantined invitations.
+
+    Mirrors :func:`_fetch_pending_inbox_count`. Reads from the sidecar's
+    REST companion (``/v1/account/me/social/quarantine``) so we don't have
+    to open an MCP session for a UX nudge.
+    """
+    connect_url = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
+    if not connect_url:
+        return 0
+    try:
+        from shadownet.connect.url import parse_connect_url
+    except ImportError:
+        return 0
+    try:
+        parsed = parse_connect_url(connect_url)
+    except Exception:  # noqa: BLE001
+        return 0
+    if not getattr(parsed, "is_inline", False):
+        return 0
+    base_url = (parsed.base_url or "").rstrip("/")
+    token = parsed.token
+    if not base_url or not token:
+        return 0
+    try:
+        import httpx
+    except ImportError:
+        return 0
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(
+                f"{base_url}/v1/account/me/social/quarantine",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            )
+            # If the sidecar predates the quarantine surface, we get a 404 —
+            # silently report zero rather than failing the session-start hook.
+            if resp.status_code == 404:
+                return 0
+            resp.raise_for_status()
+            body = resp.json()
+    except Exception:  # noqa: BLE001
+        return 0
+    items = body.get("items") if isinstance(body, dict) else None
+    if isinstance(items, list):
+        return len(items)
+    count = body.get("count") if isinstance(body, dict) else None
+    if isinstance(count, int):
+        return count
+    return 0
+
+
 def on_session_start_callback(
     session_id: str = "",
     model: str = "",
@@ -103,6 +158,16 @@ def on_session_start_callback(
         return
     if count > 0:
         _pending_inbox[session_id] = count
+    try:
+        quarantine = _fetch_pending_quarantine_count()
+    except Exception:  # noqa: BLE001
+        _log.debug(
+            "shadownet plugin: quarantine check failed silently for session %s",
+            session_id,
+        )
+        return
+    if quarantine > 0:
+        _pending_quarantine[session_id] = quarantine
 
 
 def pre_llm_call_callback(
@@ -128,16 +193,30 @@ def pre_llm_call_callback(
     )
     if not is_first_turn or platform in _SUPPRESSED_PLATFORMS:
         return None
-    count = _pending_inbox.pop(session_id, 0)
-    if count <= 0:
+    inbox_count = _pending_inbox.pop(session_id, 0)
+    quarantine_count = _pending_quarantine.pop(session_id, 0)
+    if inbox_count <= 0 and quarantine_count <= 0:
         return None
-    plural = "message" if count == 1 else "messages"
-    return {
-        "context": (
-            f"[shadownet] You have {count} pending shadownet {plural}. "
-            "Use mcp_shadownet_social_inbox_wait to triage when the user has a moment."
+    notes: list[str] = []
+    if inbox_count > 0:
+        plural = "message" if inbox_count == 1 else "messages"
+        notes.append(
+            f"{inbox_count} pending shadownet {plural} (triage via "
+            "mcp_shadownet_social_inbox_wait)"
         )
-    }
+    if quarantine_count > 0:
+        plural = "invitation" if quarantine_count == 1 else "invitations"
+        notes.append(
+            f"{quarantine_count} pending {plural} from unknown senders. "
+            "Use /shadownet-invitations to review — do NOT auto-process; "
+            "every accept/reject is a user decision (RFC-0006 §Cost guarantee)"
+        )
+    return {"context": "[shadownet] " + "; ".join(notes) + "."}
+
+
+def _clear_session(session_id: str) -> None:
+    _pending_inbox.pop(session_id, None)
+    _pending_quarantine.pop(session_id, None)
 
 
 def on_session_end_callback(
@@ -148,5 +227,5 @@ def on_session_end_callback(
     platform: str = "",
     **kwargs: Any,
 ) -> None:
-    """Drop any stashed inbox count for ``session_id``."""
-    _pending_inbox.pop(session_id, None)
+    """Drop any stashed inbox / quarantine counts for ``session_id``."""
+    _clear_session(session_id)

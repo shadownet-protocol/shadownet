@@ -38,6 +38,7 @@ provides_hooks:
 provides_commands:
   - shadownet-setup
   - shadownet-inbox
+  - shadownet-invitations
   - shadownet-reach-out
   - shadownet-coordinate
   - shadownet-status
@@ -47,6 +48,7 @@ provides_skills:
   - shadownet:shadownet-setup
   - shadownet:shadownet-reach-out
   - shadownet:shadownet-inbox
+  - shadownet:shadownet-invitations
   - shadownet:shadownet-coordinate
 
 # MCP tools intentionally NOT under provides_tools — they come from

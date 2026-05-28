@@ -299,7 +299,7 @@ def test_default_base_url_is_documented_default() -> None:
 
 
 def test_register_skill_paths_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The bundled skills/ directory must contain all four SKILL.md files."""
+    """The bundled skills/ directory must contain every SKILL.md file."""
     monkeypatch.setenv("SHADOWNET_TOKEN", "t")
     from pathlib import Path
 
@@ -308,6 +308,7 @@ def test_register_skill_paths_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
         "shadownet-setup",
         "shadownet-reach-out",
         "shadownet-inbox",
+        "shadownet-invitations",
         "shadownet-coordinate",
     }
     for name in expected:
@@ -380,6 +381,7 @@ def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
         "shadownet-setup",
         "shadownet-reach-out",
         "shadownet-inbox",
+        "shadownet-invitations",
         "shadownet-coordinate",
     }
     assert len(ctx.platforms) == 1
@@ -393,11 +395,12 @@ def test_register_invokes_ctx_methods(monkeypatch: pytest.MonkeyPatch) -> None:
     # Three hooks: on_session_start, pre_llm_call, on_session_end.
     hook_names = {name for name, _ in ctx.hooks}
     assert hook_names == {"on_session_start", "pre_llm_call", "on_session_end"}
-    # Six slash commands.
+    # Seven slash commands.
     command_names = {c.name for c in ctx.commands}
     assert command_names == {
         "shadownet-setup",
         "shadownet-inbox",
+        "shadownet-invitations",
         "shadownet-reach-out",
         "shadownet-coordinate",
         "shadownet-status",

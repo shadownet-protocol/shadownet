@@ -60,6 +60,11 @@ def build_slash_command_specs(ctx: Any) -> list[dict[str, Any]]:
             "description": "Triage pending shadownet messages",
         },
         {
+            "name": "shadownet-invitations",
+            "handler": _make_skill_handler(ctx, "shadownet-invitations"),
+            "description": "Review pending invitations from unknown senders",
+        },
+        {
             "name": "shadownet-reach-out",
             "handler": _make_skill_handler(ctx, "shadownet-reach-out"),
             "description": "Send a message to a shadownet contact",
