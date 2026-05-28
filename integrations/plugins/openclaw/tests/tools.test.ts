@@ -13,6 +13,9 @@ const EXPECTED_NAMES = [
   "shadownet_respond",
   "shadownet_grant",
   "shadownet_identity",
+  "shadownet_quarantine_list",
+  "shadownet_quarantine_review",
+  "shadownet_set_contact_profile",
 ] as const;
 
 const EXPECTED_MCP_NAMES: Record<(typeof EXPECTED_NAMES)[number], string> = {
@@ -25,6 +28,9 @@ const EXPECTED_MCP_NAMES: Record<(typeof EXPECTED_NAMES)[number], string> = {
   shadownet_respond: "social_respond",
   shadownet_grant: "social_grant",
   shadownet_identity: "social_identity",
+  shadownet_quarantine_list: "social_quarantine_list",
+  shadownet_quarantine_review: "social_quarantine_review",
+  shadownet_set_contact_profile: "social_set_contact_profile",
 };
 
 function stubClient(): ShadownetClient {
@@ -36,7 +42,7 @@ function stubClient(): ShadownetClient {
 }
 
 describe("tool registry", () => {
-  it("returns exactly the 10 RFC-0007 tools, snake_case shadownet_*", () => {
+  it("returns exactly the 12 RFC-0007 tools, snake_case shadownet_*", () => {
     const list = tools(stubClient());
     expect(list.map((t) => t.name).sort()).toEqual([...EXPECTED_NAMES].sort());
   });
