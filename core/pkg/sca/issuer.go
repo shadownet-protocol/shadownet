@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shadownet-protocol/shadownet/core/pkg/crypto"
@@ -20,18 +21,21 @@ import (
 const DefaultListID = "main"
 
 // Issuer is the SCA orchestrator. It owns the signing key, the proof-method
-// registry, and the persistence handles.
+// registry, and the persistence handles. AffiliationRevocation is required
+// only when Policy.IssuesAffiliation() — affiliation status lists live on a
+// separate URL per RFC-0003 §AffiliationCredential.
 type Issuer struct {
-	DID        string         // SCA DID (e.g. did:web:sca.sh4dow.org)
-	KeyID      string         // DID URL with key fragment, e.g. <DID>#k1
-	Key        crypto.KeyPair // signing key matching KeyID
-	Resolver   did.Resolver
-	Sessions   SessionStore
-	Issuance   IssuanceStore
-	Revocation RevocationStore
-	Methods    map[string]ProofMethod // keyed by ProofMethod.Name()
-	Policy     Policy
-	Now        func() time.Time
+	DID                   string         // SCA DID (e.g. did:web:sca.sh4dow.org)
+	KeyID                 string         // DID URL with key fragment, e.g. <DID>#k1
+	Key                   crypto.KeyPair // signing key matching KeyID
+	Resolver              did.Resolver
+	Sessions              SessionStore
+	Issuance              IssuanceStore
+	Revocation            RevocationStore
+	AffiliationRevocation RevocationStore
+	Methods               map[string]ProofMethod // keyed by ProofMethod.Name()
+	Policy                Policy
+	Now                   func() time.Time
 
 	// ReadyCheck is invoked by /readyz. nil = always ready.
 	// Implementations typically ping their backing store.
@@ -44,7 +48,10 @@ type Issuer struct {
 	Caller Caller
 }
 
-// Validate confirms an Issuer has all dependencies wired.
+// Validate confirms an Issuer has the dependencies its policy mode requires.
+//
+// Personhood SCAs need Sessions, Methods, and Revocation; affiliation SCAs
+// need AffiliationRevocation; the both-mode SCA needs all of them.
 func (i *Issuer) Validate() error {
 	switch {
 	case i.DID == "":
@@ -53,20 +60,33 @@ func (i *Issuer) Validate() error {
 		return errors.New("sca: Issuer.KeyID required")
 	case i.Resolver == nil:
 		return errors.New("sca: Issuer.Resolver required")
-	case i.Sessions == nil:
-		return errors.New("sca: Issuer.Sessions required")
 	case i.Issuance == nil:
 		return errors.New("sca: Issuer.Issuance required")
-	case i.Revocation == nil:
-		return errors.New("sca: Issuer.Revocation required")
-	case len(i.Methods) == 0:
-		return errors.New("sca: Issuer.Methods must contain ≥1 ProofMethod")
 	}
 	if d, _ := did.SplitDIDURL(i.KeyID); d != i.DID {
 		return fmt.Errorf("sca: Issuer.KeyID %q does not match Issuer.DID %q", i.KeyID, i.DID)
 	}
 	if i.Policy.Issuer != "" && i.Policy.Issuer != i.DID {
 		return fmt.Errorf("sca: Policy.Issuer %q does not match Issuer.DID %q", i.Policy.Issuer, i.DID)
+	}
+	if i.Policy.IssuesPersonhood() {
+		if i.Sessions == nil {
+			return errors.New("sca: Issuer.Sessions required for personhood mode")
+		}
+		if i.Revocation == nil {
+			return errors.New("sca: Issuer.Revocation required for personhood mode")
+		}
+		if len(i.Methods) == 0 {
+			return errors.New("sca: Issuer.Methods must contain ≥1 ProofMethod for personhood mode")
+		}
+	}
+	if i.Policy.IssuesAffiliation() {
+		if i.AffiliationRevocation == nil {
+			return errors.New("sca: Issuer.AffiliationRevocation required for affiliation mode")
+		}
+		if i.Policy.AffiliationOrg != "" && !strings.HasPrefix(i.Policy.AffiliationOrg, "did:web:") {
+			return errors.New("sca: Policy.AffiliationOrg must be a did:web")
+		}
 	}
 	return nil
 }
@@ -166,6 +186,9 @@ func (i *Issuer) StatusProof(ctx context.Context, auth *SubjectAuth, req ProofSt
 
 // IssueCredential handles POST /issuance.
 func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req IssuanceRequest) (*IssuanceResponse, error) {
+	if !i.Policy.IssuesPersonhood() {
+		return nil, New(http.StatusForbidden, CodeModeNotEnabled, "SCA is not configured to issue SubjectCredentials")
+	}
 	csr, err := VerifyCSR(ctx, i.Resolver, req.CSR, i.DID, i.now())
 	if err != nil {
 		return nil, err
@@ -247,6 +270,7 @@ func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req Iss
 		JTI:             jti,
 		Issuer:          i.DID,
 		Subject:         csr.Subject,
+		Kind:            KindSubject,
 		Level:           csr.Level,
 		SubjectType:     csr.SubjectType,
 		JWT:             jwt,
@@ -261,7 +285,12 @@ func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req Iss
 	return &IssuanceResponse{Version: vc.Version, Credential: jwt}, nil
 }
 
-// IssueFreshness handles POST /freshness.
+// IssueFreshness handles POST /freshness for both SubjectCredentials and
+// AffiliationCredentials. The freshness window is chosen from policy based on
+// the credential's recorded Kind: subject credentials use
+// Policy.FreshnessWindowSeconds; affiliation credentials use
+// Policy.AffiliationFreshnessWindowSeconds (RFC-0003 §AffiliationCredential
+// §Lifetime: SHOULD ≤ 3600s; regulated industries ≤ 300s).
 func (i *Issuer) IssueFreshness(ctx context.Context, auth *SubjectAuth, req FreshnessRequest) (*FreshnessResponse, error) {
 	c, err := i.Issuance.Get(ctx, req.CredentialJTI)
 	if errors.Is(err, ErrJTINotFound) {
@@ -273,7 +302,11 @@ func (i *Issuer) IssueFreshness(ctx context.Context, auth *SubjectAuth, req Fres
 	if c.Subject != auth.Subject {
 		return nil, New(http.StatusForbidden, CodeNotHolder, "subject-auth iss is not the credential holder")
 	}
-	list, err := i.Revocation.Snapshot(ctx, c.StatusListID)
+	revStore := i.revocationStoreFor(c.EffectiveKind())
+	if revStore == nil {
+		return nil, New(http.StatusServiceUnavailable, CodeRevoked, "no revocation store for credential kind")
+	}
+	list, err := revStore.Snapshot(ctx, c.StatusListID)
 	if err != nil {
 		return nil, New(http.StatusInternalServerError, CodeRevoked, "fetch status list").wrap(err)
 	}
@@ -285,10 +318,7 @@ func (i *Issuer) IssueFreshness(ctx context.Context, auth *SubjectAuth, req Fres
 		return nil, New(http.StatusForbidden, CodeRevoked, "credential is revoked")
 	}
 	now := i.now()
-	exp := now.Add(time.Duration(i.Policy.FreshnessWindowSeconds) * time.Second)
-	if i.Policy.FreshnessWindowSeconds == 0 {
-		exp = now.Add(vc.MaxFreshnessLifetime)
-	}
+	exp := now.Add(i.freshnessWindowFor(c.EffectiveKind()))
 	jwt, err := vc.IssueFreshness(i.Key, i.DID, i.KeyID, c.JTI, now, exp)
 	if err != nil {
 		return nil, New(http.StatusInternalServerError, CodeRevoked, "issue freshness").wrap(err)
@@ -296,10 +326,49 @@ func (i *Issuer) IssueFreshness(ctx context.Context, auth *SubjectAuth, req Fres
 	return &FreshnessResponse{Version: vc.Version, FreshnessProof: jwt}, nil
 }
 
-// StatusList handles GET /status/<list-id>. Returns the publication JWT plus
-// a reasonable Cache-Control header.
+func (i *Issuer) revocationStoreFor(kind CredentialKind) RevocationStore {
+	if kind == KindAffiliation {
+		return i.AffiliationRevocation
+	}
+	return i.Revocation
+}
+
+func (i *Issuer) freshnessWindowFor(kind CredentialKind) time.Duration {
+	if kind == KindAffiliation {
+		if i.Policy.AffiliationFreshnessWindowSeconds > 0 {
+			return time.Duration(i.Policy.AffiliationFreshnessWindowSeconds) * time.Second
+		}
+		return time.Hour
+	}
+	if i.Policy.FreshnessWindowSeconds > 0 {
+		return time.Duration(i.Policy.FreshnessWindowSeconds) * time.Second
+	}
+	return vc.MaxFreshnessLifetime
+}
+
+// StatusList handles GET /status/<list-id> for SubjectCredential status lists.
+// Returns the publication JWT plus a Cache-Control header.
 func (i *Issuer) StatusList(ctx context.Context, listID string) (jwt string, maxAge time.Duration, err error) {
-	list, err := i.Revocation.Snapshot(ctx, listID)
+	if i.Revocation == nil {
+		return "", 0, New(http.StatusNotFound, CodeRevoked, "personhood revocation not enabled")
+	}
+	return i.statusListFrom(ctx, i.Revocation, i.Policy.StatusListBase, listID)
+}
+
+// AffiliationStatusList handles GET /status/affiliation/<list-id>.
+func (i *Issuer) AffiliationStatusList(ctx context.Context, listID string) (jwt string, maxAge time.Duration, err error) {
+	if i.AffiliationRevocation == nil {
+		return "", 0, New(http.StatusNotFound, CodeRevoked, "affiliation revocation not enabled")
+	}
+	base := i.Policy.AffiliationStatusListBase
+	if base == "" {
+		base = i.Policy.StatusListBase
+	}
+	return i.statusListFrom(ctx, i.AffiliationRevocation, base, listID)
+}
+
+func (i *Issuer) statusListFrom(ctx context.Context, store RevocationStore, base, listID string) (string, time.Duration, error) {
+	list, err := store.Snapshot(ctx, listID)
 	if err != nil {
 		return "", 0, New(http.StatusNotFound, CodeRevoked, "unknown status list").wrap(err)
 	}
@@ -308,8 +377,8 @@ func (i *Issuer) StatusList(ctx context.Context, listID string) (jwt string, max
 		return "", 0, New(http.StatusInternalServerError, CodeRevoked, "encode status list").wrap(err)
 	}
 	now := i.now()
-	jwt, err = vc.IssueStatusListCredential(i.Key, vc.StatusListPublication{
-		ID:            i.Policy.StatusListBase + listID,
+	jwt, err := vc.IssueStatusListCredential(i.Key, vc.StatusListPublication{
+		ID:            base + listID,
 		Issuer:        i.DID,
 		StatusPurpose: vc.StatusPurposeRevocation,
 		EncodedList:   encoded,
@@ -324,7 +393,7 @@ func (i *Issuer) StatusList(ctx context.Context, listID string) (jwt string, max
 
 // Revoke marks the credential identified by jti as revoked. Used by operator
 // tooling and (later) by the SCA's admin surface; not exposed as a public
-// HTTP endpoint at v0.1.
+// HTTP endpoint at v0.1. Routes to the right revocation store by kind.
 func (i *Issuer) Revoke(ctx context.Context, jti string) error {
 	c, err := i.Issuance.Get(ctx, jti)
 	if errors.Is(err, ErrJTINotFound) {
@@ -333,7 +402,11 @@ func (i *Issuer) Revoke(ctx context.Context, jti string) error {
 	if err != nil {
 		return err
 	}
-	return i.Revocation.Revoke(ctx, c.StatusListID, c.StatusListIndex)
+	store := i.revocationStoreFor(c.EffectiveKind())
+	if store == nil {
+		return New(http.StatusServiceUnavailable, CodeRevoked, "no revocation store for credential kind")
+	}
+	return store.Revoke(ctx, c.StatusListID, c.StatusListIndex)
 }
 
 // newID returns an opaque session id with the given prefix.
