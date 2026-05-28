@@ -19,7 +19,15 @@
       "description": "When `interaction` is absent, payload SHOULD include a `text` field with the natural-language message; senders MAY attach structured `hints`. When `interaction` is present, payload follows the schema set by that Interaction Profile.",
       "properties": {
         "text":  { "type": "string" },
-        "hints": { "type": "object" }
+        "hints": {
+          "type": "object",
+          "description": "Sender-supplied hints. Recognized at v0.1: `purpose` (string; e.g. \"invitation\" — see RFC-0006 §Invitation envelopes), `proposed_collaboration` (string), `introducer_contact` (DID; UI hint only, MUST NOT bypass routing).",
+          "properties": {
+            "purpose":                { "type": "string" },
+            "proposed_collaboration": { "type": "string" },
+            "introducer_contact":     { "type": "string", "pattern": "^did:" }
+          }
+        }
       }
     }
   },
