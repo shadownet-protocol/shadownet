@@ -37,6 +37,7 @@ SKILL_NAMES = (
     "shadownet-setup",
     "shadownet-reach-out",
     "shadownet-inbox",
+    "shadownet-invitations",
     "shadownet-coordinate",
 )
 

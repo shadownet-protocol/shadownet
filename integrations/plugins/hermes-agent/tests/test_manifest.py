@@ -34,6 +34,7 @@ def test_manifest_lists_every_registered_surface() -> None:
     assert set(manifest["provides_commands"]) == {
         "shadownet-setup",
         "shadownet-inbox",
+        "shadownet-invitations",
         "shadownet-reach-out",
         "shadownet-coordinate",
         "shadownet-status",
@@ -43,6 +44,7 @@ def test_manifest_lists_every_registered_surface() -> None:
         "shadownet:shadownet-setup",
         "shadownet:shadownet-reach-out",
         "shadownet:shadownet-inbox",
+        "shadownet:shadownet-invitations",
         "shadownet:shadownet-coordinate",
     }
     # MCP tools come from config.yaml, not from register_tool — must NOT
