@@ -17,13 +17,13 @@ func TestPresentationRoundtrip(t *testing.T) {
 	holderKID := holder + "#" + strings.TrimPrefix(holder, "did:key:")
 
 	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	credJWT, err := IssueCredential(issKP, Credential{
+	credJWT, err := IssueSubjectCredential(issKP, SubjectCredential{
 		Issuer: issuer, Subject: holder, JTI: "urn:uuid:c1",
 		IssuedAt: now, Expires: now.Add(48 * time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,
 	}, IssueOptions{IssuerKeyID: issKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 
 	verifier := "did:key:z6MkVerifierPubkey"
@@ -60,7 +60,7 @@ func TestPresentationAudienceMismatch(t *testing.T) {
 	holderKID := holder + "#" + strings.TrimPrefix(holder, "did:key:")
 
 	now := time.Now().UTC()
-	credJWT, _ := IssueCredential(issKP, Credential{
+	credJWT, _ := IssueSubjectCredential(issKP, SubjectCredential{
 		Issuer: issuer, Subject: holder, JTI: "urn:uuid:1",
 		IssuedAt: now, Expires: now.Add(time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,
@@ -78,7 +78,7 @@ func TestPresentationNonceMismatch(t *testing.T) {
 	holderKID := holder + "#" + strings.TrimPrefix(holder, "did:key:")
 
 	now := time.Now().UTC()
-	credJWT, _ := IssueCredential(issKP, Credential{
+	credJWT, _ := IssueSubjectCredential(issKP, SubjectCredential{
 		Issuer: issuer, Subject: holder, JTI: "urn:uuid:1",
 		IssuedAt: now, Expires: now.Add(time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,

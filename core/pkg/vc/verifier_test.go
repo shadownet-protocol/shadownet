@@ -72,13 +72,13 @@ func mustGenerate(t *testing.T) crypto.KeyPair {
 
 func (f *vpFixture) issueCred(t *testing.T, level, jti string, lifetime time.Duration) string {
 	t.Helper()
-	jwt, err := IssueCredential(f.issuerKP, Credential{
+	jwt, err := IssueSubjectCredential(f.issuerKP, SubjectCredential{
 		Issuer: f.issuer, Subject: f.holder, JTI: jti,
 		IssuedAt: f.now, Expires: f.now.Add(lifetime),
 		Level: level, SubjectType: SubjectPerson,
 	}, IssueOptions{IssuerKeyID: f.issuerKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 	return jwt
 }
@@ -173,13 +173,13 @@ func TestVerifierUntrustedIssuerSilentlyFiltered(t *testing.T) {
 	otherKP := mustGenerate(t)
 	otherIssuer, _ := did.EncodeKey(otherKP.Public)
 	otherKID := otherIssuer + "#" + strings.TrimPrefix(otherIssuer, "did:key:")
-	cred, err := IssueCredential(otherKP, Credential{
+	cred, err := IssueSubjectCredential(otherKP, SubjectCredential{
 		Issuer: otherIssuer, Subject: f.holder, JTI: "urn:uuid:other",
 		IssuedAt: f.now, Expires: f.now.Add(time.Hour),
 		Level: LevelL2, SubjectType: SubjectPerson,
 	}, IssueOptions{IssuerKeyID: otherKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 	tNow := f.now.Add(time.Minute)
 	vp := f.presentVPAt(t, []string{cred}, "n", tNow)
@@ -202,14 +202,14 @@ func TestVerifierUntrustedIssuerSilentlyFiltered(t *testing.T) {
 func TestVerifierRevoked(t *testing.T) {
 	f := newVPFixture(t)
 	statusURL := "https://sca.example/status/2026-q3"
-	cred, err := IssueCredential(f.issuerKP, Credential{
+	cred, err := IssueSubjectCredential(f.issuerKP, SubjectCredential{
 		Issuer: f.issuer, Subject: f.holder, JTI: "urn:uuid:rev",
 		IssuedAt: f.now, Expires: f.now.Add(time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,
 		Status: &Status{StatusListIndex: 5, StatusListCredential: statusURL},
 	}, IssueOptions{IssuerKeyID: f.issuerKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 	tNow := f.now.Add(time.Minute)
 	vp := f.presentVPAt(t, []string{cred}, "n", tNow)
@@ -233,7 +233,7 @@ func TestVerifierRevoked(t *testing.T) {
 
 func TestVerifierStatusFetcherMissing(t *testing.T) {
 	f := newVPFixture(t)
-	cred, _ := IssueCredential(f.issuerKP, Credential{
+	cred, _ := IssueSubjectCredential(f.issuerKP, SubjectCredential{
 		Issuer: f.issuer, Subject: f.holder, JTI: "urn:uuid:nostat",
 		IssuedAt: f.now, Expires: f.now.Add(time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,
@@ -255,13 +255,13 @@ func TestVerifierWrongHolder(t *testing.T) {
 	// (different keys) sign a VP that bundles it. The holder == subject check
 	// must reject this.
 	otherKP, otherDID := subjectSetup(t)
-	cred, err := IssueCredential(f.issuerKP, Credential{
+	cred, err := IssueSubjectCredential(f.issuerKP, SubjectCredential{
 		Issuer: f.issuer, Subject: otherDID, JTI: "urn:uuid:other-sub",
 		IssuedAt: f.now, Expires: f.now.Add(time.Hour),
 		Level: LevelL1, SubjectType: SubjectPerson,
 	}, IssueOptions{IssuerKeyID: f.issuerKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 	_ = otherKP
 

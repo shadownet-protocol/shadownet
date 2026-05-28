@@ -32,13 +32,13 @@ func (p *presMinter) Mint(_ context.Context, audience, nonce string, iat, exp ti
 
 func issueL1(t *testing.T, scaKP crypto.KeyPair, scaDID, scaKID, holderDID string, now time.Time) string {
 	t.Helper()
-	jwt, err := vc.IssueCredential(scaKP, vc.Credential{
+	jwt, err := vc.IssueSubjectCredential(scaKP, vc.SubjectCredential{
 		Issuer: scaDID, Subject: holderDID, JTI: "urn:uuid:test-1",
 		IssuedAt: now, Expires: now.Add(48 * time.Hour),
 		Level: vc.LevelL1, SubjectType: vc.SubjectPerson,
 	}, vc.IssueOptions{IssuerKeyID: scaKID})
 	if err != nil {
-		t.Fatalf("IssueCredential: %v", err)
+		t.Fatalf("IssueSubjectCredential: %v", err)
 	}
 	return jwt
 }

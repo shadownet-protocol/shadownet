@@ -97,7 +97,7 @@ func (p *Predicate) validate(depth int) error {
 
 // Match evaluates p against a set of validated credentials per RFC-0004.
 // Each leaf is satisfied if at least one credential matches.
-func (p *Predicate) Match(creds []*Credential) bool {
+func (p *Predicate) Match(creds []*SubjectCredential) bool {
 	switch {
 	case p.Level != "":
 		for _, c := range creds {

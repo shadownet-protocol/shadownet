@@ -65,14 +65,14 @@ type Verifier struct {
 // VerifiedPresentation is the output of a successful VerifyPresentation call.
 type VerifiedPresentation struct {
 	Presentation *Presentation
-	Credentials  []*VerifiedCredential
+	Credentials  []*VerifiedSubjectCredential
 }
 
-// VerifiedCredential pairs a parsed credential with the freshness proof that
-// validated it (Freshness == nil when the credential is within 24 h of `iat`
-// and no proof was required).
-type VerifiedCredential struct {
-	Credential *Credential
+// VerifiedSubjectCredential pairs a parsed SubjectCredential with the
+// freshness proof that validated it (Freshness == nil when the credential is
+// within 24 h of `iat` and no proof was required).
+type VerifiedSubjectCredential struct {
+	Credential *SubjectCredential
 	Freshness  *Freshness
 }
 
@@ -119,7 +119,7 @@ func (v *Verifier) VerifyPresentation(ctx context.Context, compact, expectedAud,
 		if err := v.checkRevocation(ctx, c); err != nil {
 			return nil, err
 		}
-		out.Credentials = append(out.Credentials, &VerifiedCredential{Credential: c, Freshness: f})
+		out.Credentials = append(out.Credentials, &VerifiedSubjectCredential{Credential: c, Freshness: f})
 	}
 	return out, nil
 }
@@ -131,7 +131,7 @@ func (v *VerifiedPresentation) EvaluatePredicate(p *Predicate) error {
 	if p == nil {
 		return nil
 	}
-	creds := make([]*Credential, len(v.Credentials))
+	creds := make([]*SubjectCredential, len(v.Credentials))
 	for i, vc := range v.Credentials {
 		creds[i] = vc.Credential
 	}
@@ -157,8 +157,8 @@ func (v *Verifier) freshnessWindow() time.Duration {
 
 // splitVPContents inspects each embedded JWT and verifies it as either a VC
 // or a freshness proof, keyed by the credential JTI it attests.
-func (v *Verifier) splitVPContents(ctx context.Context, pres *Presentation, now time.Time) ([]*Credential, map[string]*Freshness, error) {
-	var creds []*Credential
+func (v *Verifier) splitVPContents(ctx context.Context, pres *Presentation, now time.Time) ([]*SubjectCredential, map[string]*Freshness, error) {
+	var creds []*SubjectCredential
 	fresh := map[string]*Freshness{}
 	for _, raw := range pres.Credentials {
 		hdr, err := crypto.PeekHeader(raw)
@@ -167,7 +167,7 @@ func (v *Verifier) splitVPContents(ctx context.Context, pres *Presentation, now 
 		}
 		switch hdr.Typ {
 		case TypVCJWT:
-			c, err := VerifyCredential(ctx, v.Resolver, raw, now)
+			c, err := VerifySubjectCredential(ctx, v.Resolver, raw, now)
 			if err != nil {
 				return nil, nil, errCode(ReasonPresentationInvalid, "verify embedded credential", err)
 			}
@@ -186,7 +186,7 @@ func (v *Verifier) splitVPContents(ctx context.Context, pres *Presentation, now 
 	return creds, fresh, nil
 }
 
-func (v *Verifier) checkFreshness(c *Credential, freshByJTI map[string]*Freshness, now time.Time) (*Freshness, error) {
+func (v *Verifier) checkFreshness(c *SubjectCredential, freshByJTI map[string]*Freshness, now time.Time) (*Freshness, error) {
 	if now.Sub(c.IssuedAt) <= v.freshnessWindow() {
 		return nil, nil // within initial window — proof optional
 	}
@@ -203,7 +203,7 @@ func (v *Verifier) checkFreshness(c *Credential, freshByJTI map[string]*Freshnes
 	return f, nil
 }
 
-func (v *Verifier) checkRevocation(ctx context.Context, c *Credential) error {
+func (v *Verifier) checkRevocation(ctx context.Context, c *SubjectCredential) error {
 	if c.Status == nil {
 		return nil
 	}

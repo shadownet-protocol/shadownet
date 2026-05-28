@@ -8,7 +8,7 @@ import (
 )
 
 func TestPredicateLeafs(t *testing.T) {
-	creds := []*Credential{
+	creds := []*SubjectCredential{
 		{Issuer: "did:web:sca.sh4dow.org", Level: LevelL2, SubjectType: SubjectPerson},
 		{Issuer: "did:web:other.example", Level: LevelL1, SubjectType: SubjectPerson},
 	}
@@ -38,7 +38,7 @@ func TestPredicateLeafs(t *testing.T) {
 }
 
 func TestPredicateAllAnyNot(t *testing.T) {
-	creds := []*Credential{
+	creds := []*SubjectCredential{
 		{Issuer: "did:web:sca.example", Level: LevelL2, SubjectType: SubjectPerson},
 	}
 
