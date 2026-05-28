@@ -94,7 +94,20 @@ def register_shadownet_tools(
             )
         )
 
-    @server.tool(name="social_send", description="Send a Shadownet-enveloped message over A2A.")
+    @server.tool(
+        name="social_send",
+        description=(
+            "Send a Shadownet-enveloped message to a contact over A2A. "
+            "REQUIRED args: `contactId` (string, from social_contacts / "
+            "social_resolve) and `payload` (object). For free-form text "
+            'messages, set `payload={"text": "your message here"}` — do NOT '
+            "pass the text as a top-level `message` or `body` kwarg, those "
+            "are rejected. Optional: `interaction` (URN for typed "
+            "Interaction Profiles per RFC-0006) and `intentId` (continue "
+            "an existing intent). Example call: social_send(contactId="
+            '"alice@example.org", payload={"text": "Hello Alice"}).'
+        ),
+    )
     async def _send(
         contactId: str,
         payload: dict[str, Any],
@@ -132,7 +145,18 @@ def register_shadownet_tools(
             )
         )
 
-    @server.tool(name="social_respond", description="Respond within an existing intent.")
+    @server.tool(
+        name="social_respond",
+        description=(
+            "Respond within an existing intent. REQUIRED args: `intentId` "
+            "(string, from the inbound event you're responding to) and "
+            "`payload` (object). For a coordination response, use "
+            '`payload={"type": "response", "status": "agreed", '
+            '"plan": {"activity": "...", "date": "...", "time": "..."}}`. '
+            "Do NOT pass `message` or `body` as top-level kwargs — they "
+            "will be rejected."
+        ),
+    )
     async def _respond(intentId: str, payload: dict[str, Any]) -> RespondOutput:
         return await sidecar.social_respond(
             RespondInput.model_validate({"intentId": intentId, "payload": payload})
