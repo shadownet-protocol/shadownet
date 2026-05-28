@@ -53,8 +53,10 @@ const (
 // MaxCredentialLifetime is the SHOULD-cap from RFC-0003 §Lifetimes-and-freshness.
 const MaxCredentialLifetime = 90 * 24 * time.Hour
 
-// Credential is the structured view of a Shadownet subject credential.
-type Credential struct {
+// SubjectCredential is the structured view of a Shadownet SubjectCredential
+// (RFC-0003 §SubjectCredential). It carries an assurance level about the
+// Subject; AffiliationCredential is its sibling and lives in affiliation.go.
+type SubjectCredential struct {
 	Issuer      string // did:web:... (the SCA)
 	Subject     string // did:key:... or did:web:... (the holder)
 	JTI         string // urn:uuid:...
@@ -78,10 +80,9 @@ type IssueOptions struct {
 	IssuerKeyID string
 }
 
-// IssueCredential signs a credential JWT for the given Credential value using
-// kp (the issuer's keypair). The Issuer field MUST be the same DID whose key
-// signs the JWT.
-func IssueCredential(kp crypto.KeyPair, c Credential, opts IssueOptions) (string, error) {
+// IssueSubjectCredential signs a SubjectCredential JWT using kp (the issuer's
+// keypair). The Issuer field MUST be the same DID whose key signs the JWT.
+func IssueSubjectCredential(kp crypto.KeyPair, c SubjectCredential, opts IssueOptions) (string, error) {
 	if c.Issuer == "" {
 		return "", errors.New("vc: credential.Issuer required")
 	}
@@ -117,7 +118,7 @@ func IssueCredential(kp crypto.KeyPair, c Credential, opts IssueOptions) (string
 		return "", fmt.Errorf("vc: kid DID %q must match credential.Issuer %q", issDID, c.Issuer)
 	}
 
-	claims := wireCredential{
+	claims := wireSubjectCredential{
 		Iss:     c.Issuer,
 		Sub:     c.Subject,
 		Iat:     c.IssuedAt.Unix(),
@@ -147,13 +148,13 @@ func IssueCredential(kp crypto.KeyPair, c Credential, opts IssueOptions) (string
 	})
 }
 
-// VerifyCredential parses a credential JWT, verifies its signature against the
-// issuer's DID document, validates the structural shape from RFC-0003, and
-// returns the structured view.
+// VerifySubjectCredential parses a SubjectCredential JWT, verifies its signature
+// against the issuer's DID document, validates the structural shape from
+// RFC-0003, and returns the structured view.
 //
-// VerifyCredential does NOT consult any trust store or status list — those
-// are higher-level concerns handled by Verifier.
-func VerifyCredential(ctx context.Context, r did.Resolver, compact string, now time.Time) (*Credential, error) {
+// VerifySubjectCredential does NOT consult any trust store or status list —
+// those are higher-level concerns handled by Verifier.
+func VerifySubjectCredential(ctx context.Context, r did.Resolver, compact string, now time.Time) (*SubjectCredential, error) {
 	hdr, err := crypto.PeekHeader(compact)
 	if err != nil {
 		return nil, err
@@ -168,14 +169,14 @@ func VerifyCredential(ctx context.Context, r did.Resolver, compact string, now t
 	if err != nil {
 		return nil, fmt.Errorf("vc: resolve issuer key: %w", err)
 	}
-	var w wireCredential
+	var w wireSubjectCredential
 	if _, err := crypto.VerifyJWT(pub, compact, &w); err != nil {
 		return nil, err
 	}
-	return validateCredential(&w, hdr.Kid, now)
+	return validateSubjectCredential(&w, hdr.Kid, now)
 }
 
-func validateCredential(w *wireCredential, kid string, now time.Time) (*Credential, error) {
+func validateSubjectCredential(w *wireSubjectCredential, kid string, now time.Time) (*SubjectCredential, error) {
 	if w.Version != Version {
 		return nil, fmt.Errorf("vc: shadownet:v = %q, want %q", w.Version, Version)
 	}
@@ -214,7 +215,7 @@ func validateCredential(w *wireCredential, kid string, now time.Time) (*Credenti
 	if !containsString(w.VC.Type, CredentialType) {
 		return nil, fmt.Errorf("vc: type missing %q", CredentialType)
 	}
-	out := &Credential{
+	out := &SubjectCredential{
 		Issuer:      w.Iss,
 		Subject:     w.Sub,
 		JTI:         w.Jti,
@@ -251,8 +252,8 @@ func containsString(xs []string, want string) bool {
 	return false
 }
 
-// wireCredential is the on-wire JSON shape of a VC-JWT payload.
-type wireCredential struct {
+// wireSubjectCredential is the on-wire JSON shape of a VC-JWT payload.
+type wireSubjectCredential struct {
 	Iss     string     `json:"iss"`
 	Sub     string     `json:"sub"`
 	Iat     int64      `json:"iat"`

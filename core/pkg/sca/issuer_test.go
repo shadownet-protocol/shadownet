@@ -167,9 +167,9 @@ func TestSCAEndToEnd(t *testing.T) {
 	}
 
 	// 4) Verify the credential against the issuer's DID.
-	c, err := vc.VerifyCredential(context.Background(), did.NewKeyResolver(), ir.Credential, now.Add(time.Minute))
+	c, err := vc.VerifySubjectCredential(context.Background(), did.NewKeyResolver(), ir.Credential, now.Add(time.Minute))
 	if err != nil {
-		t.Fatalf("VerifyCredential: %v", err)
+		t.Fatalf("VerifySubjectCredential: %v", err)
 	}
 	if c.Subject != f.subjDID || c.Issuer != f.issuer.DID || c.Level != vc.LevelL1 {
 		t.Fatalf("credential mismatch: %+v", c)
@@ -331,7 +331,7 @@ func TestSCAFreshnessNotHolder(t *testing.T) {
 	}
 	var ir sca.IssuanceResponse
 	_ = json.Unmarshal(body, &ir)
-	c, _ := vc.VerifyCredential(context.Background(), did.NewKeyResolver(), ir.Credential, now)
+	c, _ := vc.VerifySubjectCredential(context.Background(), did.NewKeyResolver(), ir.Credential, now)
 
 	// Now another keypair calls /freshness for the same jti.
 	otherKP, _ := crypto.Generate()

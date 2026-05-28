@@ -220,7 +220,7 @@ func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req Iss
 		expires = now.Add(vc.MaxCredentialLifetime)
 	}
 
-	cred := vc.Credential{
+	cred := vc.SubjectCredential{
 		Issuer:      i.DID,
 		Subject:     csr.Subject,
 		JTI:         jti,
@@ -233,7 +233,7 @@ func (i *Issuer) IssueCredential(ctx context.Context, auth *SubjectAuth, req Iss
 			StatusListCredential: i.Policy.StatusListBase + listID,
 		},
 	}
-	jwt, err := vc.IssueCredential(i.Key, cred, vc.IssueOptions{IssuerKeyID: i.KeyID})
+	jwt, err := vc.IssueSubjectCredential(i.Key, cred, vc.IssueOptions{IssuerKeyID: i.KeyID})
 	if err != nil {
 		return nil, New(http.StatusInternalServerError, CodeCSRInvalid, "issue credential").wrap(err)
 	}
