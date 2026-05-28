@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from shadownet.crypto.ed25519 import Ed25519KeyPair
 
-# RFC-0002 §Forbidden DID document fields — only id, verificationMethod,
-# authentication, assertionMethod are permitted at v0.1.
+# RFC-0002 §Permitted DID document fields — id, verificationMethod,
+# authentication, assertionMethod, plus the optional orgs-only
+# shadownet:delegatedIssuers list.
 
 __all__ = ["DIDDocument", "VerificationMethod"]
 
@@ -53,7 +54,7 @@ VerificationReference = Annotated[str | VerificationMethod, Field(union_mode="le
 
 
 class DIDDocument(BaseModel):
-    """Minimal DID document permitted by RFC-0002 §Forbidden DID document fields."""
+    """Minimal DID document permitted by RFC-0002 §Permitted DID document fields."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -65,6 +66,26 @@ class DIDDocument(BaseModel):
     assertion_method: list[VerificationReference] = Field(
         default_factory=list, alias="assertionMethod"
     )
+    delegated_issuers: list[str] = Field(default_factory=list, alias="shadownet:delegatedIssuers")
+
+    @model_validator(mode="after")
+    def _scrub_delegated_issuers_on_did_key(self) -> DIDDocument:
+        # RFC-0002: did:key documents MUST NOT carry shadownet:delegatedIssuers.
+        # Verifiers MUST ignore the field on individuals.
+        if self.delegated_issuers and not self.id.startswith("did:web:"):
+            self.delegated_issuers = []
+        return self
+
+    def is_delegated_issuer(self, issuer_did: str) -> bool:
+        """Return True iff issuer_did appears in this document's delegated-issuer list.
+
+        Used by AffiliationCredential verifiers to confirm that an issuer DID
+        is authorized to sign on behalf of this organization DID. Always
+        returns False for did:key documents.
+        """
+        if not self.id.startswith("did:web:"):
+            return False
+        return issuer_did in self.delegated_issuers
 
     def find_key(self, key_id: str | None = None) -> Ed25519KeyPair:
         """Return the keypair for ``key_id``, or the first verification method if not specified.
