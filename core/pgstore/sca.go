@@ -135,16 +135,20 @@ type SCAIssuanceStore struct{ pool *pgxpool.Pool }
 // NewSCAIssuanceStore returns an IssuanceStore backed by pool.
 func NewSCAIssuanceStore(pool *pgxpool.Pool) *SCAIssuanceStore { return &SCAIssuanceStore{pool: pool} }
 
-// Put implements sca.IssuanceStore.
+// Put implements sca.IssuanceStore. Persists both SubjectCredentials and
+// AffiliationCredentials; the discriminator is c.EffectiveKind().
 func (s *SCAIssuanceStore) Put(ctx context.Context, c sca.IssuedCredential) error {
+	kind := string(c.EffectiveKind())
 	_, err := s.pool.Exec(
 		ctx, `
 INSERT INTO sca_credentials
-  (jti, issuer, subject, level, subject_type, jwt, status_list_id, status_list_index,
-   issued_at, expires)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		c.JTI, c.Issuer, c.Subject, c.Level, string(c.SubjectType), c.JWT,
-		c.StatusListID, int64(c.StatusListIndex), c.IssuedAt, c.Expires,
+  (jti, issuer, subject, kind, level, subject_type, affiliation, role, groups,
+   jwt, status_list_id, status_list_index, issued_at, expires)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+		c.JTI, c.Issuer, c.Subject, kind,
+		nullableString(c.Level), nullableString(string(c.SubjectType)),
+		nullableString(c.Affiliation), nullableString(c.Role), nullableStringSlice(c.Groups),
+		c.JWT, c.StatusListID, int64(c.StatusListIndex), c.IssuedAt, c.Expires,
 	)
 	if err != nil {
 		return fmt.Errorf("pgstore: put credential: %w", err)
@@ -155,15 +159,22 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 // Get implements sca.IssuanceStore.
 func (s *SCAIssuanceStore) Get(ctx context.Context, jti string) (sca.IssuedCredential, error) {
 	var (
-		c        sca.IssuedCredential
-		subjType string
-		idx      int64
+		c           sca.IssuedCredential
+		kind        string
+		level       *string
+		subjType    *string
+		affiliation *string
+		role        *string
+		groups      []string
+		idx         int64
 	)
 	err := s.pool.QueryRow(ctx, `
-SELECT jti, issuer, subject, level, subject_type, jwt, status_list_id, status_list_index, issued_at, expires
+SELECT jti, issuer, subject, kind, level, subject_type, affiliation, role, groups,
+       jwt, status_list_id, status_list_index, issued_at, expires
 FROM sca_credentials WHERE jti = $1`, jti).Scan(
-		&c.JTI, &c.Issuer, &c.Subject, &c.Level, &subjType, &c.JWT,
-		&c.StatusListID, &idx, &c.IssuedAt, &c.Expires,
+		&c.JTI, &c.Issuer, &c.Subject, &kind,
+		&level, &subjType, &affiliation, &role, &groups,
+		&c.JWT, &c.StatusListID, &idx, &c.IssuedAt, &c.Expires,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sca.IssuedCredential{}, sca.ErrJTINotFound
@@ -171,7 +182,12 @@ FROM sca_credentials WHERE jti = $1`, jti).Scan(
 	if err != nil {
 		return sca.IssuedCredential{}, fmt.Errorf("pgstore: get credential: %w", err)
 	}
-	c.SubjectType = vc.SubjectType(subjType)
+	c.Kind = sca.CredentialKind(kind)
+	c.Level = derefString(level)
+	c.SubjectType = vc.SubjectType(derefString(subjType))
+	c.Affiliation = derefString(affiliation)
+	c.Role = derefString(role)
+	c.Groups = groups
 	c.StatusListIndex = uint64(idx)
 	c.IssuedAt = c.IssuedAt.UTC()
 	c.Expires = c.Expires.UTC()
@@ -330,6 +346,15 @@ func nullableTime(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+func nullableStringSlice(xs []string) []string {
+	if len(xs) == 0 {
+		return nil
+	}
+	out := make([]string, len(xs))
+	copy(out, xs)
+	return out
 }
 
 func derefString(p *string) string {

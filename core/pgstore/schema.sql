@@ -26,8 +26,12 @@ CREATE TABLE IF NOT EXISTS sca_credentials (
   jti               TEXT        PRIMARY KEY,
   issuer            TEXT        NOT NULL,
   subject           TEXT        NOT NULL,
-  level             TEXT        NOT NULL,
-  subject_type      TEXT        NOT NULL,
+  kind              TEXT        NOT NULL DEFAULT 'subject' CHECK (kind IN ('subject','affiliation')),
+  level             TEXT,
+  subject_type      TEXT,
+  affiliation       TEXT,
+  role              TEXT,
+  groups            TEXT[],
   jwt               TEXT        NOT NULL,
   status_list_id    TEXT        NOT NULL,
   status_list_index BIGINT      NOT NULL,
@@ -35,8 +39,18 @@ CREATE TABLE IF NOT EXISTS sca_credentials (
   expires           TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sca_credentials_subject ON sca_credentials(subject);
+CREATE INDEX IF NOT EXISTS sca_credentials_kind_subject ON sca_credentials(kind, subject);
 CREATE UNIQUE INDEX IF NOT EXISTS sca_credentials_status_loc
   ON sca_credentials(status_list_id, status_list_index);
+
+-- Upgrade columns for SCA deployments that pre-date the affiliation rollout.
+-- All idempotent; no-ops on fresh installs.
+ALTER TABLE sca_credentials ADD COLUMN IF NOT EXISTS kind        TEXT        NOT NULL DEFAULT 'subject';
+ALTER TABLE sca_credentials ADD COLUMN IF NOT EXISTS affiliation TEXT;
+ALTER TABLE sca_credentials ADD COLUMN IF NOT EXISTS role        TEXT;
+ALTER TABLE sca_credentials ADD COLUMN IF NOT EXISTS groups      TEXT[];
+ALTER TABLE sca_credentials ALTER COLUMN level        DROP NOT NULL;
+ALTER TABLE sca_credentials ALTER COLUMN subject_type DROP NOT NULL;
 
 -- One row per status-list shard. The active shard is the one with the lowest
 -- creation order whose next_index < size; rotation appends a fresh shard.

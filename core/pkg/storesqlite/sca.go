@@ -5,6 +5,7 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -40,8 +41,12 @@ CREATE TABLE IF NOT EXISTS credentials (
   jti               TEXT PRIMARY KEY,
   issuer            TEXT NOT NULL,
   subject           TEXT NOT NULL,
-  level             TEXT NOT NULL,
-  subject_type      TEXT NOT NULL,
+  kind              TEXT NOT NULL DEFAULT 'subject' CHECK (kind IN ('subject','affiliation')),
+  level             TEXT,
+  subject_type      TEXT,
+  affiliation       TEXT,
+  role              TEXT,
+  groups_json       TEXT,
   jwt               TEXT NOT NULL,
   status_list_id    TEXT NOT NULL,
   status_list_index INTEGER NOT NULL,
@@ -168,13 +173,29 @@ type SCAIssuanceStore struct{ db *sql.DB }
 // NewSCAIssuanceStore returns an IssuanceStore backed by db.
 func NewSCAIssuanceStore(db *sql.DB) *SCAIssuanceStore { return &SCAIssuanceStore{db: db} }
 
-// Put implements sca.IssuanceStore.
+// Put implements sca.IssuanceStore. Persists both SubjectCredentials and
+// AffiliationCredentials; the discriminator is c.EffectiveKind(). Groups are
+// stored as a JSON array string.
 func (s *SCAIssuanceStore) Put(ctx context.Context, c sca.IssuedCredential) error {
+	kind := string(c.EffectiveKind())
+	var groupsJSON sql.NullString
+	if len(c.Groups) > 0 {
+		raw, err := json.Marshal(c.Groups)
+		if err != nil {
+			return fmt.Errorf("storesqlite: marshal groups: %w", err)
+		}
+		groupsJSON = sql.NullString{String: string(raw), Valid: true}
+	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO credentials (jti, issuer, subject, level, subject_type, jwt, status_list_id, status_list_index, issued_at, expires)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.JTI, c.Issuer, c.Subject, c.Level, string(c.SubjectType), c.JWT,
-		c.StatusListID, int64(c.StatusListIndex), c.IssuedAt.Unix(), c.Expires.Unix())
+INSERT INTO credentials (jti, issuer, subject, kind, level, subject_type,
+                         affiliation, role, groups_json,
+                         jwt, status_list_id, status_list_index, issued_at, expires)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.JTI, c.Issuer, c.Subject, kind,
+		nullableSQLString(c.Level), nullableSQLString(string(c.SubjectType)),
+		nullableSQLString(c.Affiliation), nullableSQLString(c.Role), groupsJSON,
+		c.JWT, c.StatusListID, int64(c.StatusListIndex),
+		c.IssuedAt.Unix(), c.Expires.Unix())
 	if err != nil {
 		return fmt.Errorf("storesqlite: put credential: %w", err)
 	}
@@ -184,27 +205,52 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 // Get implements sca.IssuanceStore.
 func (s *SCAIssuanceStore) Get(ctx context.Context, jti string) (sca.IssuedCredential, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT jti, issuer, subject, level, subject_type, jwt, status_list_id, status_list_index, issued_at, expires
+SELECT jti, issuer, subject, kind, level, subject_type, affiliation, role, groups_json,
+       jwt, status_list_id, status_list_index, issued_at, expires
 FROM credentials WHERE jti = ?`, jti)
 	var (
-		c        sca.IssuedCredential
-		subjType string
-		idx      int64
-		issuedAt int64
-		expires  int64
+		c           sca.IssuedCredential
+		kind        string
+		level       sql.NullString
+		subjType    sql.NullString
+		affiliation sql.NullString
+		role        sql.NullString
+		groupsJSON  sql.NullString
+		idx         int64
+		issuedAt    int64
+		expires     int64
 	)
-	if err := row.Scan(&c.JTI, &c.Issuer, &c.Subject, &c.Level, &subjType, &c.JWT,
-		&c.StatusListID, &idx, &issuedAt, &expires); err != nil {
+	if err := row.Scan(&c.JTI, &c.Issuer, &c.Subject, &kind,
+		&level, &subjType, &affiliation, &role, &groupsJSON,
+		&c.JWT, &c.StatusListID, &idx, &issuedAt, &expires); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sca.IssuedCredential{}, sca.ErrJTINotFound
 		}
 		return sca.IssuedCredential{}, fmt.Errorf("storesqlite: get credential: %w", err)
 	}
-	c.SubjectType = vc.SubjectType(subjType)
+	c.Kind = sca.CredentialKind(kind)
+	c.Level = level.String
+	c.SubjectType = vc.SubjectType(subjType.String)
+	c.Affiliation = affiliation.String
+	c.Role = role.String
+	if groupsJSON.Valid {
+		var gs []string
+		if err := json.Unmarshal([]byte(groupsJSON.String), &gs); err != nil {
+			return sca.IssuedCredential{}, fmt.Errorf("storesqlite: unmarshal groups: %w", err)
+		}
+		c.Groups = gs
+	}
 	c.StatusListIndex = uint64(idx)
 	c.IssuedAt = time.Unix(issuedAt, 0).UTC()
 	c.Expires = time.Unix(expires, 0).UTC()
 	return c, nil
+}
+
+func nullableSQLString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
 }
 
 // SCARevocationStore implements sca.RevocationStore against SQLite with
