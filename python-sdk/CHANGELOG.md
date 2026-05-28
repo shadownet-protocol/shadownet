@@ -10,6 +10,21 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-05-28
+
+### Fixed
+
+- LLM agents routinely called `social_send` with a top-level `message=`
+  (or `body=`) kwarg instead of the canonical
+  `payload={"text": "..."}` shape, and the cloud rejected the call with
+  a Pydantic `extra_forbidden` error. The tool description now spells
+  out the required arg shape inline (including a concrete example),
+  giving the agent the canonical pattern at tool-discovery time.
+- `social_respond` got the same treatment for the same reason — the
+  agent was inventing a `message=` field for coordination responses.
+
+[0.4.3]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.4.3
+
 ## [0.4.2] — 2026-05-27
 
 ### Fixed
