@@ -67,6 +67,7 @@ def _vp(*credentials: SubjectCredential) -> VerifiedPresentation:
     return VerifiedPresentation(
         holder_did=credentials[0].sub,
         credentials=tuple(credentials),
+        affiliations=(),
         freshness_proofs=(),
         presentation=placeholder,
     )
