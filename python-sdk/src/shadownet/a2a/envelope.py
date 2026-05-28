@@ -10,13 +10,48 @@ from pydantic import BaseModel, ConfigDict, Field
 ENVELOPE_PART_TYPE = "shadownet/v1+envelope"
 ENVELOPE_MEDIA_TYPE = "application/json"
 
+# RFC-0006 §Invitation envelopes — the v0.1 recognized hint purpose.
+PURPOSE_INVITATION = "invitation"
+
 __all__ = [
     "ENVELOPE_MEDIA_TYPE",
     "ENVELOPE_PART_TYPE",
+    "PURPOSE_INVITATION",
+    "EnvelopeHints",
+    "FreeFormPayload",
     "ShadownetEnvelope",
     "decode_envelope_part",
     "envelope_part",
+    "parse_free_form_payload",
 ]
+
+
+class EnvelopeHints(BaseModel):
+    """Recognized shape of the free-form payload's ``hints`` sub-object.
+
+    Per RFC-0006 §Invitation envelopes, receivers MUST NOT treat
+    ``introducer_contact`` as a quarantine bypass — it is a UI hint only.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    purpose: str | None = None
+    proposed_collaboration: str | None = Field(default=None, alias="proposed_collaboration")
+    introducer_contact: str | None = Field(
+        default=None, alias="introducer_contact", pattern=r"^did:"
+    )
+
+
+class FreeFormPayload(BaseModel):
+    """The recognized shape of payload when ``interaction`` is absent.
+
+    Extra fields are preserved verbatim — this is a view, not a strict schema.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    text: str | None = None
+    hints: EnvelopeHints | None = None
 
 
 class ShadownetEnvelope(BaseModel):
@@ -29,6 +64,11 @@ class ShadownetEnvelope(BaseModel):
     session_id: str | None = Field(default=None, alias="sessionId", pattern=r"^urn:")
     interaction: str = Field(pattern=r"^urn:")
     payload: dict[str, Any]
+
+
+def parse_free_form_payload(payload: dict[str, Any]) -> FreeFormPayload:
+    """Decode a free-form payload (used when the envelope has no interaction)."""
+    return FreeFormPayload.model_validate(payload)
 
 
 def envelope_part(envelope: ShadownetEnvelope) -> dict[str, Any]:

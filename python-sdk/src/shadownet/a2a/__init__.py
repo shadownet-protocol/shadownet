@@ -1,19 +1,30 @@
 from shadownet.a2a.envelope import (
     ENVELOPE_PART_TYPE,
+    PURPOSE_INVITATION,
+    EnvelopeHints,
+    FreeFormPayload,
     ShadownetEnvelope,
     decode_envelope_part,
     envelope_part,
+    parse_free_form_payload,
 )
 from shadownet.a2a.errors import (
     A2AError,
     FreshnessStaleError,
     LevelInsufficientError,
+    PeerDeclinedError,
     PeerOfflineError,
     PresentationInvalidError,
     PresentationRequiredError,
     RateLimitedError,
     RevokedError,
     UnknownIntentError,
+)
+from shadownet.a2a.routing import (
+    ROUTE_DROP,
+    ROUTE_INBOX,
+    ROUTE_QUARANTINE,
+    RoutingDecision,
 )
 from shadownet.a2a.server import HandshakeContext, issue_nonce, verify_handshake
 from shadownet.a2a.session import (
@@ -26,15 +37,23 @@ from shadownet.a2a.session import (
 __all__ = [
     "DEFAULT_SESSION_TOKEN_TTL",
     "ENVELOPE_PART_TYPE",
+    "PURPOSE_INVITATION",
+    "ROUTE_DROP",
+    "ROUTE_INBOX",
+    "ROUTE_QUARANTINE",
     "A2AError",
+    "EnvelopeHints",
+    "FreeFormPayload",
     "FreshnessStaleError",
     "HandshakeContext",
     "LevelInsufficientError",
+    "PeerDeclinedError",
     "PeerOfflineError",
     "PresentationInvalidError",
     "PresentationRequiredError",
     "RateLimitedError",
     "RevokedError",
+    "RoutingDecision",
     "SessionToken",
     "ShadownetEnvelope",
     "UnknownIntentError",
@@ -42,6 +61,7 @@ __all__ = [
     "envelope_part",
     "issue_nonce",
     "mint_session_token",
+    "parse_free_form_payload",
     "verify_handshake",
     "verify_session_token",
 ]

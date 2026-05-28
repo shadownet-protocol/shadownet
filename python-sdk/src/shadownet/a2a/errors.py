@@ -11,6 +11,7 @@ __all__ = [
     "A2AError",
     "FreshnessStaleError",
     "LevelInsufficientError",
+    "PeerDeclinedError",
     "PeerOfflineError",
     "PresentationInvalidError",
     "PresentationRequiredError",
@@ -84,3 +85,15 @@ class RateLimitedError(A2AError):
 class PeerOfflineError(A2AError):
     code = "peer_offline"
     http_status = 503
+
+
+class PeerDeclinedError(A2AError):
+    """The recipient reviewed a quarantined invitation and rejected it.
+
+    Per RFC-0006 §Sender behavior on quarantine, this surfaces on the task
+    transition after review; senders MUST NOT receive any further detail
+    beyond the code.
+    """
+
+    code = "peer_declined"
+    http_status = 403
