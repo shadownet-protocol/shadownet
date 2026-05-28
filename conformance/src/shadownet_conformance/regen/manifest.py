@@ -44,7 +44,15 @@ class SeedsFile(BaseModel):
     seeds: dict[str, Seed]
 
 
-FixtureKind = Literal["key", "credential", "freshness", "presentation", "sns_record", "status_list"]
+FixtureKind = Literal[
+    "key",
+    "credential",
+    "affiliation_credential",
+    "freshness",
+    "presentation",
+    "sns_record",
+    "status_list",
+]
 
 
 class FixtureEntry(BaseModel):

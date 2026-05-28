@@ -36,3 +36,28 @@ hex = "2020202020202020202020202020202020202020202020202020202020202020"
 # The in-process A2A test peer's identity (RFC-0006 handshakes against a
 # Sidecar-under-test).
 hex = "3030303030303030303030303030303030303030303030303030303030303030"
+
+# --- Enterprise + cost-containment amendment set (RFC-0003 §AffiliationCredential)
+
+[seeds.org_acme]
+# Canonical enterprise org. Issues AffiliationCredentials directly from its
+# did:web key (did:web:acme.example).
+hex = "4040404040404040404040404040404040404040404040404040404040404040"
+
+[seeds.sca_acme]
+# Org-controlled SCA listed in acme's shadownet:delegatedIssuers
+# (did:web:sca.acme.example). Exercises the delegated-issuer path.
+hex = "4141414141414141414141414141414141414141414141414141414141414141"
+
+[seeds.org_globex]
+# Cross-affiliation peer org used in routing-matrix tests where the sender
+# is from a different affiliation than the recipient.
+hex = "4242424242424242424242424242424242424242424242424242424242424242"
+
+[seeds.org_bad_actor]
+# Deny-listed org for the institutional-trust deny-path test.
+hex = "4343434343434343434343434343434343434343434343434343434343434343"
+
+[seeds.subject_employee]
+# An individual (did:key) employee subject of acme's AffiliationCredential.
+hex = "4444444444444444444444444444444444444444444444444444444444444444"

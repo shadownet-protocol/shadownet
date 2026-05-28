@@ -31,6 +31,7 @@ const (
 
 	typeVC               = "VerifiableCredential"
 	typeSubjectCred      = "ShadownetSubjectCredential"
+	typeAffiliationCred  = "ShadownetAffiliationCredential"
 	typeVP               = "VerifiablePresentation"
 	typeStatusListCred   = "BitstringStatusListCredential"
 	typeStatusList       = "BitstringStatusList"
@@ -72,6 +73,8 @@ func dispatch(kind string, spec map[string]any) ([]byte, error) {
 		return emitKey(spec)
 	case "credential":
 		return emitCredential(spec)
+	case "affiliation_credential":
+		return emitAffiliationCredential(spec)
 	case "freshness":
 		return emitFreshness(spec)
 	case "presentation":
@@ -282,6 +285,129 @@ func emitCredential(spec map[string]any) ([]byte, error) {
 				Level:       level,
 				SubjectType: subjectType,
 			},
+		},
+	}
+	if statusRaw, ok := spec["status"]; ok && statusRaw != nil {
+		statusMap, ok := statusRaw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("field \"status\" is not an object")
+		}
+		idx, err := mustString(statusMap, "status_list_index")
+		if err != nil {
+			return nil, err
+		}
+		url, err := mustString(statusMap, "status_list_credential")
+		if err != nil {
+			return nil, err
+		}
+		wire.VC.CredentialStatus = &vcStatus{
+			Type:                 typeStatusListEntry,
+			StatusListIndex:      idx,
+			StatusListCredential: url,
+		}
+	}
+
+	priv, _, err := keyFor(issuerSeedHex)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := crypto.SignJWT(priv, wire, crypto.SignerOptions{KeyID: issuerKid, Type: "vc+jwt"})
+	if err != nil {
+		return nil, err
+	}
+	return []byte(tok), nil
+}
+
+type affiliationWire struct {
+	Iss     string             `json:"iss"`
+	Sub     string             `json:"sub"`
+	Iat     int64              `json:"iat"`
+	Exp     int64              `json:"exp"`
+	Jti     string             `json:"jti"`
+	Version string             `json:"shadownet:v"`
+	VC      affiliationVCBody  `json:"vc"`
+}
+
+type affiliationVCBody struct {
+	Context           []string             `json:"@context"`
+	Type              []string             `json:"type"`
+	CredentialSubject affiliationSubject   `json:"credentialSubject"`
+	CredentialStatus  *vcStatus            `json:"credentialStatus,omitempty"`
+}
+
+type affiliationSubject struct {
+	ID          string   `json:"id"`
+	Affiliation string   `json:"affiliation"`
+	Role        string   `json:"role,omitempty"`
+	Groups      []string `json:"groups,omitempty"`
+}
+
+func emitAffiliationCredential(spec map[string]any) ([]byte, error) {
+	issuer, err := mustString(spec, "issuer")
+	if err != nil {
+		return nil, err
+	}
+	issuerKid, err := mustString(spec, "issuer_kid")
+	if err != nil {
+		return nil, err
+	}
+	issuerSeedHex, err := mustString(spec, "issuer_seed_hex")
+	if err != nil {
+		return nil, err
+	}
+	subject, err := mustString(spec, "subject")
+	if err != nil {
+		return nil, err
+	}
+	affiliation, err := mustString(spec, "affiliation")
+	if err != nil {
+		return nil, err
+	}
+	iat, err := mustInt64(spec, "iat")
+	if err != nil {
+		return nil, err
+	}
+	exp, err := mustInt64(spec, "exp")
+	if err != nil {
+		return nil, err
+	}
+	jti, err := mustString(spec, "jti")
+	if err != nil {
+		return nil, err
+	}
+
+	credSubject := affiliationSubject{
+		ID:          subject,
+		Affiliation: affiliation,
+	}
+	if roleRaw, ok := spec["role"]; ok && roleRaw != nil {
+		if s, ok := roleRaw.(string); ok && s != "" {
+			credSubject.Role = s
+		}
+	}
+	if groupsRaw, ok := spec["groups"]; ok && groupsRaw != nil {
+		if list, ok := groupsRaw.([]any); ok {
+			groups := make([]string, 0, len(list))
+			for _, g := range list {
+				if s, ok := g.(string); ok {
+					groups = append(groups, s)
+				}
+			}
+			credSubject.Groups = groups
+		}
+	}
+
+	wire := affiliationWire{
+		Iss:     issuer,
+		Sub:     subject,
+		Iat:     iat,
+		Exp:     exp,
+		Jti:     jti,
+		Version: "0.1",
+		VC: affiliationVCBody{
+			Context:           []string{contextW3CCredV2, contextShadownetV1},
+			Type:              []string{typeVC, typeAffiliationCred},
+			CredentialSubject: credSubject,
 		},
 	}
 	if statusRaw, ok := spec["status"]; ok && statusRaw != nil {

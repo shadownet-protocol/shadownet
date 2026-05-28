@@ -1,0 +1,15 @@
+{
+  "did": "did:key:z6MkghLt1e8m1fmANsdJJco3aCLV8Xnigr5UWwC3u5iZFPd3",
+  "private_jwk": {
+    "crv": "Ed25519",
+    "d": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI",
+    "kty": "OKP",
+    "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+  },
+  "public_jwk": {
+    "crv": "Ed25519",
+    "kty": "OKP",
+    "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+  },
+  "seed_hex": "4242424242424242424242424242424242424242424242424242424242424242"
+}

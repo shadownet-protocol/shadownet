@@ -255,3 +255,131 @@ endpoint        = "https://shadow.sh4dow.org/u/alice/a2a"
 subject_type    = "person"
 ttl             = 300
 iat             = 1759200000
+
+# ---------------------------------------------------------------------------
+# Enterprise + cost-containment: keys for org/SCA/employee identities.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "key_org_acme"
+kind = "key"
+out  = "keys/org_acme.json"
+[fixtures.spec]
+seed = "org_acme"
+
+[[fixtures]]
+id   = "key_sca_acme"
+kind = "key"
+out  = "keys/sca_acme.json"
+[fixtures.spec]
+seed = "sca_acme"
+
+[[fixtures]]
+id   = "key_org_globex"
+kind = "key"
+out  = "keys/org_globex.json"
+[fixtures.spec]
+seed = "org_globex"
+
+[[fixtures]]
+id   = "key_org_bad_actor"
+kind = "key"
+out  = "keys/org_bad_actor.json"
+[fixtures.spec]
+seed = "org_bad_actor"
+
+[[fixtures]]
+id   = "key_subject_employee"
+kind = "key"
+out  = "keys/subject_employee.json"
+[fixtures.spec]
+seed = "subject_employee"
+
+# ---------------------------------------------------------------------------
+# AffiliationCredentials (RFC-0003 §AffiliationCredential).
+#
+# Canonical: acme-issued, employee subject, 7-day lifetime, member role,
+# engineering group. Used as the happy-path fixture in predicate + sidecar
+# tests.
+# ---------------------------------------------------------------------------
+
+[[fixtures]]
+id   = "affiliation_acme_employee_direct"
+kind = "affiliation_credential"
+out  = "credentials/affiliation/acme_employee_direct.jwt"
+[fixtures.spec]
+issuer          = "did:web:acme.example"
+issuer_seed     = "org_acme"
+issuer_kid      = "did:web:acme.example#k1"
+subject_seed    = "subject_employee"   # subject DID derived from seed
+affiliation     = "did:web:acme.example"
+role            = "member"
+groups          = ["engineering", "platform-team"]
+iat             = 1756684800
+exp             = 1759276800           # +30 days
+jti             = "urn:uuid:aff00000-0000-4000-8000-000000000001"
+
+# Delegated SCA path: iss = sca.acme.example, listed in acme's
+# shadownet:delegatedIssuers. Verification chases the delegation lookup.
+[[fixtures]]
+id   = "affiliation_acme_employee_delegated"
+kind = "affiliation_credential"
+out  = "credentials/affiliation/acme_employee_delegated.jwt"
+[fixtures.spec]
+issuer          = "did:web:sca.acme.example"
+issuer_seed     = "sca_acme"
+issuer_kid      = "did:web:sca.acme.example#k1"
+subject_seed    = "subject_employee"
+affiliation     = "did:web:acme.example"
+role            = "admin"
+iat             = 1756684800
+exp             = 1759276800
+jti             = "urn:uuid:aff00000-0000-4000-8000-000000000002"
+
+# Expired: exp 1 hour after iat, the test fixes "now" past exp.
+[[fixtures]]
+id   = "affiliation_acme_employee_expired"
+kind = "affiliation_credential"
+out  = "credentials/affiliation/acme_employee_expired.jwt"
+[fixtures.spec]
+issuer          = "did:web:acme.example"
+issuer_seed     = "org_acme"
+issuer_kid      = "did:web:acme.example#k1"
+subject_seed    = "subject_employee"
+affiliation     = "did:web:acme.example"
+iat             = 1756684800
+exp             = 1756688400           # +1h
+jti             = "urn:uuid:aff00000-0000-4000-8000-000000000003"
+
+# Cross-affiliation: same employee subject, but with a globex affiliation
+# (e.g. a contractor with two simultaneous affiliations). Used in
+# institutional-trust tests where the verifier is acme.
+[[fixtures]]
+id   = "affiliation_globex_employee"
+kind = "affiliation_credential"
+out  = "credentials/affiliation/globex_employee.jwt"
+[fixtures.spec]
+issuer          = "did:web:globex.example"
+issuer_seed     = "org_globex"
+issuer_kid      = "did:web:globex.example#k1"
+subject_seed    = "subject_employee"
+affiliation     = "did:web:globex.example"
+iat             = 1756684800
+exp             = 1759276800
+jti             = "urn:uuid:aff00000-0000-4000-8000-000000000004"
+
+# Deny-listed org: institutional-trust deny rejects regardless of
+# domain-control. Used in institutional-trust deny-path tests.
+[[fixtures]]
+id   = "affiliation_bad_actor_employee"
+kind = "affiliation_credential"
+out  = "credentials/affiliation/bad_actor_employee.jwt"
+[fixtures.spec]
+issuer          = "did:web:bad-actor.example"
+issuer_seed     = "org_bad_actor"
+issuer_kid      = "did:web:bad-actor.example#k1"
+subject_seed    = "subject_employee"
+affiliation     = "did:web:bad-actor.example"
+iat             = 1756684800
+exp             = 1759276800
+jti             = "urn:uuid:aff00000-0000-4000-8000-000000000005"
