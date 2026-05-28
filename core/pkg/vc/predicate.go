@@ -16,11 +16,14 @@ const MaxPredicateDepth = 4
 var ErrPredicateTooDeep = errors.New("vc: predicate exceeds maximum depth")
 
 // Predicate is the recursive expression from RFC-0004 §Required-level
-// predicates. Exactly one of the fields is set on a valid predicate.
+// predicates. Exactly one of the leaf/operator fields is set on a valid
+// predicate; the Affiliation leaf evaluates against the verified
+// AffiliationCredentials and is satisfied when at least one matches.
 type Predicate struct {
 	Level       string       `json:"level,omitempty"`
 	Issuer      string       `json:"issuer,omitempty"`
 	SubjectType string       `json:"subjectType,omitempty"`
+	Affiliation string       `json:"affiliation,omitempty"`
 	All         []*Predicate `json:"all,omitempty"`
 	Any         []*Predicate `json:"any,omitempty"`
 	Not         *Predicate   `json:"not,omitempty"`
@@ -50,6 +53,9 @@ func (p *Predicate) validate(depth int) error {
 		set++
 	}
 	if p.SubjectType != "" {
+		set++
+	}
+	if p.Affiliation != "" {
 		set++
 	}
 	if p.All != nil {
@@ -95,47 +101,60 @@ func (p *Predicate) validate(depth int) error {
 	return nil
 }
 
-// Match evaluates p against a set of validated credentials per RFC-0004.
-// Each leaf is satisfied if at least one credential matches.
-func (p *Predicate) Match(creds []*SubjectCredential) bool {
+// Match evaluates p against a set of validated SubjectCredentials and
+// AffiliationCredentials per RFC-0004. Each leaf is satisfied if at least
+// one credential of the relevant kind matches.
+func (p *Predicate) Match(subjects []*SubjectCredential, affiliations []*AffiliationCredential) bool {
 	switch {
 	case p.Level != "":
-		for _, c := range creds {
+		for _, c := range subjects {
 			if c.Level == p.Level {
 				return true
 			}
 		}
 		return false
 	case p.Issuer != "":
-		for _, c := range creds {
+		for _, c := range subjects {
+			if c.Issuer == p.Issuer {
+				return true
+			}
+		}
+		for _, c := range affiliations {
 			if c.Issuer == p.Issuer {
 				return true
 			}
 		}
 		return false
 	case p.SubjectType != "":
-		for _, c := range creds {
+		for _, c := range subjects {
 			if string(c.SubjectType) == p.SubjectType {
+				return true
+			}
+		}
+		return false
+	case p.Affiliation != "":
+		for _, c := range affiliations {
+			if c.Affiliation == p.Affiliation {
 				return true
 			}
 		}
 		return false
 	case p.All != nil:
 		for _, child := range p.All {
-			if !child.Match(creds) {
+			if !child.Match(subjects, affiliations) {
 				return false
 			}
 		}
 		return true
 	case p.Any != nil:
 		for _, child := range p.Any {
-			if child.Match(creds) {
+			if child.Match(subjects, affiliations) {
 				return true
 			}
 		}
 		return false
 	case p.Not != nil:
-		return !p.Not.Match(creds)
+		return !p.Not.Match(subjects, affiliations)
 	}
 	return false
 }

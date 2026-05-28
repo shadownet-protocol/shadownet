@@ -30,7 +30,7 @@ func TestPredicateLeafs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParsePredicate: %v", err)
 			}
-			if got := p.Match(creds); got != tc.want {
+			if got := p.Match(creds, nil); got != tc.want {
 				t.Fatalf("Match = %v, want %v", got, tc.want)
 			}
 		})
@@ -46,7 +46,7 @@ func TestPredicateAllAnyNot(t *testing.T) {
 		{"level":"urn:shadownet:level:L2"},
 		{"issuer":"did:web:sca.example"}
 	]}`)
-	if !all.Match(creds) {
+	if !all.Match(creds, nil) {
 		t.Fatal("all should match")
 	}
 
@@ -54,12 +54,12 @@ func TestPredicateAllAnyNot(t *testing.T) {
 		{"level":"urn:shadownet:level:L1"},
 		{"level":"urn:shadownet:level:L2"}
 	]}`)
-	if !any.Match(creds) {
+	if !any.Match(creds, nil) {
 		t.Fatal("any should match")
 	}
 
 	not := mustParsePredicate(t, `{"not":{"level":"urn:shadownet:level:L3"}}`)
-	if !not.Match(creds) {
+	if !not.Match(creds, nil) {
 		t.Fatal("not should match")
 	}
 }
