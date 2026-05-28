@@ -116,8 +116,8 @@ func TestVerifierHappyPathWithinWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VerifyPresentation: %v", err)
 	}
-	if len(out.Credentials) != 1 || out.Credentials[0].Credential.Level != LevelL2 {
-		t.Fatalf("unexpected credentials: %+v", out.Credentials)
+	if len(out.SubjectCredentials) != 1 || out.SubjectCredentials[0].Credential.Level != LevelL2 {
+		t.Fatalf("unexpected credentials: %+v", out.SubjectCredentials)
 	}
 
 	if err := out.EvaluatePredicate(mustParsePredicate(t, `{"level":"urn:shadownet:level:L2"}`)); err != nil {
@@ -161,7 +161,7 @@ func TestVerifierFreshnessRequiredAfterWindow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("VerifyPresentation: %v", err)
 		}
-		if out.Credentials[0].Freshness == nil {
+		if out.SubjectCredentials[0].Freshness == nil {
 			t.Fatalf("expected attached freshness proof")
 		}
 	}
@@ -189,8 +189,8 @@ func TestVerifierUntrustedIssuerSilentlyFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VerifyPresentation: %v", err)
 	}
-	if len(out.Credentials) != 0 {
-		t.Fatalf("untrusted credentials should be filtered, got %d", len(out.Credentials))
+	if len(out.SubjectCredentials) != 0 {
+		t.Fatalf("untrusted credentials should be filtered, got %d", len(out.SubjectCredentials))
 	}
 	err = out.EvaluatePredicate(mustParsePredicate(t, `{"level":"urn:shadownet:level:L2"}`))
 	var verr *Error
