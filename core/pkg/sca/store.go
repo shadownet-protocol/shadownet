@@ -32,22 +32,45 @@ type SessionStore interface {
 	Fail(ctx context.Context, id string) error
 }
 
+// CredentialKind discriminates SCA-issued credential families.
+type CredentialKind string
+
+// CredentialKind values.
+const (
+	KindSubject     CredentialKind = "subject"
+	KindAffiliation CredentialKind = "affiliation"
+)
+
 // IssuedCredential is the SCA-side record kept for every credential issued.
 //
 // The JWT field carries the wire form so /freshness can re-attest a known
 // jti without re-issuing the credential, and so audit log dumps can produce
-// the original artifact.
+// the original artifact. Level/SubjectType apply when Kind is Subject;
+// Affiliation/Role/Groups apply when Kind is Affiliation. Kind defaults to
+// Subject when empty to keep legacy stores readable.
 type IssuedCredential struct {
 	JTI             string
 	Issuer          string
 	Subject         string
+	Kind            CredentialKind
 	Level           string
 	SubjectType     vc.SubjectType
+	Affiliation     string
+	Role            string
+	Groups          []string
 	JWT             string
 	StatusListID    string
 	StatusListIndex uint64
 	IssuedAt        time.Time
 	Expires         time.Time
+}
+
+// EffectiveKind returns Kind, defaulting to KindSubject when empty.
+func (c IssuedCredential) EffectiveKind() CredentialKind {
+	if c.Kind == "" {
+		return KindSubject
+	}
+	return c.Kind
 }
 
 // IssuanceStore records and retrieves credentials by jti.

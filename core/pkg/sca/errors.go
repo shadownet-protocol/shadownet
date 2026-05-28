@@ -22,6 +22,8 @@ const (
 	CodeRevoked         = "revoked"
 	CodeNotHolder       = "not_holder"
 	CodeUnauthorized    = "unauthorized"
+	CodeModeNotEnabled  = "mode_not_enabled"
+	CodeAffiliationOrg  = "affiliation_org_mismatch"
 )
 
 // Sentinel store errors. Implementations of the store interfaces return these

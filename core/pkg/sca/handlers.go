@@ -99,8 +99,10 @@ func (i *Issuer) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /proof/start", i.authenticated(i.serveProofStart))
 	mux.Handle("POST /proof/status", i.authenticated(i.serveProofStatus))
 	mux.Handle("POST /issuance", i.authenticated(i.serveIssuance))
+	mux.Handle("POST /issuance/affiliation", i.authenticated(i.serveAffiliationIssuance))
 	mux.Handle("POST /freshness", i.authenticated(i.serveFreshness))
 	mux.Handle("GET /status/{listID}", http.HandlerFunc(i.serveStatusList))
+	mux.Handle("GET /status/affiliation/{listID}", http.HandlerFunc(i.serveAffiliationStatusList))
 
 	// Operational probes: /healthz aliases /livez for tools that only know
 	// one path. /readyz invokes ReadyCheck (e.g. a DB ping) and reports 503
@@ -220,6 +222,36 @@ func (i *Issuer) serveIssuance(w http.ResponseWriter, r *http.Request, auth *Sub
 		return
 	}
 	writeJSON(w, resp)
+}
+
+func (i *Issuer) serveAffiliationIssuance(w http.ResponseWriter, r *http.Request, auth *SubjectAuth) {
+	var req AffiliationIssuanceRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	resp, err := i.IssueAffiliationCredential(r.Context(), auth, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, resp)
+}
+
+func (i *Issuer) serveAffiliationStatusList(w http.ResponseWriter, r *http.Request) {
+	listID := r.PathValue("listID")
+	if listID == "" {
+		writeError(w, New(http.StatusBadRequest, CodeRevoked, "missing listID"))
+		return
+	}
+	jwt, maxAge, err := i.AffiliationStatusList(r.Context(), listID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/jwt")
+	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", int(maxAge.Seconds())))
+	_, _ = io.WriteString(w, jwt)
 }
 
 func (i *Issuer) serveFreshness(w http.ResponseWriter, r *http.Request, auth *SubjectAuth) {
