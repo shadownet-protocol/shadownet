@@ -32,6 +32,21 @@ MARKERS: Final[tuple[tuple[str, str], ...]] = (
         "round_trip(role)",
         "Test runs only when both --target <role> and --peer-target <role> are configured.",
     ),
+    (
+        "affiliation",
+        "Test asserts behavior of the AffiliationCredential surface (RFC-0003 "
+        "§AffiliationCredential, RFC-0004 §Institutional trust).",
+    ),
+    (
+        "quarantine",
+        "Test asserts behavior of the routing-and-quarantine surface "
+        "(RFC-0006 §Routing and quarantine, RFC-0007 §social_quarantine_*).",
+    ),
+    (
+        "cost_guarantee",
+        "Test asserts that unsolicited inbound never reaches the host agent's "
+        "reasoning loop (RFC-0006 §Cost guarantee, RFC-0007 §Cost guarantee).",
+    ),
 )
 
 
