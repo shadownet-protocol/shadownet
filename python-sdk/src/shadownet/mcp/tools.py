@@ -1,19 +1,43 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 # RFC-0007 §Required tools — input/output models for every tool.
 
+# RFC-0007 §social_grant grant verbs. `coordinate` was added with the
+# enterprise + cost-containment amendment set; it implies `messaging` and
+# gates the (future) coordination flow.
+Grant = Literal["messaging", "coordinate"]
+
+# RFC-0007 §Events: recognized event names emitted on the long-poll and MCP
+# notification paths. host agents MUST ignore unrecognized event types per
+# RFC-0007, so the InboxWaitEvent.event field is intentionally still a plain
+# str — these constants are documentation, not validation.
+EVENT_TASK_UPDATE = "task.update"
+EVENT_FRESHNESS_EXPIRED = "freshness.expired"
+EVENT_PRESENTATION_FAILED = "presentation.failed"
+EVENT_QUARANTINE_PENDING = "quarantine.pending"
+
+# RFC-0007 §Contact profile field cap.
+CONTACT_PROFILE_NOTES_MAX_BYTES = 4096
+
 __all__ = [
+    "CONTACT_PROFILE_NOTES_MAX_BYTES",
+    "EVENT_FRESHNESS_EXPIRED",
+    "EVENT_PRESENTATION_FAILED",
+    "EVENT_QUARANTINE_PENDING",
+    "EVENT_TASK_UPDATE",
     "AddContactInput",
     "AddContactOutput",
     "AuditOutput",
     "Contact",
     "ContactDetail",
+    "ContactProfile",
     "ContactsInput",
     "ContactsOutput",
+    "Grant",
     "GrantInput",
     "GrantOutput",
     "IdentityOutput",
@@ -25,13 +49,39 @@ __all__ = [
     "InboxWaitOutput",
     "PresentInput",
     "PresentOutput",
+    "QuarantineItem",
+    "QuarantineListInput",
+    "QuarantineListOutput",
+    "QuarantineReviewInput",
+    "QuarantineReviewOutput",
     "ResolveInput",
     "ResolveOutput",
     "RespondInput",
     "RespondOutput",
     "SendInput",
     "SendOutput",
+    "SetContactProfileInput",
+    "SetContactProfileOutput",
 ]
+
+
+# --- ContactProfile (local-only) ---------------------------------------------
+
+
+class ContactProfile(BaseModel):
+    """Local-only metadata the Subject attaches to a contact.
+
+    Per RFC-0007 §Contact profile, this MUST NOT appear in any over-the-wire
+    artifact. The Sidecar persists it and surfaces it back to the host agent
+    on inbound/outbound involving the contact.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    notes: str | None = Field(default=None, max_length=CONTACT_PROFILE_NOTES_MAX_BYTES)
+    priority: Literal["low", "normal", "high"] = "normal"
+    collaborate_on: list[str] = Field(default_factory=list, alias="collaborateOn")
+    expires_at: str | None = Field(default=None, alias="expiresAt")
 
 
 # --- social_contacts ---------------------------------------------------------
@@ -43,7 +93,7 @@ class ContactsInput(BaseModel):
 
 
 class Contact(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     id: str
     shadowname: str
@@ -51,6 +101,7 @@ class Contact(BaseModel):
     display_name: str | None = Field(default=None, alias="displayName")
     level: str | None = None
     last_seen: int | None = Field(default=None, alias="lastSeen")
+    profile: ContactProfile | None = None
 
 
 class ContactsOutput(BaseModel):
@@ -69,8 +120,9 @@ class ContactDetail(BaseModel):
     endpoint: str
     public_key: dict[str, str] = Field(alias="publicKey")
     credentials: list[str] = Field(default_factory=list)
-    grants: list[str] = Field(default_factory=list)
+    grants: list[Grant] = Field(default_factory=list)
     notes: str | None = None
+    profile: ContactProfile | None = None
 
 
 # --- social_resolve ----------------------------------------------------------
@@ -99,7 +151,8 @@ class AddContactInput(BaseModel):
 
     shadowname: str
     display_name: str | None = Field(default=None, alias="displayName")
-    grants: list[str] = Field(default_factory=list)
+    grants: list[Grant] = Field(default_factory=list)
+    profile: ContactProfile | None = None
 
 
 class AddContactOutput(BaseModel):
@@ -220,7 +273,7 @@ class GrantInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     contact_id: str = Field(alias="contactId")
-    grant: str
+    grant: Grant
     allowed: bool
 
 
@@ -270,3 +323,72 @@ class AuditOutput(BaseModel):
 
 
 __all__.append("AuditEntry")
+
+
+# --- social_quarantine_list (RFC-0007 §social_quarantine_list) --------------
+
+
+class QuarantineListInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    since: int | None = Field(default=None, ge=0)
+    limit: int | None = Field(default=None, ge=1, le=1000)
+
+
+class QuarantineItem(BaseModel):
+    """An inbound A2A request held in quarantine.
+
+    Sender-supplied fields only: ``summary`` MUST equal the sender's
+    ``payload.text`` byte-for-byte. Per RFC-0006 §Cost guarantee, no field on
+    this model is derived from receiver-side LLM processing.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    quarantine_id: str = Field(alias="quarantineId")
+    sender_shadowname: str = Field(alias="senderShadowname")
+    sender_did: str = Field(alias="senderDid")
+    purpose: str | None = None
+    summary: str
+    affiliation: str | None = None
+    introducer: str | None = None
+    flags: list[str] = Field(default_factory=list)
+    received_at: int = Field(alias="receivedAt", ge=0)
+
+
+class QuarantineListOutput(BaseModel):
+    items: list[QuarantineItem]
+
+
+# --- social_quarantine_review -----------------------------------------------
+
+
+class QuarantineReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    quarantine_id: str = Field(alias="quarantineId")
+    decision: Literal["accept", "reject", "reject_and_block"]
+    display_name: str | None = Field(default=None, alias="displayName")
+    grants: list[Grant] = Field(default_factory=list)
+    profile: ContactProfile | None = None
+
+
+class QuarantineReviewOutput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    contact_id: str | None = Field(default=None, alias="contactId")
+    ok: bool = True
+
+
+# --- social_set_contact_profile ---------------------------------------------
+
+
+class SetContactProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    contact_id: str = Field(alias="contactId")
+    profile: ContactProfile
+
+
+class SetContactProfileOutput(BaseModel):
+    ok: bool = True

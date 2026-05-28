@@ -19,12 +19,18 @@ if TYPE_CHECKING:
         InboxWaitOutput,
         PresentInput,
         PresentOutput,
+        QuarantineListInput,
+        QuarantineListOutput,
+        QuarantineReviewInput,
+        QuarantineReviewOutput,
         ResolveInput,
         ResolveOutput,
         RespondInput,
         RespondOutput,
         SendInput,
         SendOutput,
+        SetContactProfileInput,
+        SetContactProfileOutput,
     )
 
 # RFC-0007 — the contract a Sidecar implementation fulfills so the registration
@@ -59,6 +65,20 @@ class Sidecar(Protocol):
     # amendment expose this; ``register_shadownet_tools`` gates registration
     # on ``include_optional={"inbox_wait"}``.
     async def social_inbox_wait(self, input: InboxWaitInput) -> InboxWaitOutput: ...
+
+    # RFC-0007 §social_quarantine_list / §social_quarantine_review /
+    # §social_set_contact_profile — landed with the enterprise +
+    # cost-containment amendment set. social_quarantine_list is a read tool
+    # (mcp:tools.read); the others are write tools (mcp:tools.write).
+    async def social_quarantine_list(self, input: QuarantineListInput) -> QuarantineListOutput: ...
+
+    async def social_quarantine_review(
+        self, input: QuarantineReviewInput
+    ) -> QuarantineReviewOutput: ...
+
+    async def social_set_contact_profile(
+        self, input: SetContactProfileInput
+    ) -> SetContactProfileOutput: ...
 
     # Optional surfaces — implementations MAY provide these if they declare
     # the corresponding key in `include_optional` on registration.
