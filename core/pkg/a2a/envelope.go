@@ -30,6 +30,44 @@ type Envelope struct {
 	Payload     json.RawMessage `json:"payload"`
 }
 
+// Hints is the recognized shape of the `hints` sub-object inside a
+// free-form payload, per RFC-0006 §Invitation envelopes. Senders MAY attach
+// these; receivers route on them but MUST NOT treat IntroducerContact as a
+// quarantine bypass.
+type Hints struct {
+	Purpose               string `json:"purpose,omitempty"`
+	ProposedCollaboration string `json:"proposed_collaboration,omitempty"`
+	IntroducerContact     string `json:"introducer_contact,omitempty"`
+}
+
+// PurposeInvitation is the recognized v0.1 value of Hints.Purpose marking
+// the inbound as a first-contact invitation (RFC-0006 §Invitation envelopes).
+const PurposeInvitation = "invitation"
+
+// FreeFormPayload is the recognized shape of payload when Interaction is
+// absent: an optional natural-language Text plus optional Hints. Other
+// payload fields are permitted and preserved by the wire (this struct is a
+// view, not a strict schema).
+type FreeFormPayload struct {
+	Text  string `json:"text,omitempty"`
+	Hints *Hints `json:"hints,omitempty"`
+}
+
+// ParseFreeForm decodes the envelope's Payload as a FreeFormPayload view.
+// Returns the zero value when Payload is empty. Caller-defined extra fields
+// in the payload are dropped from the returned view but remain in the raw
+// payload bytes.
+func (e *Envelope) ParseFreeForm() (FreeFormPayload, error) {
+	if len(e.Payload) == 0 {
+		return FreeFormPayload{}, nil
+	}
+	var p FreeFormPayload
+	if err := json.Unmarshal(e.Payload, &p); err != nil {
+		return FreeFormPayload{}, fmt.Errorf("a2a: parse free-form payload: %w", err)
+	}
+	return p, nil
+}
+
 // Validate checks Envelope shape per RFC-0006.
 func (e *Envelope) Validate() error {
 	if e.Version != "0.1" {

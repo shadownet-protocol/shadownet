@@ -71,8 +71,7 @@ func TestA2AHandshakeAndMessageFlow(t *testing.T) {
 		Now:             func() time.Time { return now.Add(time.Minute) },
 	}
 
-	handler := func(ctx context.Context, c a2a.InboundCaller, msg a2a.Message) (a2a.Task, error) {
-		// Simple echo: persist a Task in submitted state.
+	handler := func(ctx context.Context, c a2a.InboundCaller, msg a2a.Message) (a2a.RoutingDecision, a2a.Task, error) {
 		task := a2a.Task{
 			ID: "task-" + msg.MessageID,
 			Status: a2a.TaskStatus{
@@ -82,7 +81,7 @@ func TestA2AHandshakeAndMessageFlow(t *testing.T) {
 			History: []a2a.Message{msg},
 		}
 		_ = tasks.Put(ctx, task)
-		return task, nil
+		return a2a.RouteInbox, task, nil
 	}
 
 	server := &a2a.Server{
@@ -175,8 +174,8 @@ func TestA2APresentationRequiredOnFirstRequestWithoutHeader(t *testing.T) {
 			TrustStore: vc.NewMemoryTrustStore([]vc.TrustEntry{{Issuer: scaDID, AcceptedLevels: []string{vc.LevelL1}}}),
 		},
 		Tasks: a2a.NewMemoryTaskStore(),
-		Handler: func(_ context.Context, _ a2a.InboundCaller, _ a2a.Message) (a2a.Task, error) {
-			return a2a.Task{ID: "x"}, nil
+		Handler: func(_ context.Context, _ a2a.InboundCaller, _ a2a.Message) (a2a.RoutingDecision, a2a.Task, error) {
+			return a2a.RouteInbox, a2a.Task{ID: "x"}, nil
 		},
 		Card: a2a.CardOptions{Name: "callee", URL: "https://x"},
 	}
@@ -208,8 +207,10 @@ func TestA2AAgentCard(t *testing.T) {
 		DIDResolver: did.NewKeyResolver(),
 		Verifier:    &vc.Verifier{Resolver: did.NewKeyResolver(), TrustStore: vc.NewMemoryTrustStore(nil)},
 		Tasks:       a2a.NewMemoryTaskStore(),
-		Handler:     func(_ context.Context, _ a2a.InboundCaller, _ a2a.Message) (a2a.Task, error) { return a2a.Task{}, nil },
-		Card:        a2a.CardOptions{Name: "Bob's Shadow", URL: "https://bob.example/a2a"},
+		Handler: func(_ context.Context, _ a2a.InboundCaller, _ a2a.Message) (a2a.RoutingDecision, a2a.Task, error) {
+			return a2a.RouteInbox, a2a.Task{}, nil
+		},
+		Card: a2a.CardOptions{Name: "Bob's Shadow", URL: "https://bob.example/a2a"},
 	}
 	if err := server.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)

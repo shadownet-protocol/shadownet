@@ -18,6 +18,7 @@ const (
 	CodeUnknownIntent        = "unknown_intent"
 	CodeRateLimited          = "rate_limited"
 	CodePeerOffline          = "peer_offline"
+	CodePeerDeclined         = "peer_declined"
 )
 
 // codeToStatus is the canonical status mapping per RFC-0006.
@@ -30,6 +31,7 @@ var codeToStatus = map[string]int{
 	CodeUnknownIntent:        http.StatusNotFound,
 	CodeRateLimited:          http.StatusTooManyRequests,
 	CodePeerOffline:          http.StatusServiceUnavailable,
+	CodePeerDeclined:         http.StatusForbidden,
 }
 
 // Error is an RFC-0006 error: a stable code, a human-readable detail, and
