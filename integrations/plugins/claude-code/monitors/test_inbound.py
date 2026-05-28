@@ -193,6 +193,32 @@ def test_emit_claude_notification_handles_unicode(
     assert payload["summary"] == "héllo 你好"
 
 
+def test_emit_claude_quarantine_notification_is_distinct_type(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inbound._emit_claude_quarantine_notification(
+        "evt-q-1", "stranger@x", "invitation", "lorem ipsum"
+    )
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    assert payload["type"] == "shadownet.quarantine.pending"
+    assert payload["event_id"] == "evt-q-1"
+    assert payload["from"] == "stranger@x"
+    assert payload["purpose"] == "invitation"
+    assert payload["summary"] == "lorem ipsum"
+
+
+def test_emit_claude_quarantine_notification_truncates_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inbound._emit_claude_quarantine_notification(
+        "evt-q-2", "stranger@x", None, "x" * 500
+    )
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert len(payload["summary"]) == 200
+    assert payload["summary"].endswith("…")
+
+
 def test_applescript_escape_handles_quotes_and_backslashes() -> None:
     out = inbound._escape_for_applescript('say "hi" \\path')
     assert out == 'say \\"hi\\" \\\\path'
