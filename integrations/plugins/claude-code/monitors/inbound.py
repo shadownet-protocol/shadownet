@@ -153,19 +153,74 @@ def _emit_claude_notification(event_id: str, sender: str, body: str) -> None:
     print(line, flush=True)
 
 
+def _emit_claude_quarantine_notification(
+    event_id: str,
+    sender: str,
+    purpose: str | None,
+    summary: str,
+) -> None:
+    """Surface a quarantine.pending event to Claude.
+
+    Per RFC-0006 §Cost guarantee the host agent MUST NOT auto-process
+    quarantine — the notification deliberately omits any actionable
+    instruction. Claude sees that an invitation exists; the user drives
+    /shadownet-invitations to triage.
+
+    The summary field is the sender-supplied payload text, truncated for
+    display. It is NOT receiver-derived; quarantine.pending events from
+    a conformant Sidecar carry only sender-provided strings.
+    """
+    line = json.dumps(
+        {
+            "type": "shadownet.quarantine.pending",
+            "event_id": event_id,
+            "from": sender,
+            "purpose": purpose,
+            "summary": _truncate(summary, 200),
+        },
+        ensure_ascii=False,
+    )
+    print(line, flush=True)
+
+
+def _fire_os_quarantine_notification(sender: str, purpose: str | None) -> None:
+    """Best-effort OS-level toast for a pending invitation.
+
+    The body is the sender Shadowname + purpose label, NOT the
+    sender-supplied free-text — quarantine summaries are surfaced inside
+    Claude (and in /shadownet-invitations) where the user can decide
+    what to do with them.
+    """
+    title = "Shadownet — pending invitation"
+    label = purpose or "from unknown sender"
+    body = f"{sender} ({label}) — review in /shadownet-invitations"
+    _fire_os_notification(title, body, override_title=False)
+
+
 def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
 
 
-def _fire_os_notification(sender: str, body: str) -> None:
+def _fire_os_notification(
+    sender_or_title: str,
+    body: str,
+    *,
+    override_title: bool = True,
+) -> None:
     """Best-effort cross-platform OS-level toast.
 
     Failures are logged at WARNING but never crash the monitor — the
     Claude-side notification is the canonical channel.
+
+    When ``override_title`` is False, ``sender_or_title`` is used as the
+    full title (the quarantine path supplies its own); otherwise the
+    legacy inbox-message format is used.
     """
-    title = f"Shadownet — message from {sender}"
+    title = (
+        f"Shadownet — message from {sender_or_title}" if override_title else sender_or_title
+    )
     summary = _truncate(body, 200)
     try:
         if sys.platform == "darwin" and shutil.which("osascript"):
@@ -229,15 +284,30 @@ async def _run_monitor(token: str, base_url: str, timeout: int, os_notif: bool) 
     ) as session:
 
         async def handle(event: Any) -> None:
-            if event.event != "inbox.message":
-                _log.debug("ignoring %s event", event.event)
+            if event.event == "inbox.message":
+                data = event.data or {}
+                sender = data.get("from") or data.get("contactId") or "unknown"
+                body = data.get("body") or ""
+                _emit_claude_notification(event.event_id, sender, body)
+                if os_notif:
+                    _fire_os_notification(sender, body)
                 return
-            data = event.data or {}
-            sender = data.get("from") or data.get("contactId") or "unknown"
-            body = data.get("body") or ""
-            _emit_claude_notification(event.event_id, sender, body)
-            if os_notif:
-                _fire_os_notification(sender, body)
+            if event.event == "quarantine.pending":
+                data = event.data or {}
+                sender = (
+                    data.get("senderShadowname")
+                    or data.get("senderDid")
+                    or "unknown sender"
+                )
+                purpose = data.get("purpose")
+                summary = data.get("summary") or ""
+                _emit_claude_quarantine_notification(
+                    event.event_id, sender, purpose, summary
+                )
+                if os_notif:
+                    _fire_os_quarantine_notification(sender, purpose)
+                return
+            _log.debug("ignoring %s event", event.event)
 
         await session.inbox_loop(handle, timeout_seconds=timeout)
     return 0
