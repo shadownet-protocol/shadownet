@@ -13,7 +13,7 @@ import (
 
 // VerificationMethod is one Ed25519 key embedded in a DID document.
 //
-// Per RFC-0002 §Forbidden, only Ed25519 keys are recognized at v0.1; any
+// Per RFC-0002 §Permitted, only Ed25519 keys are recognized at v0.1; any
 // other verification-method type is filtered out at parse time.
 type VerificationMethod struct {
 	ID         string            // fully-qualified DID URL, e.g. "did:web:example.com#k1"
@@ -23,12 +23,27 @@ type VerificationMethod struct {
 
 // Document is the resolved Shadownet view of a DID document.
 //
-// Only the four fields RFC-0002 §Forbidden permits are represented.
+// Only the fields RFC-0002 §Permitted lists are represented. DelegatedIssuers
+// is the one organization-only extension; it is populated only when ID is a
+// did:web (orgs), and silently dropped on did:key documents per the RFC.
 type Document struct {
 	ID                 string
 	VerificationMethod []VerificationMethod
 	Authentication     []string // verification-method IDs
 	AssertionMethod    []string // verification-method IDs
+	DelegatedIssuers   []string // shadownet:delegatedIssuers; orgs only
+}
+
+// IsDelegatedIssuer reports whether issuerDID is listed in DelegatedIssuers.
+// Used by AffiliationCredential verifiers to confirm that an issuer DID is
+// authorized to sign on behalf of this organization DID.
+func (d *Document) IsDelegatedIssuer(issuerDID string) bool {
+	for _, di := range d.DelegatedIssuers {
+		if di == issuerDID {
+			return true
+		}
+	}
+	return false
 }
 
 // FindVerificationMethod returns the verification method whose ID matches
@@ -51,6 +66,7 @@ type rawDocument struct {
 	VerificationMethod []rawVerificationMethod `json:"verificationMethod,omitempty"`
 	Authentication     []verificationMethodRef `json:"authentication,omitempty"`
 	AssertionMethod    []verificationMethodRef `json:"assertionMethod,omitempty"`
+	DelegatedIssuers   []string                `json:"shadownet:delegatedIssuers,omitempty"`
 }
 
 type rawVerificationMethod struct {
@@ -111,6 +127,9 @@ func parseDocument(raw []byte) (*Document, error) {
 		if r.Ref != "" {
 			doc.AssertionMethod = append(doc.AssertionMethod, r.Ref)
 		}
+	}
+	if len(rd.DelegatedIssuers) > 0 && Method(rd.ID) == MethodWeb {
+		doc.DelegatedIssuers = append([]string(nil), rd.DelegatedIssuers...)
 	}
 	return doc, nil
 }
