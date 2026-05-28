@@ -34,6 +34,36 @@ const ResolveInput = Type.Object({
   }),
 });
 
+const ContactProfileInput = Type.Object(
+  {
+    notes: Type.Optional(
+      Type.String({
+        description:
+          "Free-form notes the Subject keeps next to this contact (≤ 4 KiB). Local-only per RFC-0007 §Contact profile.",
+        maxLength: 4096,
+      }),
+    ),
+    priority: Type.Optional(
+      Type.Union(
+        [Type.Literal("low"), Type.Literal("normal"), Type.Literal("high")],
+        { description: "Routing hint for the host agent. Default 'normal'." },
+      ),
+    ),
+    collaborate_on: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Topics or projects the relationship is scoped to.",
+      }),
+    ),
+    expires_at: Type.Optional(
+      Type.String({
+        description: "RFC 3339 auto-archive timestamp.",
+        format: "date-time",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
 const AddContactInput = Type.Object({
   shadowname: Type.String({
     description: "Shadowname to add (will be resolved if not yet known).",
@@ -43,9 +73,11 @@ const AddContactInput = Type.Object({
   ),
   grants: Type.Optional(
     Type.Array(Type.String(), {
-      description: "Initial grants to apply to this contact.",
+      description:
+        "Initial grants to apply to this contact. RFC-0007 v0.1 verbs: 'messaging', 'coordinate'.",
     }),
   ),
+  profile: Type.Optional(ContactProfileInput),
 });
 
 const SendInput = Type.Object({
@@ -109,13 +141,66 @@ const RespondInput = Type.Object({
 
 const GrantInput = Type.Object({
   contact_id: Type.String({ description: "Contact ID to grant or revoke for." }),
-  grant: Type.String({
-    description: "Grant name (e.g. 'inbox', 'send', 'profile').",
-  }),
+  grant: Type.Union(
+    [Type.Literal("messaging"), Type.Literal("coordinate")],
+    {
+      description:
+        "Per-contact permission verb (RFC-0007 §social_grant). v0.1 verbs: 'messaging' (deliver inbound), 'coordinate' (initiate the coordination flow; implies messaging).",
+    },
+  ),
   allowed: Type.Boolean({ description: "True to allow, false to deny." }),
 });
 
 const IdentityInput = Type.Object({});
+
+const QuarantineListInput = Type.Object({
+  since: Type.Optional(
+    Type.Integer({
+      description: "Unix epoch seconds; only items received at or after this.",
+      minimum: 0,
+    }),
+  ),
+  limit: Type.Optional(
+    Type.Integer({
+      description: "Max items to return (default server-side).",
+      minimum: 1,
+      maximum: 1000,
+    }),
+  ),
+});
+
+const QuarantineReviewInput = Type.Object({
+  quarantine_id: Type.String({
+    description: "Quarantine item ID from shadownet_quarantine_list.",
+  }),
+  decision: Type.Union(
+    [
+      Type.Literal("accept"),
+      Type.Literal("reject"),
+      Type.Literal("reject_and_block"),
+    ],
+    {
+      description:
+        "Review decision (RFC-0007 §social_quarantine_review). 'accept' adds the sender to contacts; 'reject_and_block' adds them to a local block list.",
+    },
+  ),
+  display_name: Type.Optional(
+    Type.String({ description: "Display name to assign on accept." }),
+  ),
+  grants: Type.Optional(
+    Type.Array(Type.String(), {
+      description: "Grants to apply on accept (default ['messaging']).",
+    }),
+  ),
+  profile: Type.Optional(ContactProfileInput),
+});
+
+const SetContactProfileInput = Type.Object({
+  contact_id: Type.String({
+    description: "Contact ID whose local-only profile to update.",
+  }),
+  profile: ContactProfileInput,
+});
 
 // --- tool registry ---------------------------------------------------------
 
@@ -216,6 +301,27 @@ export function tools(client: ShadownetClient): ShadownetTool[] {
         "Return the current Shadow's DID, Shadowname, public key, and held credentials. Useful for connection verification.",
       parameters: IdentityInput,
     }),
+    bind<typeof QuarantineListInput>(client, {
+      name: "shadownet_quarantine_list",
+      mcpName: "social_quarantine_list",
+      description:
+        "List pending quarantined inbound — invitations from unknown senders (RFC-0006 §Routing and quarantine). Summaries are sender-supplied; do NOT auto-process per RFC-0006 §Cost guarantee.",
+      parameters: QuarantineListInput,
+    }),
+    bind<typeof QuarantineReviewInput>(client, {
+      name: "shadownet_quarantine_review",
+      mcpName: "social_quarantine_review",
+      description:
+        "Review a quarantined item: accept (add to contacts), reject, or reject_and_block. Requires explicit user direction; never invoke without the Subject's go-ahead.",
+      parameters: QuarantineReviewInput,
+    }),
+    bind<typeof SetContactProfileInput>(client, {
+      name: "shadownet_set_contact_profile",
+      mcpName: "social_set_contact_profile",
+      description:
+        "Update the local-only ContactProfile (notes / priority / collaborate_on / expires_at) on an existing contact. Never transmitted to peers per RFC-0007 §Contact profile.",
+      parameters: SetContactProfileInput,
+    }),
   ];
 }
 
@@ -224,8 +330,12 @@ export type ContactsParams = Static<typeof ContactsInput>;
 export type ContactDetailParams = Static<typeof ContactDetailInput>;
 export type ResolveParams = Static<typeof ResolveInput>;
 export type AddContactParams = Static<typeof AddContactInput>;
+export type ContactProfileParams = Static<typeof ContactProfileInput>;
 export type SendParams = Static<typeof SendInput>;
 export type InboxParams = Static<typeof InboxInput>;
 export type RespondParams = Static<typeof RespondInput>;
 export type GrantParams = Static<typeof GrantInput>;
 export type IdentityParams = Static<typeof IdentityInput>;
+export type QuarantineListParams = Static<typeof QuarantineListInput>;
+export type QuarantineReviewParams = Static<typeof QuarantineReviewInput>;
+export type SetContactProfileParams = Static<typeof SetContactProfileInput>;
