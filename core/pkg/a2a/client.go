@@ -185,8 +185,10 @@ type presentationRequiredBody struct {
 }
 
 func parseTaskResponse(resp *http.Response, body []byte) (*Task, error) {
-	if resp.StatusCode != http.StatusOK {
-		// Surface RFC-0006 error envelopes back to the caller.
+	// 200 OK = inbox delivery; 202 Accepted = quarantined (RFC-0006 §Sender
+	// behavior on quarantine). Both carry a JSON-RPC result body with the
+	// task. Other statuses indicate errors.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		var ferr struct {
 			Error  string `json:"error"`
 			Detail string `json:"detail"`

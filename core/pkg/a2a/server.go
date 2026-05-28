@@ -22,14 +22,32 @@ import (
 // MaxRequestBytes caps an inbound JSON-RPC body.
 const MaxRequestBytes = 256 * 1024
 
+// RoutingDecision tells the Server how to dispose of an inbound message after
+// the HandlerFunc has run its rules-only classification (RFC-0006 §Routing
+// and quarantine).
+//
+// Only RouteInbox is permitted to invoke the host agent's LLM downstream.
+// RouteQuarantine holds the item for the Subject's review; RouteDrop
+// short-circuits with an error response. The Server itself never picks the
+// route — that decision belongs to the application's rules layer.
+type RoutingDecision int
+
+// RoutingDecision values.
+const (
+	RouteInbox      RoutingDecision = iota + 1 // 200 OK with task
+	RouteQuarantine                            // 202 Accepted with task in submitted state
+	RouteDrop                                  // error response; handler returns *Error for the code
+)
+
 // HandlerFunc is the application's hook into the server.
 //
-// It is invoked after handshake validation succeeds. The implementation
-// typically persists the inbound message into its own inbox and returns a
-// freshly-built Task. For long-running negotiations the returned task is
-// often in the "submitted" or "working" state; the application updates the
-// task asynchronously, and callers re-poll via task:get.
-type HandlerFunc func(ctx context.Context, caller InboundCaller, msg Message) (Task, error)
+// It is invoked after handshake validation succeeds. It MUST return one of
+// the three RoutingDecisions plus a Task (for Inbox / Quarantine) or an
+// *Error (for Drop and other failures). For long-running negotiations the
+// returned task is often in the "submitted" or "working" state; the
+// application updates the task asynchronously, and callers re-poll via
+// task:get.
+type HandlerFunc func(ctx context.Context, caller InboundCaller, msg Message) (RoutingDecision, Task, error)
 
 // InboundCaller groups the validated handshake state passed to a HandlerFunc.
 type InboundCaller struct {
@@ -343,12 +361,21 @@ func (s *Server) handleMessageSend(w http.ResponseWriter, r *http.Request, req *
 	if p.Message.MessageID == "" {
 		p.Message.MessageID = "msg-" + newID()
 	}
-	task, err := s.Handler(r.Context(), caller, p.Message)
+	decision, task, err := s.Handler(r.Context(), caller, p.Message)
 	if err != nil {
 		writeRPCAppError(w, req.ID, err)
 		return
 	}
-	writeRPCResult(w, req.ID, task)
+	switch decision {
+	case RouteInbox:
+		writeRPCResult(w, req.ID, task)
+	case RouteQuarantine:
+		writeRPCResultStatus(w, http.StatusAccepted, req.ID, task)
+	case RouteDrop:
+		writeShadownetError(w, &Error{Code: CodePresentationInvalid, Detail: "dropped"})
+	default:
+		writeRPCError(w, req.ID, jsonrpcInvalidRequest, fmt.Sprintf("handler returned unknown routing decision %d", decision))
+	}
 }
 
 func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request, req *jsonrpcRequest, _ InboundCaller) {
@@ -391,9 +418,16 @@ func (s *Server) handleTaskCancel(w http.ResponseWriter, r *http.Request, req *j
 	writeRPCResult(w, req.ID, task)
 }
 
-// writeRPCResult writes a JSON-RPC 2.0 success response.
+// writeRPCResult writes a JSON-RPC 2.0 success response at HTTP 200.
 func writeRPCResult(w http.ResponseWriter, id json.RawMessage, result any) {
+	writeRPCResultStatus(w, http.StatusOK, id, result)
+}
+
+// writeRPCResultStatus writes a JSON-RPC 2.0 success response at the given
+// HTTP status. Used for RouteQuarantine, which surfaces a task at 202.
+func writeRPCResultStatus(w http.ResponseWriter, status int, id json.RawMessage, result any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(jsonrpcResponse{JSONRPC: "2.0", ID: id, Result: result})
 }
 

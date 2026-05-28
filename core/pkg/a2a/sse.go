@@ -33,9 +33,24 @@ func (s *Server) handleMessageStream(w http.ResponseWriter, r *http.Request, req
 	if p.Message.MessageID == "" {
 		p.Message.MessageID = "msg-" + newID()
 	}
-	task, err := s.Handler(r.Context(), caller, p.Message)
+	decision, task, err := s.Handler(r.Context(), caller, p.Message)
 	if err != nil {
 		writeRPCAppError(w, req.ID, err)
+		return
+	}
+	switch decision {
+	case RouteInbox:
+		// proceed to stream below
+	case RouteQuarantine:
+		// Quarantined messages don't stream: the recipient hasn't reviewed yet.
+		// Return a single 202 response with the submitted task.
+		writeRPCResultStatus(w, http.StatusAccepted, req.ID, task)
+		return
+	case RouteDrop:
+		writeShadownetError(w, &Error{Code: CodePresentationInvalid, Detail: "dropped"})
+		return
+	default:
+		writeRPCError(w, req.ID, jsonrpcInvalidRequest, fmt.Sprintf("handler returned unknown routing decision %d", decision))
 		return
 	}
 
