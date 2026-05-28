@@ -112,6 +112,7 @@ async def test_handshake_uses_cached_vp(parties) -> None:
     fake_vp = VerifiedPresentation(
         holder_did=caller_did,
         credentials=(),
+        affiliations=(),
         freshness_proofs=(),
         presentation=VerifiablePresentation.model_validate(
             {

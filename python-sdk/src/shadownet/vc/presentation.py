@@ -15,6 +15,11 @@ from shadownet.crypto.jwt import (
     verify_jwt,
 )
 from shadownet.did.key import parse_did_key
+from shadownet.vc.affiliation import (
+    SHADOWNET_AFFILIATION_VC_TYPE,
+    AffiliationCredential,
+    verify_affiliation_credential,
+)
 from shadownet.vc.credential import SubjectCredential, verify_credential
 from shadownet.vc.errors import CredentialInvalid, PresentationInvalid
 from shadownet.vc.freshness import FreshnessProof, freshness_required, verify_freshness
@@ -22,7 +27,7 @@ from shadownet.vc.freshness import FreshnessProof, freshness_required, verify_fr
 if TYPE_CHECKING:
     from shadownet.crypto.ed25519 import Ed25519KeyPair
     from shadownet.did.resolver import Resolver
-    from shadownet.trust import TrustStore
+    from shadownet.trust import InstitutionalTrustStore, TrustStore
     from shadownet.vc.status_list import StatusListClient
 
 # RFC-0003 §Presentation, RFC-0006 §Verifiable Presentation.
@@ -78,13 +83,18 @@ class VerifiablePresentation(BaseModel):
 class VerifiedPresentation:
     """Outcome of a successful VP verification.
 
-    ``credentials`` are credentials that passed every check (signature, expiry,
-    freshness, revocation) AND, if a trust store was supplied, whose
+    ``credentials`` are SubjectCredentials that passed every check (signature,
+    expiry, freshness, revocation) AND, if a trust store was supplied, whose
     ``(issuer, level)`` is accepted by it.
+
+    ``affiliations`` are AffiliationCredentials that passed signature/expiry/
+    domain-control checks AND, if an institutional trust store was supplied,
+    whose affiliation org is accepted by it.
     """
 
     holder_did: str
     credentials: tuple[SubjectCredential, ...]
+    affiliations: tuple[AffiliationCredential, ...]
     freshness_proofs: tuple[FreshnessProof, ...]
     presentation: VerifiablePresentation
 
@@ -132,6 +142,7 @@ async def verify_presentation(
     now: int | None = None,
     leeway: int = 0,
     trust_store: TrustStore | None = None,
+    institutional_store: InstitutionalTrustStore | None = None,
     status_list_client: StatusListClient | None = None,
     freshness_window_seconds: int = 24 * 3600,
 ) -> VerifiedPresentation:
@@ -176,7 +187,9 @@ async def verify_presentation(
     ):
         raise PresentationInvalid("VP iss did:key does not match resolved verification method")
 
-    credentials, freshness_proofs = await _split_inner_jwts(vp, resolver, moment, leeway)
+    credentials, affiliations, freshness_proofs = await _split_inner_jwts(
+        vp, resolver, moment, leeway
+    )
 
     accepted: list[SubjectCredential] = []
     for cred_jwt, cred in credentials:
@@ -221,9 +234,27 @@ async def verify_presentation(
             continue
         accepted.append(cred)
 
+    accepted_affs: list[AffiliationCredential] = []
+    for aff_jwt, aff in affiliations:
+        if aff.sub != vp.iss:
+            raise PresentationInvalid(
+                "affiliation subject does not match VP iss (holder ≠ subject)"
+            )
+        if aff.status is not None and status_list_client is not None:
+            await status_list_client.check_not_revoked(
+                aff.status.status_list_credential,
+                int(aff.status.status_list_index),
+                fail_closed=True,
+            )
+        if institutional_store is not None and not institutional_store.accepts(aff.affiliation):
+            _ = aff_jwt
+            continue
+        accepted_affs.append(aff)
+
     return VerifiedPresentation(
         holder_did=vp.iss,
         credentials=tuple(accepted),
+        affiliations=tuple(accepted_affs),
         freshness_proofs=tuple(fp for _, fp in freshness_proofs),
         presentation=vp,
     )
@@ -250,9 +281,11 @@ async def _split_inner_jwts(
     leeway: int,
 ) -> tuple[
     list[tuple[str, SubjectCredential]],
+    list[tuple[str, AffiliationCredential]],
     list[tuple[str, FreshnessProof]],
 ]:
     credentials: list[tuple[str, SubjectCredential]] = []
+    affiliations: list[tuple[str, AffiliationCredential]] = []
     freshness: list[tuple[str, FreshnessProof]] = []
     for jwt_str in vp.credential_jwts:
         try:
@@ -261,6 +294,23 @@ async def _split_inner_jwts(
         except JWTError as exc:
             raise PresentationInvalid(f"inner JWT invalid: {exc}") from exc
         if inner_header.get("typ") == "vc+jwt" or "vc" in inner_claims:
+            vc_types = inner_claims.get("vc", {}).get("type", []) or []
+            is_affiliation = SHADOWNET_AFFILIATION_VC_TYPE in vc_types
+            if is_affiliation:
+                try:
+                    aff = await verify_affiliation_credential(
+                        jwt_str, resolver=resolver, now=moment, leeway=leeway
+                    )
+                except CredentialInvalid as exc:
+                    raise PresentationInvalid(
+                        f"embedded affiliation credential invalid: {exc}"
+                    ) from exc
+                if aff.sub != vp.iss:
+                    raise PresentationInvalid(
+                        "affiliation subject does not match VP iss (holder ≠ subject)"
+                    )
+                affiliations.append((jwt_str, aff))
+                continue
             try:
                 cred = await verify_credential(
                     jwt_str, resolver=resolver, now=moment, leeway=leeway
@@ -279,4 +329,4 @@ async def _split_inner_jwts(
                 raise PresentationInvalid(f"freshness proof invalid: {exc}") from exc
         else:
             raise PresentationInvalid("unrecognized JWT in vp.verifiableCredential")
-    return credentials, freshness
+    return credentials, affiliations, freshness

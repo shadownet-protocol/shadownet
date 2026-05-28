@@ -8,12 +8,14 @@ from shadownet.errors import ShadownetError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from shadownet.vc.affiliation import AffiliationCredential
     from shadownet.vc.credential import SubjectCredential
     from shadownet.vc.presentation import VerifiedPresentation
 
 # RFC-0004 §Required-level predicates. Grammar:
 #   predicate ::= leaf | "all" | "any" | "not"
 #   leaf      ::= { "level": <uri> } | { "issuer": <did> } | { "subjectType": "person"|"organization" }
+#               | { "affiliation": <did:web> }
 #   all/any   ::= { "all"|"any": [predicate, ...] }   (≥1 child)
 #   not       ::= { "not": predicate }
 # Maximum depth: 4. Deeper predicates MUST be rejected as `predicate_too_deep`.
@@ -22,6 +24,7 @@ MAX_PREDICATE_DEPTH = 4
 
 __all__ = [
     "MAX_PREDICATE_DEPTH",
+    "AffiliationLeaf",
     "AllPredicate",
     "AnyPredicate",
     "IssuerLeaf",
@@ -55,6 +58,14 @@ class SubjectTypeLeaf:
 
 
 @dataclass(frozen=True, slots=True)
+class AffiliationLeaf:
+    """Satisfied iff the presentation contains a valid AffiliationCredential
+    whose ``credentialSubject.affiliation`` matches ``affiliation``."""
+
+    affiliation: str  # did:web URI
+
+
+@dataclass(frozen=True, slots=True)
 class AllPredicate:
     children: tuple[RequiredLevelPredicate, ...]
 
@@ -70,7 +81,13 @@ class NotPredicate:
 
 
 RequiredLevelPredicate = (
-    LevelLeaf | IssuerLeaf | SubjectTypeLeaf | AllPredicate | AnyPredicate | NotPredicate
+    LevelLeaf
+    | IssuerLeaf
+    | SubjectTypeLeaf
+    | AffiliationLeaf
+    | AllPredicate
+    | AnyPredicate
+    | NotPredicate
 )
 
 
@@ -95,6 +112,10 @@ def parse_predicate(value: object, *, _depth: int = 1) -> RequiredLevelPredicate
         if body not in {"person", "organization"}:
             raise ValueError("subjectType leaf MUST be 'person' or 'organization'")
         return SubjectTypeLeaf(subject_type=body)
+    if key == "affiliation":
+        if not isinstance(body, str) or not body.startswith("did:web:"):
+            raise ValueError("affiliation leaf MUST be a did:web URI")
+        return AffiliationLeaf(affiliation=body)
     if key in {"all", "any"}:
         if not isinstance(body, list) or not body:
             raise ValueError(f"'{key}' MUST contain a non-empty list of predicates")
@@ -111,24 +132,32 @@ def evaluate_predicate(
 ) -> bool:
     """Return True iff ``presentation`` satisfies ``predicate`` per RFC-0004 §Evaluation.
 
-    Inner credentials in ``presentation.credentials`` are already trust- and
-    integrity-checked; this evaluator only matches them against leaves.
+    Inner credentials in ``presentation.credentials`` and
+    ``presentation.affiliations`` are already trust- and integrity-checked;
+    this evaluator only matches them against leaves.
     """
-    return _eval(predicate, presentation.credentials)
+    return _eval(predicate, presentation.credentials, presentation.affiliations)
 
 
-def _eval(p: RequiredLevelPredicate, credentials: Iterable[SubjectCredential]) -> bool:
-    creds = list(credentials)
+def _eval(
+    p: RequiredLevelPredicate,
+    subjects: Iterable[SubjectCredential],
+    affiliations: Iterable[AffiliationCredential],
+) -> bool:
+    creds = list(subjects)
+    affs = list(affiliations)
     match p:
         case LevelLeaf(level=level):
             return any(c.level == level for c in creds)
         case IssuerLeaf(issuer=issuer):
-            return any(c.iss == issuer for c in creds)
+            return any(c.iss == issuer for c in creds) or any(c.iss == issuer for c in affs)
         case SubjectTypeLeaf(subject_type=st):
             return any(c.subject_type == st for c in creds)
+        case AffiliationLeaf(affiliation=org):
+            return any(c.affiliation == org for c in affs)
         case AllPredicate(children=children):
-            return all(_eval(child, creds) for child in children)
+            return all(_eval(child, creds, affs) for child in children)
         case AnyPredicate(children=children):
-            return any(_eval(child, creds) for child in children)
+            return any(_eval(child, creds, affs) for child in children)
         case NotPredicate(child=child):
-            return not _eval(child, creds)
+            return not _eval(child, creds, affs)
