@@ -5,7 +5,7 @@ import shadownet
 
 def test_version_exposed() -> None:
     assert isinstance(shadownet.__version__, str)
-    assert shadownet.__version__.count(".") == 2
+    assert shadownet.__version__.startswith("0.")
 
 
 def test_logger_namespaced() -> None:
