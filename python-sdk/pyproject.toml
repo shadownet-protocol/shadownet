@@ -9,7 +9,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
 authors = [{ name = "Shadownet contributors" }]
-keywords = ["shadownet", "did", "vc", "a2a", "mcp", "agents"]
+keywords = ["shadownet", "a2a", "mcp", "agents", "agentcard"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.7",
     "cryptography>=43",
     "pyjwt[crypto]>=2.9",
+    "dnspython>=2.7",
     "mcp>=1.2",
     "a2a-sdk>=0.2",
 ]
@@ -97,14 +98,11 @@ ignore = [
     "E501",   # line length handled by formatter
     "S101",   # asserts ok in tests
     "PT011",  # pytest.raises broad-match
-    "N818",   # error class names mirror spec wire codes (Revoked, LevelInsufficient, …)
+    "N818",   # error class names mirror spec wire codes
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "N"]
-# RFC-0007 dictates the MCP tool argument names verbatim (camelCase), so we
-# can't snake_case them here without diverging from the wire spec.
-"src/shadownet/mcp/register.py" = ["N803", "A002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shadownet"]
