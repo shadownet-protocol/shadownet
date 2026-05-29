@@ -6,6 +6,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-28
+
+### Fixed
+
+- `ensure_mcp_server_in_config` now short-circuits the integration-bundle
+  HTTP GET when `~/.hermes/config.yaml` already has an
+  `mcp_servers.shadownet` entry whose `Authorization` header matches the
+  current `SHADOWNET_CONNECT_URL`'s token. Previously every `register()`
+  call fetched the bundle even when nothing had changed; when Hermes is
+  in a respawn loop (e.g. a supervisor invoking `hermes gateway start`
+  while a healthy gateway is already running), this loaded the sidecar
+  with one redundant GET per spawn cycle. Token rotation / re-login
+  still triggers the refetch (the cached header no longer matches).
+
+[0.4.2]: https://github.com/shadownet-protocol/shadownet/releases/tag/hermes-plugin%2Fv0.4.2
+
 ## [0.4.1] — 2026-05-28
 
 ### Fixed

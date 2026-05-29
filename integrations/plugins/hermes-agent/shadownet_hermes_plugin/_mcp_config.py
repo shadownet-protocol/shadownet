@@ -24,6 +24,28 @@ def config_path() -> Any:
     return hermes_data_dir() / "config.yaml"
 
 
+def _config_matches_current_token(token: str) -> bool:
+    """Does ``config.yaml`` already have an mcp_servers.shadownet entry whose
+    Authorization header matches the provided bearer token?
+
+    Returning True is the "we already configured this; nothing to do"
+    case — callers should skip any sidecar I/O.
+    """
+    _, cfg = _load_config()
+    if cfg is None:
+        return False
+    mcp_servers = cfg.get("mcp_servers")
+    if not isinstance(mcp_servers, dict):
+        return False
+    entry = mcp_servers.get("shadownet")
+    if not isinstance(entry, dict):
+        return False
+    headers = entry.get("headers")
+    if not isinstance(headers, dict):
+        return False
+    return headers.get("Authorization") == f"Bearer {token}"
+
+
 def _load_yaml_module() -> Any | None:
     try:
         import yaml
@@ -116,6 +138,20 @@ def ensure_mcp_server_in_config() -> None:
     base_url = parsed.base_url.rstrip("/")
     token = parsed.token
     if not base_url or not token:
+        return
+
+    # Short-circuit: if config.yaml already has an entry for this exact
+    # token, the MCP endpoint resolution hasn't changed — skip the bundle
+    # GET. Critical when Hermes is in a respawn loop (e.g. gateway
+    # already running but a supervisor keeps invoking `hermes gateway
+    # start`); every register() call would otherwise hammer the sidecar
+    # with an integration-bundle GET that returns the same URL we
+    # already have.
+    if _config_matches_current_token(token):
+        _log.debug(
+            "shadownet plugin: mcp_servers.shadownet already configured for "
+            "current token; skipping bundle fetch"
+        )
         return
 
     try:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "shadownet-hermes-plugin"
-version = "0.4.1"
+version = "0.4.2"
 description = "Shadownet protocol plugin for Hermes Agent."
 readme = "README.md"
 license = { text = "MIT" }
