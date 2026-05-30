@@ -165,6 +165,31 @@ class TestVerifyEnvelope:
             verify_envelope(jws, sender_key, expected_recipient="bob@example.org")
 
 
+class TestDirectModeEnvelope:
+    def test_direct_mode_to_and_from_keys(self, sender_key: Ed25519KeyPair) -> None:
+        # Direct-mode sender and recipient: both `from` and `to` are bare keys.
+        from shadownet.identifiers import encode_public_key
+
+        sender_pk = encode_public_key(sender_key.public_bytes)
+        recipient_pk = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        now = int(time.time())
+        payload = EnvelopePayload(
+            v="0.2",
+            **{"from": sender_pk, "to": recipient_pk, "msgHash": "sha256:abc"},
+            iat=now,
+            exp=now + 60,
+            body=EnvelopeBody(text="hi"),
+        )
+        jws = mint_envelope(payload, sender_key)
+        # kid in the header should equal the sender's bare pubkey.
+        header = decode_header(jws)
+        assert header["kid"] == sender_pk
+        # Receiver-side verification works the same way.
+        out = verify_envelope(jws, sender_key, expected_recipient=recipient_pk)
+        assert out.sender == sender_pk
+        assert out.recipient == recipient_pk
+
+
 class TestEnvelopePayloadValidation:
     def test_version_must_be_0_2(self) -> None:
         with pytest.raises(ValidationError):

@@ -348,6 +348,97 @@ class TestPipelineRejections:
             pipeline.receive({"message": built.message})
 
 
+class TestDirectModeSender:
+    def test_bare_key_sender_no_provider_lookup(self) -> None:
+        # Direct-mode sender: from is a bare pubkey, recipient is Shadowname.
+        # Build a minimal pipeline with provider_lookup that asserts it's
+        # never called (because direct-mode senders skip DNS).
+        alice_key = Ed25519KeyPair.generate()
+        alice_pk = encode_public_key(alice_key.public_bytes)
+
+        def lookup(domain: str) -> ProviderRecord:
+            raise AssertionError(
+                f"direct-mode sender path must not call provider lookup (got {domain!r})"
+            )
+
+        def fetcher(_name: str, _rec: ProviderRecord) -> FetchedAgentCard:
+            raise AssertionError("direct-mode sender path must not fetch an AgentCard")
+
+        pipeline = ReceiverPipeline(
+            _config(),
+            replay_cache=InMemoryReplayCache(),
+            contact_graph=InMemoryContactGraph(),
+            credential_cache=InMemoryCredentialCache(),
+            provider_lookup=lookup,
+            agent_card_fetcher=fetcher,
+            revocation_check=lambda _c: None,
+        )
+
+        # Add Alice (by bare key) as a contact so the policy step passes.
+        pipeline._contacts.add_contact(alice_pk)
+
+        outbound = build_outbound_message(body_text="hi", context_id="ctx-d")
+        built = build_and_sign_message(
+            outbound,
+            EnvelopePayload(
+                v="0.2",
+                **{
+                    "from": alice_pk,
+                    "to": SUBJECT,
+                    "msgHash": "sha256:placeholder",
+                },
+                iat=int(time.time()),
+                exp=int(time.time()) + 60,
+                body=EnvelopeBody(text="hi"),
+            ),
+            alice_key,
+        )
+        decision = pipeline.receive({"message": built.message})
+        assert decision.route == "inbox"
+        assert decision.sender == alice_pk
+
+    def test_same_provider_shortcut_skipped_for_direct_mode(self) -> None:
+        alice_key = Ed25519KeyPair.generate()
+        alice_pk = encode_public_key(alice_key.public_bytes)
+        # Recipient is Shadowname-mode; sender is direct-mode.
+        config = ReceiverConfig(
+            subject="bob@sh4dow.org",
+            trust_store=TrustStore(),
+            policy=AcceptancePolicy(fromStranger=(ORG_AFFILIATION,)),
+            same_provider_org=True,
+        )
+        pipeline = ReceiverPipeline(
+            config,
+            replay_cache=InMemoryReplayCache(),
+            contact_graph=InMemoryContactGraph(),
+            credential_cache=InMemoryCredentialCache(),
+            provider_lookup=lambda _d: (_ for _ in ()).throw(AssertionError("no lookup expected")),
+            agent_card_fetcher=lambda _n, _r: (_ for _ in ()).throw(AssertionError("no fetch")),
+            revocation_check=lambda _c: None,
+        )
+
+        outbound = build_outbound_message(body_text="hi")
+        built = build_and_sign_message(
+            outbound,
+            EnvelopePayload(
+                v="0.2",
+                **{
+                    "from": alice_pk,
+                    "to": "bob@sh4dow.org",
+                    "msgHash": "sha256:placeholder",
+                },
+                iat=int(time.time()),
+                exp=int(time.time()) + 60,
+                body=EnvelopeBody(text="hi"),
+            ),
+            alice_key,
+        )
+        # Direct-mode sender + stranger policy requiring creds + no creds →
+        # CredsRequiredError. Same-provider shortcut MUST NOT fire.
+        with pytest.raises(CredsRequiredError):
+            pipeline.receive({"message": built.message})
+
+
 class TestExtensionsHeader:
     def test_header_match(self) -> None:
         assert header_includes_extension("urn:shadownet:0.2") is True

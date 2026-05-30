@@ -29,8 +29,8 @@ from shadownet.crypto.jwt import (
 )
 from shadownet.errors import ShadownetError
 from shadownet.identifiers import (
-    Domain,  # noqa: TC001  pydantic needs Domain at runtime
-    Shadowname,  # noqa: TC001  pydantic needs Shadowname at runtime
+    Identifier,  # noqa: TC001  pydantic needs Identifier at runtime
+    IssuerIdentifier,  # noqa: TC001  pydantic needs IssuerIdentifier at runtime
 )
 
 __all__ = [
@@ -84,16 +84,21 @@ class CsrRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Annotated[str, Field(pattern="^[a-z_]+$")]
-    org: Domain
+    org: IssuerIdentifier
 
 
 class CsrPayload(BaseModel):
-    """Decoded payload of a ``shadownet-csr+jwt``."""
+    """Decoded payload of a ``shadownet-csr+jwt``.
+
+    ``iss`` accepts a Shadowname or a public key (direct-mode Subject).
+    ``aud`` and ``req.org`` accept a domain or a public key (keyed issuer
+    or Hub).
+    """
 
     model_config = ConfigDict(extra="allow", frozen=True)
 
-    iss: Shadowname
-    aud: Domain
+    iss: Identifier
+    aud: IssuerIdentifier
     iat: int = Field(ge=0)
     exp: int = Field(ge=0)
     req: CsrRequest

@@ -212,6 +212,53 @@ class TestVerifyCredential:
         )
 
 
+class TestKeyedIssuerVerification:
+    def test_keyed_iss_uses_pubkey_directly(self) -> None:
+        # Keyed Hub: iss IS the verification key.
+        key = Ed25519KeyPair.generate()
+        pk = encode_public_key(key.public_bytes)
+        now = int(time.time())
+        payload = CredentialPayload(
+            iss=pk,
+            sub="alice@sh4dow.org",
+            kind=ORG_AFFILIATION,
+            org=pk,  # §6.6 rule 1: iss == org
+            iat=now,
+            exp=now + 3600,
+            rev=RevocationPointer(epoch="e", idx=0),
+        )
+        token = mint_credential(payload, key)
+        # No DNS resolution needed for keyed iss; defaults work.
+        verified = verify_credential(
+            token,
+            resolve_issuer_key=lambda iss: iss,  # identity function: iss IS the key
+            check_issuer_authorized_for_org=_authorize_ok,
+        )
+        assert verified.payload.iss == pk
+
+    def test_keyed_subject_accepted(self) -> None:
+        # Direct-mode Shadow: sub is a bare pubkey.
+        issuer_key = Ed25519KeyPair.generate()
+        subject_pk = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        now = int(time.time())
+        payload = CredentialPayload(
+            iss="acme.example",
+            sub=subject_pk,
+            kind=ORG_AFFILIATION,
+            org="acme.example",
+            iat=now,
+            exp=now + 3600,
+            rev=RevocationPointer(epoch="e", idx=0),
+        )
+        token = mint_credential(payload, issuer_key)
+        verified = verify_credential(
+            token,
+            resolve_issuer_key=_resolver(encode_public_key(issuer_key.public_bytes)),
+            check_issuer_authorized_for_org=_authorize_ok,
+        )
+        assert verified.payload.sub == subject_pk
+
+
 class TestCredentialPayloadValidation:
     def test_uppercase_shadowname_rejected(self) -> None:
         # Shadowname validator forces lowercase; uppercase input becomes lowercase

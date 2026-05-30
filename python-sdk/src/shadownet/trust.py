@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from shadownet.identifiers import Domain  # noqa: TC001  pydantic needs Domain at runtime
+from shadownet.identifiers import (
+    InvalidIdentifierError,
+    IssuerIdentifier,
+    canonicalize_issuer_or_org_identifier,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -36,11 +40,15 @@ DEFAULT_STRANGER_KINDS: tuple[str, ...] = ("org_affiliation",)
 
 
 class TrustEntry(BaseModel):
-    """One ``(issuer, accept)`` entry — RFC 0001 §7.1."""
+    """One ``(issuer, accept)`` entry — RFC 0001 §7.1.
+
+    ``issuer`` accepts a domain (e.g. ``acme.example``) or a multibase
+    Ed25519 public key (keyed Hub, e.g. ``z6MkPeerHub...``).
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    issuer: Domain
+    issuer: IssuerIdentifier
     accept: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("accept", mode="before")
@@ -62,10 +70,13 @@ class TrustStore(BaseModel):
     entries: tuple[TrustEntry, ...] = ()
 
     def accepts(self, issuer: str, kind: str) -> bool:
-        target = issuer.lower()
-        return any(
-            entry.issuer.lower() == target and kind in entry.accept for entry in self.entries
-        )
+        # Domains canonicalize to lowercase; multibase pubkeys are
+        # case-sensitive and pass through unchanged.
+        try:
+            target = canonicalize_issuer_or_org_identifier(issuer)
+        except InvalidIdentifierError:
+            return False
+        return any(entry.issuer == target and kind in entry.accept for entry in self.entries)
 
 
 class AcceptancePolicy(BaseModel):

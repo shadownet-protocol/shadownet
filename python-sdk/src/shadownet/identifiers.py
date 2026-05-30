@@ -1,4 +1,16 @@
-"""Identifier parsers and validators — RFC 0001 §3, §5.1."""
+"""Identifier parsers and validators — RFC 0001 §3, §5.1.
+
+v0.2 admits two equally-valid forms wherever a Shadow or organization can be
+named on the wire:
+
+  * **Shadowname** (``local@provider``) — the human-readable alias bound to a
+    public key by a provider's signed AgentCard.
+  * **Bare multibase Ed25519 public key** (``z6Mk...``) — the cryptographic
+    identity directly, used by direct-mode Shadows and keyed Hubs.
+
+This module exposes both forms plus a discriminator (:func:`is_shadowname`,
+:func:`is_public_key_identifier`) so callers can branch resolution paths.
+"""
 
 from __future__ import annotations
 
@@ -19,10 +31,17 @@ from shadownet.errors import ShadownetError
 
 __all__ = [
     "Domain",
+    "DomainOrPublicKey",
+    "Identifier",
     "InvalidIdentifierError",
+    "IssuerIdentifier",
     "MultibasePublicKey",
     "Shadowname",
+    "canonicalize_identifier",
+    "canonicalize_subject_identifier",
     "encode_public_key",
+    "is_public_key_identifier",
+    "is_shadowname",
     "is_subdomain_of",
     "parse_public_key",
     "parse_shadowname",
@@ -109,3 +128,49 @@ def is_subdomain_of(candidate: str, parent: str) -> bool:
     c = _validate_domain(candidate)
     p = _validate_domain(parent)
     return c == p or c.endswith("." + p)
+
+
+def is_shadowname(value: str) -> bool:
+    return "@" in value
+
+
+def is_public_key_identifier(value: str) -> bool:
+    return value.startswith("z6Mk") and "@" not in value
+
+
+def canonicalize_identifier(value: str) -> str:
+    """Normalize an identifier that may be a Shadowname or a bare public key.
+
+    Used for envelope ``from`` / ``to``, JWS ``kid``, and credential ``sub`` —
+    contexts where either form is admissible per RFC 0001 §3, §6.1, §8.3.
+    """
+    if is_shadowname(value):
+        return _validate_shadowname(value)
+    if is_public_key_identifier(value):
+        return _validate_multibase_pk(value)
+    raise InvalidIdentifierError(
+        f"identifier must be a Shadowname or a multibase Ed25519 public key: {value!r}"
+    )
+
+
+def canonicalize_subject_identifier(value: str) -> str:
+    """Alias for :func:`canonicalize_identifier` used at credential ``sub``,
+    CSR ``iss``, and envelope ``from``/``to`` validation sites."""
+    return canonicalize_identifier(value)
+
+
+def canonicalize_issuer_or_org_identifier(value: str) -> str:
+    """Normalize an identifier that may be a domain or a bare public key.
+
+    Used for credential ``iss``, ``org``, and CSR ``aud`` — contexts where
+    keyed organizations / Hubs (RFC 0001 §6.6 rule 1) are valid alongside
+    domain issuers.
+    """
+    if is_public_key_identifier(value):
+        return _validate_multibase_pk(value)
+    return _validate_domain(value)
+
+
+Identifier = Annotated[str, AfterValidator(canonicalize_identifier)]
+IssuerIdentifier = Annotated[str, AfterValidator(canonicalize_issuer_or_org_identifier)]
+DomainOrPublicKey = IssuerIdentifier

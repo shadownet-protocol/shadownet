@@ -45,9 +45,11 @@ from shadownet.envelope import (
     verify_envelope,
 )
 from shadownet.identifiers import (
+    canonicalize_identifier,
+    is_public_key_identifier,
+    is_shadowname,
     is_subdomain_of,
     parse_public_key,
-    parse_shadowname,
     split_shadowname,
 )
 from shadownet.provider import (
@@ -247,35 +249,42 @@ class ReceiverPipeline:
         except Exception as exc:
             raise ParseError(f"envelope JWS unparseable: {exc}") from exc
 
-        sender = unverified.get("from") if isinstance(unverified, dict) else None
-        recipient = unverified.get("to") if isinstance(unverified, dict) else None
-        if not isinstance(sender, str) or not isinstance(recipient, str):
+        sender_raw = unverified.get("from") if isinstance(unverified, dict) else None
+        recipient_raw = unverified.get("to") if isinstance(unverified, dict) else None
+        if not isinstance(sender_raw, str) or not isinstance(recipient_raw, str):
             raise ParseError("envelope missing 'from' or 'to'")
-        if header.get("kid") != sender:
+        if header.get("kid") != sender_raw:
             raise ParseError("envelope JWS kid does not match 'from' claim")
         try:
-            sender = parse_shadowname(sender)
-            recipient = parse_shadowname(recipient)
+            sender = canonicalize_identifier(sender_raw)
+            recipient = canonicalize_identifier(recipient_raw)
         except Exception as exc:
-            raise ParseError(f"invalid shadowname: {exc}") from exc
+            raise ParseError(f"invalid identifier: {exc}") from exc
 
         if recipient != self.config.subject:
             # §8.8: `unknown_recipient` is distinct from `policy` and `creds_rejected`.
             raise UnknownRecipientError(f"envelope to={recipient!r} not served at this URL")
 
-        # §8.6 step 5: resolve sender's AgentCard.
-        try:
-            _, sender_provider = split_shadowname(sender)
-            provider_record = self._provider_lookup(sender_provider)
-        except ProviderResolutionError as exc:
-            raise SignatureError(f"could not resolve sender provider: {exc}") from exc
+        # §8.6 step 5: resolve the sender's signing key. Path differs by mode.
+        sender_provider_record: ProviderRecord | None = None
+        if is_public_key_identifier(sender):
+            # Direct mode (§5.3): the sender IS the verification key. No DNS,
+            # no AgentCard fetch needed for envelope signature validation.
+            sender_key = Ed25519KeyPair.from_public_bytes(parse_public_key(sender))
+        else:
+            # Shadowname mode (§5.2): DNS TXT then provider-signed AgentCard.
+            try:
+                _, sender_provider = split_shadowname(sender)
+                sender_provider_record = self._provider_lookup(sender_provider)
+            except ProviderResolutionError as exc:
+                raise SignatureError(f"could not resolve sender provider: {exc}") from exc
 
-        try:
-            card = self._fetch_agent_card(sender, provider_record)
-        except AgentCardError as exc:
-            raise SignatureError(f"sender AgentCard verification failed: {exc}") from exc
+            try:
+                card = self._fetch_agent_card(sender, sender_provider_record)
+            except AgentCardError as exc:
+                raise SignatureError(f"sender AgentCard verification failed: {exc}") from exc
 
-        sender_key = Ed25519KeyPair.from_public_bytes(parse_public_key(card.shadow_public_key))
+            sender_key = Ed25519KeyPair.from_public_bytes(parse_public_key(card.shadow_public_key))
 
         # §8.6 step 6 + 3 (typ/alg checks) + claim revalidation.
         try:
@@ -317,7 +326,7 @@ class ReceiverPipeline:
         route, auto_added = self._classify(
             sender=sender,
             envelope=envelope,
-            sender_provider_record=provider_record,
+            sender_provider_record=sender_provider_record,
             credentials=sender_credentials,
             context_id=context_id,
         )
@@ -365,12 +374,18 @@ class ReceiverPipeline:
         *,
         sender: str,
         envelope: EnvelopePayload,
-        sender_provider_record: ProviderRecord,
+        sender_provider_record: ProviderRecord | None,
         credentials: Iterable[VerifiedCredential],
         context_id: str | None,
     ) -> tuple[Route, bool]:
-        # §9 same-provider-domain shortcut.
-        if self.config.same_provider_org:
+        # §9 same-provider-domain shortcut. NOT valid for direct-mode senders
+        # (which have no provider) and only meaningful when this Subject is
+        # itself addressed by Shadowname.
+        if (
+            self.config.same_provider_org
+            and sender_provider_record is not None
+            and is_shadowname(self.config.subject)
+        ):
             _, recipient_provider = split_shadowname(self.config.subject)
             if recipient_provider == sender_provider_record.domain:
                 return "inbox", False
