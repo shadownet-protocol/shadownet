@@ -32,6 +32,8 @@ __all__ = [
     "MAX_STATUS_BODY_BYTES",
     "StatusList",
     "StatusListError",
+    "acheck_revocation",
+    "afetch_status_list",
     "build_status_list_url",
     "check_revocation",
     "decode_status_list",
@@ -136,14 +138,38 @@ def fetch_status_list(
     finally:
         if owned is not None:
             owned.close()
+    return _interpret_status_response(response, url)
 
+
+async def afetch_status_list(
+    issuer_domain: str,
+    epoch: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> tuple[StatusList, int | None]:
+    """Async sibling of :func:`fetch_status_list` using ``httpx.AsyncClient``."""
+    url = build_status_list_url(issuer_domain, epoch)
+    owned: httpx.AsyncClient | None = None
+    try:
+        c = client
+        if c is None:
+            c = owned = httpx.AsyncClient(timeout=timeout)
+        response = await c.get(url, headers={"Accept": "text/plain"})
+    except httpx.HTTPError as exc:
+        raise StatusListError(f"status list fetch failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            await owned.aclose()
+    return _interpret_status_response(response, url)
+
+
+def _interpret_status_response(response: httpx.Response, url: str) -> tuple[StatusList, int | None]:
     if response.status_code != 200:
         raise StatusListError(f"status list {url!r} returned HTTP {response.status_code}")
-
     body = response.text
     if len(body.encode("ascii", errors="ignore")) > MAX_STATUS_BODY_BYTES:
         raise StatusListError(f"status list {url!r} exceeds size cap")
-
     status_list = decode_status_list(body)
     max_age = _parse_max_age(response.headers.get("Cache-Control"))
     return status_list, max_age
@@ -164,6 +190,31 @@ def check_revocation(
         )
     else:  # pragma: no cover — defensive guard
         raise StatusListError("fetch parameter must be callable")
+    _raise_if_revoked(credential, status_list)
+
+
+async def acheck_revocation(
+    credential: VerifiedCredential,
+    *,
+    fetch: object | None = None,
+    client: httpx.AsyncClient | None = None,
+) -> None:
+    """Async sibling of :func:`check_revocation`.
+
+    ``fetch`` defaults to :func:`afetch_status_list` and is awaited. Pass a
+    custom async callable to wire in cached or test fetchers.
+    """
+    fetcher = fetch if fetch is not None else afetch_status_list
+    if callable(fetcher):
+        status_list, _ = await fetcher(
+            credential.payload.iss, credential.payload.rev.epoch, client=client
+        )
+    else:  # pragma: no cover — defensive guard
+        raise StatusListError("fetch parameter must be callable")
+    _raise_if_revoked(credential, status_list)
+
+
+def _raise_if_revoked(credential: VerifiedCredential, status_list: StatusList) -> None:
     if status_list.is_revoked(credential.payload.rev.idx):
         raise StatusListError(
             f"credential revoked at epoch={credential.payload.rev.epoch!r} "

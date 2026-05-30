@@ -97,6 +97,16 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "N"]
+# ASYNC109: the `timeout` parameter on async network helpers is forwarded
+# verbatim to httpx.AsyncClient(timeout=...), which is httpx's own
+# connection/read timeout — not a wall-clock budget that could be expressed
+# with `asyncio.timeout`. Keeping the parameter symmetric with the sync
+# siblings is a deliberate dual-surface design choice.
+"src/shadownet/a2a.py" = ["ASYNC109"]
+"src/shadownet/agentcard.py" = ["ASYNC109"]
+"src/shadownet/csr.py" = ["ASYNC109"]
+"src/shadownet/onboarding.py" = ["ASYNC109"]
+"src/shadownet/status.py" = ["ASYNC109"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shadownet"]

@@ -43,6 +43,7 @@ __all__ = [
     "CsrRateLimitedError",
     "CsrRequest",
     "IssuanceResult",
+    "asubmit_csr",
     "build_issuer_url",
     "mint_csr",
     "submit_csr",
@@ -211,6 +212,34 @@ def submit_csr(
     finally:
         if owned is not None:
             owned.close()
+
+    return _interpret_response(response, url)
+
+
+async def asubmit_csr(
+    csr_jws: str,
+    issuer_domain: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> IssuanceResult:
+    """Async sibling of :func:`submit_csr` using ``httpx.AsyncClient``."""
+    url = build_issuer_url(issuer_domain)
+    owned: httpx.AsyncClient | None = None
+    try:
+        c = client
+        if c is None:
+            c = owned = httpx.AsyncClient(timeout=timeout)
+        response = await c.post(
+            url,
+            content=csr_jws.encode("ascii"),
+            headers={"Content-Type": ISSUER_MEDIA_TYPE, "Accept": ISSUER_MEDIA_TYPE},
+        )
+    except httpx.HTTPError as exc:
+        raise CsrError(f"CSR submission failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            await owned.aclose()
 
     return _interpret_response(response, url)
 

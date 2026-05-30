@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final
 
+import dns.asyncresolver
 import dns.exception
 import dns.rdtypes.ANY.TXT
 import dns.resolver
@@ -23,6 +24,7 @@ from shadownet.identifiers import (
 __all__ = [
     "ProviderRecord",
     "ProviderResolutionError",
+    "alookup_provider_record",
     "lookup_provider_record",
     "parse_provider_txt",
 ]
@@ -64,7 +66,35 @@ def lookup_provider_record(
         raise ProviderResolutionError(f"no TXT answer for {name!r}") from exc
     except dns.exception.DNSException as exc:
         raise ProviderResolutionError(f"DNS error resolving {name!r}: {exc}") from exc
+    return _records_from_answer(domain, name, answer)
 
+
+async def alookup_provider_record(
+    domain: str,
+    *,
+    resolver: dns.asyncresolver.Resolver | None = None,
+    lifetime: float = 5.0,
+) -> ProviderRecord:
+    """Async sibling of :func:`lookup_provider_record` using ``dns.asyncresolver``.
+
+    Same parsing rules, same error mapping. Pass an existing
+    ``dns.asyncresolver.Resolver`` for connection reuse; otherwise a default
+    resolver is constructed per call.
+    """
+    name = SHADOWNET_TXT_PREFIX + domain.rstrip(".")
+    r = resolver or dns.asyncresolver.Resolver()
+    try:
+        answer = await r.resolve(name, rdtype="TXT", lifetime=lifetime)
+    except dns.resolver.NXDOMAIN as exc:
+        raise ProviderResolutionError(f"no _shadownet TXT for {domain!r}") from exc
+    except dns.resolver.NoAnswer as exc:
+        raise ProviderResolutionError(f"no TXT answer for {name!r}") from exc
+    except dns.exception.DNSException as exc:
+        raise ProviderResolutionError(f"DNS error resolving {name!r}: {exc}") from exc
+    return _records_from_answer(domain, name, answer)
+
+
+def _records_from_answer(domain: str, name: str, answer: dns.resolver.Answer) -> ProviderRecord:
     records: list[ProviderRecord] = []
     for rdata in answer:
         # §3.3.14: TXT carries one-or-more <character-string>s. RFC 0001 §4.2

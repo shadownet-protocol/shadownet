@@ -43,6 +43,10 @@ __all__ = [
     "AgentCardError",
     "AgentCardSignatureError",
     "FetchedAgentCard",
+    "afetch_agent_card_json",
+    "afetch_and_verify_agent_card",
+    "afetch_and_verify_direct_agent_card",
+    "afetch_direct_agent_card_json",
     "build_direct_signed_agent_card",
     "build_signed_agent_card",
     "build_unsigned_agent_card_body",
@@ -98,15 +102,7 @@ def fetch_agent_card_json(
     client: httpx.Client | None = None,
     timeout: float = DEFAULT_FETCH_TIMEOUT,
 ) -> tuple[dict[str, Any], httpx.Headers]:
-    canonical = parse_shadowname(shadowname)
-    local, provider = canonical.split("@", 1)
-    if provider != provider_record.domain:
-        raise AgentCardError(
-            f"shadowname provider {provider!r} does not match record domain "
-            f"{provider_record.domain!r}"
-        )
-
-    url = provider_record.endpoint.rstrip("/") + f"/identity/{local}"
+    url = _agent_card_url_for_shadowname(shadowname, provider_record)
     owned: httpx.Client | None = None
     try:
         c = client
@@ -118,7 +114,46 @@ def fetch_agent_card_json(
     finally:
         if owned is not None:
             owned.close()
+    return _interpret_card_response(response, url)
 
+
+async def afetch_agent_card_json(
+    shadowname: str,
+    provider_record: ProviderRecord,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> tuple[dict[str, Any], httpx.Headers]:
+    """Async sibling of :func:`fetch_agent_card_json` using ``httpx.AsyncClient``."""
+    url = _agent_card_url_for_shadowname(shadowname, provider_record)
+    owned: httpx.AsyncClient | None = None
+    try:
+        c = client
+        if c is None:
+            c = owned = httpx.AsyncClient(timeout=timeout)
+        response = await c.get(url, headers={"Accept": AGENT_CARD_MEDIA_TYPE})
+    except httpx.HTTPError as exc:
+        raise AgentCardError(f"fetch failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            await owned.aclose()
+    return _interpret_card_response(response, url)
+
+
+def _agent_card_url_for_shadowname(shadowname: str, provider_record: ProviderRecord) -> str:
+    canonical = parse_shadowname(shadowname)
+    local, provider = canonical.split("@", 1)
+    if provider != provider_record.domain:
+        raise AgentCardError(
+            f"shadowname provider {provider!r} does not match record domain "
+            f"{provider_record.domain!r}"
+        )
+    return provider_record.endpoint.rstrip("/") + f"/identity/{local}"
+
+
+def _interpret_card_response(
+    response: httpx.Response, url: str
+) -> tuple[dict[str, Any], httpx.Headers]:
     if response.status_code != 200:
         raise AgentCardError(f"AgentCard {url!r} returned HTTP {response.status_code}")
     try:
@@ -279,15 +314,30 @@ def fetch_and_verify_agent_card(
     card, headers = fetch_agent_card_json(
         shadowname, provider_record, client=client, timeout=timeout
     )
-    verified = verify_agent_card(card, provider_record, shadowname)
-    cache_max_age = _parse_max_age(headers.get("Cache-Control"))
-    etag = headers.get("ETag")
+    return _attach_cache_headers(verify_agent_card(card, provider_record, shadowname), headers)
+
+
+async def afetch_and_verify_agent_card(
+    shadowname: str,
+    provider_record: ProviderRecord,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> FetchedAgentCard:
+    """Async sibling of :func:`fetch_and_verify_agent_card`."""
+    card, headers = await afetch_agent_card_json(
+        shadowname, provider_record, client=client, timeout=timeout
+    )
+    return _attach_cache_headers(verify_agent_card(card, provider_record, shadowname), headers)
+
+
+def _attach_cache_headers(verified: FetchedAgentCard, headers: httpx.Headers) -> FetchedAgentCard:
     return FetchedAgentCard(
         shadowname=verified.shadowname,
         shadow_public_key=verified.shadow_public_key,
         endpoint_url=verified.endpoint_url,
-        cache_max_age=cache_max_age,
-        etag=etag,
+        cache_max_age=_parse_max_age(headers.get("Cache-Control")),
+        etag=headers.get("ETag"),
         raw=verified.raw,
     )
 
@@ -316,16 +366,29 @@ def fetch_direct_agent_card_json(
     finally:
         if owned is not None:
             owned.close()
+    return _interpret_card_response(response, url)
 
-    if response.status_code != 200:
-        raise AgentCardError(f"AgentCard {url!r} returned HTTP {response.status_code}")
+
+async def afetch_direct_agent_card_json(
+    endpoint_origin: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> tuple[dict[str, Any], httpx.Headers]:
+    """Async sibling of :func:`fetch_direct_agent_card_json`."""
+    url = endpoint_origin.rstrip("/") + DIRECT_AGENT_CARD_PATH
+    owned: httpx.AsyncClient | None = None
     try:
-        body = response.json()
-    except json.JSONDecodeError as exc:
-        raise AgentCardError(f"AgentCard {url!r} not valid JSON: {exc}") from exc
-    if not isinstance(body, dict):
-        raise AgentCardError(f"AgentCard {url!r} is not a JSON object")
-    return body, response.headers
+        c = client
+        if c is None:
+            c = owned = httpx.AsyncClient(timeout=timeout)
+        response = await c.get(url, headers={"Accept": AGENT_CARD_MEDIA_TYPE})
+    except httpx.HTTPError as exc:
+        raise AgentCardError(f"fetch failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            await owned.aclose()
+    return _interpret_card_response(response, url)
 
 
 def fetch_and_verify_direct_agent_card(
@@ -336,17 +399,21 @@ def fetch_and_verify_direct_agent_card(
     timeout: float = DEFAULT_FETCH_TIMEOUT,
 ) -> FetchedAgentCard:
     card, headers = fetch_direct_agent_card_json(endpoint_origin, client=client, timeout=timeout)
-    verified = verify_self_signed_agent_card(card, expected_public_key)
-    cache_max_age = _parse_max_age(headers.get("Cache-Control"))
-    etag = headers.get("ETag")
-    return FetchedAgentCard(
-        shadowname=verified.shadowname,
-        shadow_public_key=verified.shadow_public_key,
-        endpoint_url=verified.endpoint_url,
-        cache_max_age=cache_max_age,
-        etag=etag,
-        raw=verified.raw,
+    return _attach_cache_headers(verify_self_signed_agent_card(card, expected_public_key), headers)
+
+
+async def afetch_and_verify_direct_agent_card(
+    endpoint_origin: str,
+    expected_public_key: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> FetchedAgentCard:
+    """Async sibling of :func:`fetch_and_verify_direct_agent_card`."""
+    card, headers = await afetch_direct_agent_card_json(
+        endpoint_origin, client=client, timeout=timeout
     )
+    return _attach_cache_headers(verify_self_signed_agent_card(card, expected_public_key), headers)
 
 
 # A2A §8.4.1/§8.4.3: strip ``signatures`` and recursively drop empty/default

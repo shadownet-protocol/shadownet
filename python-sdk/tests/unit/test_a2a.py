@@ -13,11 +13,13 @@ from shadownet.a2a import (
     PROBLEM_JSON_MEDIA_TYPE,
     WIRE_ERROR_REGISTRY,
     A2AMessage,
+    BuiltMessage,
     CredsRejectedError,
     CredsRequiredError,
     ParseError,
     PolicyError,
     ShadownetWireError,
+    TransportRetryExhausted,
     UnknownRecipientError,
     acceptance_headers,
     build_acceptance_response,
@@ -26,6 +28,7 @@ from shadownet.a2a import (
     extract_envelope_jws,
     problem_response,
     send_envelope,
+    send_with_retries,
     wire_error_from_problem,
 )
 from shadownet.crypto.ed25519 import Ed25519KeyPair
@@ -140,6 +143,26 @@ class TestProblemResponse:
     def test_detail_passthrough(self) -> None:
         _, body, _ = problem_response(PolicyError("rejected"), detail="explicit")
         assert body["detail"] == "explicit"
+
+    def test_default_sanitizes_exception_message(self) -> None:
+        """RFC 0001 §11: the default body MUST NOT leak the exception detail.
+
+        Receivers commonly raise with messages that embed sender/messageId
+        ("stranger {sender!r} rejected", "({sender!r}, {message_id!r}) replayed").
+        Those signal stranger-vs-contact + replay-cache state, which §11
+        forbids. The default response must drop the detail field entirely.
+        """
+        leaky = PolicyError("stranger 'alice@sh4dow.org' rejected by policy")
+        _, body, _ = problem_response(leaky)
+        assert "detail" not in body
+        assert body["type"] == "urn:shadownet:error:policy"
+        assert body["title"]
+        assert body["status"] == 403
+
+    def test_include_detail_opt_in_passes_through_str(self) -> None:
+        leaky = PolicyError("stranger 'alice@sh4dow.org' rejected by policy")
+        _, body, _ = problem_response(leaky, include_detail=True)
+        assert "stranger" in body["detail"]
 
 
 class TestWireErrorRoundtrip:
@@ -274,3 +297,130 @@ class TestA2AMessageWire:
         assert parsed.context_id == "ctx-1"
         assert parsed.to_wire()["contextId"] == "ctx-1"
         assert parsed.to_wire()["messageId"] == "m1"
+
+
+class TestSendWithRetries:
+    """RFC 0001 §8.10: retry-with-remint helper.
+
+    Uses ``httpx.MockTransport`` so the side-effect sequence is controllable
+    — respx wraps Exception side-effects which makes "fail twice then succeed"
+    sequences awkward.
+    """
+
+    def test_succeeds_after_transient_transport_errors(self) -> None:
+        alice_key = Ed25519KeyPair.generate()
+        agent_url = "https://shadow.sh4dow.org/v1/a2a/bob"
+        message_ids: set[str] = set()
+        call_count = 0
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise httpx.ConnectError("nope")
+            return httpx.Response(
+                200,
+                json={
+                    "message": {
+                        "messageId": "ack",
+                        "role": "ROLE_AGENT",
+                        "parts": [{"text": "ok"}],
+                    }
+                },
+            )
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        def builder() -> BuiltMessage:
+            built = build_and_sign_message(
+                build_outbound_message(body_text="hi"),
+                _payload_template(),
+                alice_key,
+            )
+            message_ids.add(built.message["messageId"])
+            return built
+
+        sleeps: list[float] = []
+        result = send_with_retries(
+            builder,
+            agent_url,
+            client=client,
+            initial_delay=0.0,
+            max_delay=0.0,
+            jitter=0.0,
+            sleep=sleeps.append,
+        )
+        assert result.message_id == "ack"
+        assert call_count == 3
+        # §8.10: each retry MUST re-mint with a fresh messageId.
+        assert len(message_ids) == 3
+        assert len(sleeps) == 2  # two waits between three attempts
+
+    def test_protocol_errors_are_not_retried(self) -> None:
+        alice_key = Ed25519KeyPair.generate()
+        call_count = 0
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(
+                403,
+                json={
+                    "type": "urn:shadownet:error:policy",
+                    "title": "rejected",
+                    "status": 403,
+                },
+                headers={"Content-Type": PROBLEM_JSON_MEDIA_TYPE},
+            )
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        def builder() -> BuiltMessage:
+            return build_and_sign_message(
+                build_outbound_message(body_text="hi"),
+                _payload_template(),
+                alice_key,
+            )
+
+        def fake_sleep(_: float) -> None:
+            raise AssertionError("sleep called — retry path entered for a protocol error")
+
+        with pytest.raises(PolicyError):
+            send_with_retries(
+                builder,
+                "https://shadow.sh4dow.org/v1/a2a/bob",
+                client=client,
+                initial_delay=0.0,
+                sleep=fake_sleep,
+            )
+        assert call_count == 1  # one attempt only
+
+    def test_budget_exhaustion_raises(self) -> None:
+        alice_key = Ed25519KeyPair.generate()
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("down")
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        def builder() -> BuiltMessage:
+            return build_and_sign_message(
+                build_outbound_message(body_text="hi"),
+                _payload_template(),
+                alice_key,
+            )
+
+        # Synthetic monotonic clock advances 100s per check; budget 150s.
+        ticks = iter([0.0, 100.0, 200.0])
+
+        with pytest.raises(TransportRetryExhausted, match="budget exhausted"):
+            send_with_retries(
+                builder,
+                "https://shadow.sh4dow.org/v1/a2a/bob",
+                client=client,
+                initial_delay=0.0,
+                total_budget=150.0,
+                jitter=0.0,
+                sleep=lambda _t: None,
+                monotonic=lambda: next(ticks),
+            )

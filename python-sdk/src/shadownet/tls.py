@@ -31,6 +31,7 @@ __all__ = [
     "TLSPinMismatchError",
     "TLSPinStore",
     "compute_cert_fingerprint",
+    "make_pinned_httpx_async_client",
     "make_pinned_httpx_client",
     "verify_tls_pin",
 ]
@@ -210,3 +211,69 @@ def make_pinned_httpx_client(
         timeout=timeout,
     )
     return httpx.Client(transport=transport, timeout=timeout)
+
+
+class _PinnedAsyncTransport(httpx.AsyncHTTPTransport):
+    """Async sibling of :class:`_PinnedTransport` — same pin policy."""
+
+    def __init__(
+        self,
+        *,
+        host_port: str,
+        expected_pin: str | None,
+        tofu_store: TLSPinStore,
+        timeout: float,
+    ) -> None:
+        super().__init__(verify=_build_pinned_ssl_context())
+        self._host_port = host_port
+        self._expected_pin = expected_pin
+        self._tofu_store = tofu_store
+        self._timeout = timeout
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await super().handle_async_request(request)
+        try:
+            network_stream = response.extensions.get("network_stream")
+            if network_stream is None:
+                raise TLSPinMismatchError(
+                    "network_stream extension unavailable; cannot verify TLS pin"
+                )
+            ssl_object = network_stream.get_extra_info("ssl_object")
+            if ssl_object is None:
+                raise TLSPinMismatchError("SSL object unavailable; cannot verify TLS pin")
+            peer_cert_der = ssl_object.getpeercert(binary_form=True)
+            if not peer_cert_der:
+                raise TLSPinMismatchError("peer certificate unavailable; cannot verify TLS pin")
+            verify_tls_pin(
+                peer_cert_der,
+                expected_pin=self._expected_pin,
+                tofu_store=self._tofu_store,
+                host_port=self._host_port,
+            )
+        except TLSPinMismatchError:
+            await response.aclose()
+            raise
+        return response
+
+
+def make_pinned_httpx_async_client(
+    direct_address: DirectAddress,
+    *,
+    tofu_store: TLSPinStore | None = None,
+    timeout: float = DEFAULT_PINNED_TIMEOUT,
+) -> httpx.AsyncClient:
+    """Async sibling of :func:`make_pinned_httpx_client`.
+
+    Same pin verification policy. Returned ``httpx.AsyncClient`` should be
+    used as an async context manager (or explicitly ``aclose``'d).
+    """
+    if tofu_store is None:
+        tofu_store = InMemoryTLSPinStore()
+    host_port = f"{direct_address.host}:{direct_address.port}"
+    transport = _PinnedAsyncTransport(
+        host_port=host_port,
+        expected_pin=direct_address.tls_pin_sha256,
+        tofu_store=tofu_store,
+        timeout=timeout,
+    )
+    return httpx.AsyncClient(transport=transport, timeout=timeout)

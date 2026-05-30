@@ -32,6 +32,8 @@ __all__ = [
     "RefreshInvalidError",
     "RefreshRateLimitedError",
     "RefreshResponse",
+    "aredeem_handoff",
+    "arefresh_access_token",
     "parse_connect_uri",
     "redeem_handoff",
     "refresh_access_token",
@@ -174,24 +176,22 @@ def redeem_handoff(
     client: httpx.Client | None = None,
     timeout: float = DEFAULT_HANDOFF_TIMEOUT,
 ) -> HandoffResponse:
-    if not _HANDOFF_PATTERN.match(code):
-        raise HandoffError(f"handoff code does not match the grammar: {code!r}")
-    url = mcp_origin.rstrip("/") + HANDOFF_PATH + code
+    url = _handoff_url(mcp_origin, code)
     response = _post(url, json={}, client=client, timeout=timeout, error_cls=HandoffError)
-    status = response.status_code
-    if status == 200:
-        body = _json_body(response, HandoffError)
-        try:
-            return HandoffResponse.model_validate(body)
-        except Exception as exc:
-            raise HandoffError(f"malformed handoff response: {exc}") from exc
-    if status == 404:
-        raise HandoffUnknownError(f"handoff code unknown or already redeemed: {url!r}")
-    if status == 410:
-        raise HandoffExpiredError(f"handoff code expired: {url!r}")
-    if status == 429:
-        raise HandoffRateLimitedError(f"handoff rate-limited: {url!r}")
-    raise HandoffError(f"handoff redemption returned HTTP {status}")
+    return _interpret_handoff_response(response, url)
+
+
+async def aredeem_handoff(
+    mcp_origin: str,
+    code: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_HANDOFF_TIMEOUT,
+) -> HandoffResponse:
+    """Async sibling of :func:`redeem_handoff` using ``httpx.AsyncClient``."""
+    url = _handoff_url(mcp_origin, code)
+    response = await _apost(url, json={}, client=client, timeout=timeout, error_cls=HandoffError)
+    return _interpret_handoff_response(response, url)
 
 
 def refresh_access_token(
@@ -210,6 +210,53 @@ def refresh_access_token(
         error_cls=RefreshError,
         headers={"Authorization": f"Bearer {refresh_token}"},
     )
+    return _interpret_refresh_response(response, url)
+
+
+async def arefresh_access_token(
+    mcp_origin: str,
+    refresh_token: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_REFRESH_TIMEOUT,
+) -> RefreshResponse:
+    """Async sibling of :func:`refresh_access_token` using ``httpx.AsyncClient``."""
+    url = mcp_origin.rstrip("/") + REFRESH_PATH
+    response = await _apost(
+        url,
+        json={},
+        client=client,
+        timeout=timeout,
+        error_cls=RefreshError,
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+    return _interpret_refresh_response(response, url)
+
+
+def _handoff_url(mcp_origin: str, code: str) -> str:
+    if not _HANDOFF_PATTERN.match(code):
+        raise HandoffError(f"handoff code does not match the grammar: {code!r}")
+    return mcp_origin.rstrip("/") + HANDOFF_PATH + code
+
+
+def _interpret_handoff_response(response: httpx.Response, url: str) -> HandoffResponse:
+    status = response.status_code
+    if status == 200:
+        body = _json_body(response, HandoffError)
+        try:
+            return HandoffResponse.model_validate(body)
+        except Exception as exc:
+            raise HandoffError(f"malformed handoff response: {exc}") from exc
+    if status == 404:
+        raise HandoffUnknownError(f"handoff code unknown or already redeemed: {url!r}")
+    if status == 410:
+        raise HandoffExpiredError(f"handoff code expired: {url!r}")
+    if status == 429:
+        raise HandoffRateLimitedError(f"handoff rate-limited: {url!r}")
+    raise HandoffError(f"handoff redemption returned HTTP {status}")
+
+
+def _interpret_refresh_response(response: httpx.Response, url: str) -> RefreshResponse:
     status = response.status_code
     if status == 200:
         body = _json_body(response, RefreshError)
@@ -247,6 +294,31 @@ def _post(
     finally:
         if owned is not None:
             owned.close()
+
+
+async def _apost(
+    url: str,
+    *,
+    json: object,
+    client: httpx.AsyncClient | None,
+    timeout: float,
+    error_cls: type[ShadownetError],
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
+    owned: httpx.AsyncClient | None = None
+    try:
+        c = client
+        if c is None:
+            c = owned = httpx.AsyncClient(timeout=timeout)
+        return await c.post(url, json=json, headers=request_headers)
+    except httpx.HTTPError as exc:
+        raise error_cls(f"transport failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            await owned.aclose()
 
 
 def _json_body(response: httpx.Response, error_cls: type[ShadownetError]) -> object:

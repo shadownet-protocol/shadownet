@@ -10,6 +10,66 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Fixed
+
+- **RFC 0001 §11 agent-opacity leak in ``a2a.problem_response``**. The
+  default RFC 7807 body now ships only ``type`` + ``title`` + ``status``;
+  the exception's ``str()`` is no longer leaked as ``detail``. Receivers
+  routinely raise with messages embedding the sender's Shadowname,
+  ``messageId``, or stranger-vs-contact state — §11 forbids any of that
+  reaching the wire. Pass ``include_detail=True`` (or an explicit curated
+  ``detail=...``) to opt back in for trusted dev/CI use. Public receivers
+  should keep both off.
+- **Keyed-issuer credentials in ``ReceiverPipeline`` / ``AsyncReceiverPipeline``**.
+  ``_resolve_issuer_key`` and ``_check_issuer_authorized_for_org`` now
+  short-circuit when the issuer is a multibase public key (§3.3 / §6.6
+  rule 1), matching ``default_issuer_key_resolver``. Previously the
+  pipeline always called ``provider_lookup`` and a keyed-Hub credential
+  failed because there is no DNS record for ``z6Mk...``.
+
+### Added
+
+- **§8.10 retry-with-remint helpers** (``send_with_retries`` /
+  ``asend_with_retries``). Implements the canonical exponential-backoff +
+  jitter loop with per-attempt envelope re-mint (fresh ``iat`` / ``exp``
+  / ``messageId``). Accepts a ``builder`` closure so the caller controls
+  what stays stable (body, ``to``, ``contextId``). Protocol-level
+  rejections (``ShadownetWireError``) propagate immediately; only
+  ``TransportError`` triggers a retry.
+- **``a2a.TransportError``** — distinct from ``ParseError``. Raised by
+  ``send_envelope`` / ``asend_envelope`` when the HTTP request never
+  reached a peer (connect / read / DNS / TLS failure). Previously
+  conflated under ``ParseError``, which made it impossible for retry
+  callers to tell "the peer rejected me" from "we never got there".
+- Async surface (dual sync/async). Every network-touching helper and the
+  receiver pipeline now ship in two flavors so async consumers
+  (FastAPI + asyncpg sidecars, anyio agents) can run the §8.6/§9 flow
+  end-to-end without thread-pool detours. Additive only — sync surface
+  unchanged.
+  - `shadownet.provider`: `alookup_provider_record` (driven by
+    `dns.asyncresolver`).
+  - `shadownet.agentcard`: `afetch_agent_card_json`,
+    `afetch_and_verify_agent_card`, `afetch_direct_agent_card_json`,
+    `afetch_and_verify_direct_agent_card`.
+  - `shadownet.status`: `afetch_status_list`, `acheck_revocation`.
+  - `shadownet.csr`: `asubmit_csr`.
+  - `shadownet.a2a`: `asend_envelope`.
+  - `shadownet.onboarding`: `aredeem_handoff`, `arefresh_access_token`.
+  - `shadownet.tls`: `make_pinned_httpx_async_client` and
+    `_PinnedAsyncTransport` (httpx.AsyncHTTPTransport variant honoring
+    RFC 0001 §5.3 pin policy).
+  - `shadownet.credential`: `averify_credential` with awaitable
+    `resolve_issuer_key` / `check_issuer_authorized_for_org` callbacks,
+    plus `default_async_issuer_key_resolver` and
+    `default_async_issuer_authorization_check`.
+  - `shadownet.receiver`: `AsyncReceiverPipeline` driving the §8.6/§9
+    flow over async plug-points `AsyncReplayCache`, `AsyncContactGraph`,
+    `AsyncCredentialCache` (RAM impls supplied:
+    `AsyncInMemoryReplayCache`, `AsyncInMemoryContactGraph`,
+    `AsyncInMemoryCredentialCache`).
+  All `a*` siblings accept an injected `httpx.AsyncClient` (own one
+  when `None`) and mirror the sync error mapping verbatim.
+
 ## [0.5.0] — 2026-05-30
 
 This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec

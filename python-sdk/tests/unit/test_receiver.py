@@ -209,6 +209,41 @@ class TestPipelineHappyPaths:
         decision = pipeline.receive({"message": built.message})
         assert decision.route == "stranger_review"
 
+    def test_keyed_hub_credential_skips_dns(self, alice_key: Ed25519KeyPair) -> None:
+        """RFC 0001 §3.3 / §6.6 rule 1: a credential issued by a keyed Hub
+        (``iss`` IS the multibase verification key) MUST validate without
+        a DNS lookup of the multibase string. The pipeline previously
+        called ``provider_lookup("z6Mk...")`` which is nonsense — this test
+        guards the bug fix.
+        """
+        keyed_issuer = Ed25519KeyPair.generate()
+        keyed_iss = encode_public_key(keyed_issuer.public_bytes)
+        now = int(time.time())
+        cred = mint_credential(
+            CredentialPayload(
+                iss=keyed_iss,
+                sub="alice@sh4dow.org",
+                kind=ORG_AFFILIATION,
+                org=keyed_iss,  # §6.6 rule 1: iss == org for keyed Hubs.
+                iat=now,
+                exp=now + 3600,
+                rev=RevocationPointer(epoch="2026q2", idx=7),
+            ),
+            keyed_issuer,
+        )
+        config = _config(
+            trust=TrustStore(entries=(TrustEntry(issuer=keyed_iss, accept=(ORG_AFFILIATION,)),)),
+            policy=AcceptancePolicy(fromStranger=(ORG_AFFILIATION,)),
+        )
+        built = _alice_built(alice_key, creds=(cred,))
+
+        # The pipeline's lookup is wired to assert on unexpected domains;
+        # if the keyed-issuer fix regresses, it'll be called with "z6Mk…"
+        # and explode.
+        pipeline = _pipeline(config, alice_key)
+        decision = pipeline.receive({"message": built.message})
+        assert decision.route == "stranger_review"
+
     def test_auto_add_on_outbound_context(self, alice_key: Ed25519KeyPair) -> None:
         cg = InMemoryContactGraph()
         cg.record_outbound(context_id="ctx-auto", peer="alice@sh4dow.org")

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Annotated, Final
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
 from shadownet.crypto.ed25519 import Ed25519KeyPair, SignatureError
 from shadownet.crypto.jwt import (
@@ -44,6 +44,7 @@ from shadownet.identifiers import (
 )
 from shadownet.provider import (
     ProviderResolutionError,
+    alookup_provider_record,
     lookup_provider_record,
 )
 
@@ -55,6 +56,9 @@ __all__ = [
     "CredentialPayload",
     "RevocationPointer",
     "VerifiedCredential",
+    "averify_credential",
+    "default_async_issuer_authorization_check",
+    "default_async_issuer_key_resolver",
     "default_issuer_authorization_check",
     "default_issuer_key_resolver",
     "mint_credential",
@@ -200,6 +204,101 @@ def default_issuer_key_resolver(issuer: str) -> str:
     if not record.provider_keys:
         raise CredentialError(f"issuer {issuer!r} has no provider key")
     return record.provider_keys[0]
+
+
+async def averify_credential(
+    token: str,
+    *,
+    now: int | None = None,
+    leeway: int = DEFAULT_LEEWAY_SECONDS,
+    resolve_issuer_key: Callable[[str], Awaitable[str]] | None = None,
+    check_issuer_authorized_for_org: Callable[[str, str], Awaitable[None]] | None = None,
+) -> VerifiedCredential:
+    """Async sibling of :func:`verify_credential` with awaitable callbacks.
+
+    The two injected callbacks may now suspend — wire them to async DB-backed
+    stores or :func:`alookup_provider_record` for non-blocking DNS lookups.
+    Pure CPU steps (header decode, payload validation, JWS signature check)
+    run unchanged from the sync path.
+    """
+    try:
+        header = decode_header(token)
+    except JWTError as exc:
+        raise CredentialError(f"invalid JWS: {exc}") from exc
+    if header.get("typ") != CREDENTIAL_TYP:
+        raise CredentialError(f"typ must be {CREDENTIAL_TYP!r}, got {header.get('typ')!r}")
+    if header.get("alg") != "EdDSA":
+        raise CredentialError(f"alg must be EdDSA, got {header.get('alg')!r}")
+
+    try:
+        unverified = decode_unverified_claims(token)
+    except JWTError as exc:
+        raise CredentialError(f"unable to decode claims: {exc}") from exc
+
+    try:
+        payload = CredentialPayload.model_validate(unverified)
+    except ValidationError as exc:
+        raise CredentialError(f"credential payload invalid: {exc}") from exc
+
+    if payload.kind != ORG_AFFILIATION:
+        raise CredentialError(f"unknown credential kind {payload.kind!r}")
+
+    if payload.exp - payload.iat > MAX_LIFETIME_SECONDS:
+        raise CredentialError("credential lifetime exceeds 30 days")
+
+    current = int(time.time()) if now is None else now
+    if payload.exp < current - leeway:
+        raise CredentialError("credential expired")
+    if payload.iat > current + leeway:
+        raise CredentialError("credential iat in the future")
+
+    resolver = resolve_issuer_key or default_async_issuer_key_resolver
+    issuer_key_multibase = await resolver(payload.iss)
+    issuer_pk_bytes = parse_public_key(issuer_key_multibase)
+    issuer_key = Ed25519KeyPair.from_public_bytes(issuer_pk_bytes)
+
+    try:
+        _verify_jws_signature(token, issuer_key)
+    except (JWTError, SignatureError) as exc:
+        raise CredentialError(f"signature verification failed: {exc}") from exc
+
+    authorize = check_issuer_authorized_for_org or default_async_issuer_authorization_check
+    await authorize(payload.iss, payload.org)
+
+    return VerifiedCredential(payload=payload, issuer_key=issuer_key_multibase, raw_jws=token)
+
+
+async def default_async_issuer_key_resolver(issuer: str) -> str:
+    """Async sibling of :func:`default_issuer_key_resolver`."""
+    if is_public_key_identifier(issuer):
+        return issuer
+    try:
+        record = await alookup_provider_record(issuer)
+    except ProviderResolutionError as exc:
+        raise CredentialError(f"could not resolve issuer {issuer!r}: {exc}") from exc
+    if not record.provider_keys:
+        raise CredentialError(f"issuer {issuer!r} has no provider key")
+    return record.provider_keys[0]
+
+
+async def default_async_issuer_authorization_check(issuer: str, org: str) -> None:
+    """Async sibling of :func:`default_issuer_authorization_check`."""
+    if issuer == org:
+        return
+    if is_public_key_identifier(issuer) or is_public_key_identifier(org):
+        raise CredentialError(
+            f"keyed issuer {issuer!r} not authorized to attest for org {org!r} "
+            "(only iss == org accepted for keyed issuers per §6.6)"
+        )
+    if is_subdomain_of(issuer, org):
+        return
+    try:
+        org_record = await alookup_provider_record(org)
+    except ProviderResolutionError as exc:
+        raise CredentialError(f"could not verify issuer authorization for {org!r}: {exc}") from exc
+    if issuer.lower() in (d.lower() for d in org_record.delegates):
+        return
+    raise CredentialError(f"issuer {issuer!r} is not authorized to attest for org {org!r}")
 
 
 def default_issuer_authorization_check(issuer: str, org: str) -> None:

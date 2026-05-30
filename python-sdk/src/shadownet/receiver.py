@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable
 
 from shadownet.a2a import (
     CredsRejectedError,
@@ -29,11 +29,13 @@ from shadownet.a2a import (
 from shadownet.agentcard import (
     AgentCardError,
     FetchedAgentCard,
+    afetch_and_verify_agent_card,
     fetch_and_verify_agent_card,
 )
 from shadownet.credential import (
     CredentialError,
     VerifiedCredential,
+    averify_credential,
     verify_credential,
 )
 from shadownet.crypto.ed25519 import Ed25519KeyPair
@@ -55,9 +57,10 @@ from shadownet.identifiers import (
 from shadownet.provider import (
     ProviderRecord,
     ProviderResolutionError,
+    alookup_provider_record,
     lookup_provider_record,
 )
-from shadownet.status import StatusListError, check_revocation
+from shadownet.status import StatusListError, acheck_revocation, check_revocation
 from shadownet.trust import AcceptancePolicy, TrustStore, satisfies_policy
 
 __all__ = [
@@ -65,6 +68,13 @@ __all__ = [
     "CREDENTIAL_CACHE_DEFAULT_TTL",
     "REPLAY_CACHE_RETENTION",
     "AcceptedDecision",
+    "AsyncContactGraph",
+    "AsyncCredentialCache",
+    "AsyncInMemoryContactGraph",
+    "AsyncInMemoryCredentialCache",
+    "AsyncInMemoryReplayCache",
+    "AsyncReceiverPipeline",
+    "AsyncReplayCache",
     "ContactGraph",
     "CredentialCache",
     "InMemoryContactGraph",
@@ -418,16 +428,29 @@ class ReceiverPipeline:
             raise CredsRequiredError(f"stranger {sender!r} presented no credentials")
         return "stranger_review", False
 
-    def _resolve_issuer_key(self, issuer_domain: str) -> str:
+    def _resolve_issuer_key(self, issuer: str) -> str:
+        # Keyed issuers (RFC 0001 §3.3 / §6.6 rule 1): the issuer identifier
+        # IS the verification key. Skip DNS — there's no record to fetch.
+        if is_public_key_identifier(issuer):
+            return issuer
         try:
-            record = self._provider_lookup(issuer_domain)
+            record = self._provider_lookup(issuer)
         except ProviderResolutionError as exc:
-            raise CredentialError(f"could not resolve issuer {issuer_domain!r}: {exc}") from exc
+            raise CredentialError(f"could not resolve issuer {issuer!r}: {exc}") from exc
         if not record.provider_keys:
-            raise CredentialError(f"issuer {issuer_domain!r} has no provider key")
+            raise CredentialError(f"issuer {issuer!r} has no provider key")
         return record.provider_keys[0]
 
     def _check_issuer_authorized_for_org(self, issuer: str, org: str) -> None:
+        # §6.6 rule 1 — iss == org — is the only path open to keyed issuers
+        # (no subdomain or DNS delegate semantics apply to multibase keys).
+        if issuer == org:
+            return
+        if is_public_key_identifier(issuer) or is_public_key_identifier(org):
+            raise CredentialError(
+                f"keyed issuer {issuer!r} not authorized to attest for org {org!r} "
+                "(only iss == org accepted for keyed issuers per §6.6)"
+            )
         if is_subdomain_of(issuer, org):
             return
         try:
@@ -449,6 +472,333 @@ def _default_agent_card_fetcher(
 
 def _default_revocation_check(credential: VerifiedCredential) -> None:
     check_revocation(credential)
+
+
+@runtime_checkable
+class AsyncReplayCache(Protocol):
+    async def seen(self, sender: str, message_id: str) -> bool: ...
+    async def remember(self, sender: str, message_id: str, *, retention_seconds: int) -> None: ...
+
+
+@runtime_checkable
+class AsyncContactGraph(Protocol):
+    async def is_contact(self, shadowname: str) -> bool: ...
+    async def has_recent_outbound(
+        self, *, context_id: str, peer: str, lookback_seconds: int
+    ) -> bool: ...
+    async def add_contact(self, shadowname: str) -> None: ...
+
+
+@runtime_checkable
+class AsyncCredentialCache(Protocol):
+    async def for_sender(self, sender: str) -> list[VerifiedCredential]: ...
+    async def cache(
+        self, sender: str, credential: VerifiedCredential, *, expires_at: int
+    ) -> None: ...
+
+
+class AsyncInMemoryReplayCache:
+    """Async-shaped sibling of :class:`InMemoryReplayCache`."""
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[str, str], int] = {}
+
+    async def seen(self, sender: str, message_id: str) -> bool:
+        self._prune(int(time.time()))
+        return (sender, message_id) in self._entries
+
+    async def remember(self, sender: str, message_id: str, *, retention_seconds: int) -> None:
+        self._entries[(sender, message_id)] = int(time.time()) + retention_seconds
+
+    def _prune(self, now: int) -> None:
+        expired = [k for k, v in self._entries.items() if v <= now]
+        for key in expired:
+            del self._entries[key]
+
+
+class AsyncInMemoryContactGraph:
+    """Async-shaped sibling of :class:`InMemoryContactGraph`."""
+
+    def __init__(self) -> None:
+        self._contacts: set[str] = set()
+        self._outbound: dict[tuple[str, str], int] = {}
+
+    async def is_contact(self, shadowname: str) -> bool:
+        return shadowname in self._contacts
+
+    async def add_contact(self, shadowname: str) -> None:
+        self._contacts.add(shadowname)
+
+    async def remove_contact(self, shadowname: str) -> None:
+        self._contacts.discard(shadowname)
+
+    async def record_outbound(self, *, context_id: str, peer: str) -> None:
+        self._outbound[(context_id, peer)] = int(time.time())
+
+    async def has_recent_outbound(
+        self, *, context_id: str, peer: str, lookback_seconds: int
+    ) -> bool:
+        ts = self._outbound.get((context_id, peer))
+        if ts is None:
+            return False
+        return ts >= int(time.time()) - lookback_seconds
+
+
+class AsyncInMemoryCredentialCache:
+    """Async-shaped sibling of :class:`InMemoryCredentialCache`."""
+
+    def __init__(self) -> None:
+        self._by_sender: dict[str, list[tuple[VerifiedCredential, int]]] = {}
+
+    async def for_sender(self, sender: str) -> list[VerifiedCredential]:
+        now = int(time.time())
+        entries = self._by_sender.get(sender, [])
+        live = [(c, exp) for c, exp in entries if exp > now]
+        self._by_sender[sender] = live
+        return [c for c, _ in live]
+
+    async def cache(self, sender: str, credential: VerifiedCredential, *, expires_at: int) -> None:
+        bucket = self._by_sender.setdefault(sender, [])
+        bucket.append((credential, expires_at))
+
+
+async def _default_async_agent_card_fetcher(
+    shadowname: str, provider_record: ProviderRecord
+) -> FetchedAgentCard:
+    return await afetch_and_verify_agent_card(shadowname, provider_record)
+
+
+async def _default_async_revocation_check(credential: VerifiedCredential) -> None:
+    await acheck_revocation(credential)
+
+
+class AsyncReceiverPipeline:
+    """Async sibling of :class:`ReceiverPipeline`.
+
+    Same RFC 0001 §8.6 + §9 control flow with awaitable plug-points so
+    async callers (FastAPI + asyncpg, anyio, trio-via-asyncio-bridge) can
+    drive the pipeline from async DB-backed stores without blocking their
+    event loop. Network helpers default to the ``a*`` siblings in
+    ``shadownet.provider`` / ``.agentcard`` / ``.status``.
+    """
+
+    def __init__(
+        self,
+        config: ReceiverConfig,
+        *,
+        replay_cache: AsyncReplayCache,
+        contact_graph: AsyncContactGraph,
+        credential_cache: AsyncCredentialCache,
+        provider_lookup: Callable[[str], Awaitable[ProviderRecord]] | None = None,
+        agent_card_fetcher: Callable[[str, ProviderRecord], Awaitable[FetchedAgentCard]]
+        | None = None,
+        revocation_check: Callable[[VerifiedCredential], Awaitable[None]] | None = None,
+        now: Callable[[], int] | None = None,
+    ) -> None:
+        self.config = config
+        self._replay = replay_cache
+        self._contacts = contact_graph
+        self._credentials = credential_cache
+        self._provider_lookup = provider_lookup or alookup_provider_record
+        self._fetch_agent_card = agent_card_fetcher or _default_async_agent_card_fetcher
+        self._revocation_check = revocation_check or _default_async_revocation_check
+        self._now = now or (lambda: int(time.time()))
+
+    async def receive(self, request_body: dict[str, object]) -> AcceptedDecision:
+        # §8.6 step 2.
+        envelope_jws, message = extract_envelope_jws(request_body)
+
+        try:
+            from shadownet.crypto.jwt import (
+                decode_header,
+                decode_unverified_claims,
+            )
+
+            header = decode_header(envelope_jws)
+            unverified = decode_unverified_claims(envelope_jws)
+        except Exception as exc:
+            raise ParseError(f"envelope JWS unparseable: {exc}") from exc
+
+        sender_raw = unverified.get("from") if isinstance(unverified, dict) else None
+        recipient_raw = unverified.get("to") if isinstance(unverified, dict) else None
+        if not isinstance(sender_raw, str) or not isinstance(recipient_raw, str):
+            raise ParseError("envelope missing 'from' or 'to'")
+        if header.get("kid") != sender_raw:
+            raise ParseError("envelope JWS kid does not match 'from' claim")
+        try:
+            sender = canonicalize_identifier(sender_raw)
+            recipient = canonicalize_identifier(recipient_raw)
+        except Exception as exc:
+            raise ParseError(f"invalid identifier: {exc}") from exc
+
+        if recipient != self.config.subject:
+            raise UnknownRecipientError(f"envelope to={recipient!r} not served at this URL")
+
+        sender_provider_record: ProviderRecord | None = None
+        if is_public_key_identifier(sender):
+            sender_key = Ed25519KeyPair.from_public_bytes(parse_public_key(sender))
+        else:
+            try:
+                _, sender_provider = split_shadowname(sender)
+                sender_provider_record = await self._provider_lookup(sender_provider)
+            except ProviderResolutionError as exc:
+                raise SignatureError(f"could not resolve sender provider: {exc}") from exc
+
+            try:
+                card = await self._fetch_agent_card(sender, sender_provider_record)
+            except AgentCardError as exc:
+                raise SignatureError(f"sender AgentCard verification failed: {exc}") from exc
+
+            sender_key = Ed25519KeyPair.from_public_bytes(parse_public_key(card.shadow_public_key))
+
+        try:
+            envelope = verify_envelope(
+                envelope_jws,
+                sender_key,
+                expected_recipient=self.config.subject,
+                now=self._now(),
+                leeway=self.config.leeway_seconds,
+            )
+        except EnvelopeError as exc:
+            if "signature" in str(exc).lower():
+                raise SignatureError(str(exc)) from exc
+            raise ParseError(str(exc)) from exc
+
+        recomputed = compute_msg_hash(message)
+        if recomputed != envelope.msg_hash:
+            raise ParseError(
+                f"msgHash mismatch: envelope claims {envelope.msg_hash!r}, computed {recomputed!r}"
+            )
+
+        message_id = message.get("messageId")
+        if not isinstance(message_id, str) or not message_id:
+            raise ParseError("message.messageId missing")
+        if await self._replay.seen(sender, message_id):
+            raise ReplayError(f"({sender!r}, {message_id!r}) replayed")
+        await self._replay.remember(sender, message_id, retention_seconds=REPLAY_CACHE_RETENTION)
+
+        sender_credentials = await self._validate_creds(envelope, sender)
+
+        context_id = message.get("contextId")
+        if context_id is not None and not isinstance(context_id, str):
+            raise ParseError("message.contextId must be a string when present")
+
+        route, auto_added = await self._classify(
+            sender=sender,
+            envelope=envelope,
+            sender_provider_record=sender_provider_record,
+            credentials=sender_credentials,
+            context_id=context_id,
+        )
+
+        return AcceptedDecision(
+            route=route,
+            sender=sender,
+            envelope=envelope,
+            auto_added_contact=auto_added,
+        )
+
+    async def _validate_creds(
+        self, envelope: EnvelopePayload, sender: str
+    ) -> list[VerifiedCredential]:
+        if envelope.creds:
+            verified: list[VerifiedCredential] = []
+            for jws in envelope.creds:
+                try:
+                    cred = await averify_credential(
+                        jws,
+                        now=self._now(),
+                        leeway=self.config.leeway_seconds,
+                        resolve_issuer_key=self._resolve_issuer_key,
+                        check_issuer_authorized_for_org=self._check_issuer_authorized_for_org,
+                    )
+                except CredentialError as exc:
+                    raise CredsRejectedError(f"credential rejected: {exc}") from exc
+                try:
+                    await self._revocation_check(cred)
+                except StatusListError as exc:
+                    raise CredsRejectedError(f"credential revoked or unverifiable: {exc}") from exc
+                expires_at = min(
+                    cred.payload.exp - CREDENTIAL_CACHE_LEEWAY,
+                    self._now() + CREDENTIAL_CACHE_DEFAULT_TTL,
+                )
+                await self._credentials.cache(sender, cred, expires_at=expires_at)
+                verified.append(cred)
+            return verified
+        return await self._credentials.for_sender(sender)
+
+    async def _classify(
+        self,
+        *,
+        sender: str,
+        envelope: EnvelopePayload,
+        sender_provider_record: ProviderRecord | None,
+        credentials: Iterable[VerifiedCredential],
+        context_id: str | None,
+    ) -> tuple[Route, bool]:
+        if (
+            self.config.same_provider_org
+            and sender_provider_record is not None
+            and is_shadowname(self.config.subject)
+        ):
+            _, recipient_provider = split_shadowname(self.config.subject)
+            if recipient_provider == sender_provider_record.domain:
+                return "inbox", False
+
+        if await self._contacts.is_contact(sender):
+            return "inbox", False
+
+        if context_id and await self._contacts.has_recent_outbound(
+            context_id=context_id,
+            peer=sender,
+            lookback_seconds=self.config.auto_add_lookback_seconds,
+        ):
+            await self._contacts.add_contact(sender)
+            return "inbox", True
+
+        required = self.config.policy.required_kinds(is_contact=False)
+        if not required:
+            raise PolicyError(f"stranger {sender!r} rejected by policy")
+        creds = list(credentials)
+        if not satisfies_policy(creds, self.config.trust_store, required_kinds=required):
+            if creds:
+                raise CredsRejectedError(
+                    f"no presented credential satisfies stranger policy for {sender!r}"
+                )
+            raise CredsRequiredError(f"stranger {sender!r} presented no credentials")
+        return "stranger_review", False
+
+    async def _resolve_issuer_key(self, issuer: str) -> str:
+        # Keyed issuers (§3.3 / §6.6 rule 1): identifier IS the key.
+        if is_public_key_identifier(issuer):
+            return issuer
+        try:
+            record = await self._provider_lookup(issuer)
+        except ProviderResolutionError as exc:
+            raise CredentialError(f"could not resolve issuer {issuer!r}: {exc}") from exc
+        if not record.provider_keys:
+            raise CredentialError(f"issuer {issuer!r} has no provider key")
+        return record.provider_keys[0]
+
+    async def _check_issuer_authorized_for_org(self, issuer: str, org: str) -> None:
+        if issuer == org:
+            return
+        if is_public_key_identifier(issuer) or is_public_key_identifier(org):
+            raise CredentialError(
+                f"keyed issuer {issuer!r} not authorized to attest for org {org!r} "
+                "(only iss == org accepted for keyed issuers per §6.6)"
+            )
+        if is_subdomain_of(issuer, org):
+            return
+        try:
+            org_record = await self._provider_lookup(org)
+        except ProviderResolutionError as exc:
+            raise CredentialError(
+                f"could not verify issuer authorization for {org!r}: {exc}"
+            ) from exc
+        if issuer.lower() in (d.lower() for d in org_record.delegates):
+            return
+        raise CredentialError(f"issuer {issuer!r} is not authorized to attest for org {org!r}")
 
 
 def header_includes_extension(a2a_extensions_header: str | None) -> bool:
