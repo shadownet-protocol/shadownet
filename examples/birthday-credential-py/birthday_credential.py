@@ -113,7 +113,9 @@ def main() -> None:
         outbound,
         EnvelopePayload(
             v="0.2",
-            **{"from": alice_name, "to": bob_name, "msgHash": "sha256:placeholder"},
+            sender=alice_name,
+            recipient=bob_name,
+            msg_hash="sha256:placeholder",
             iat=now,
             exp=now + 60,
             body=EnvelopeBody(text="Hi Bob, want to grab dinner Thursday?"),
