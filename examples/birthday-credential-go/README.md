@@ -1,9 +1,15 @@
 # Birthday-credential example (Go)
 
+t> **Status: Shadownet v0.1.** This example targets the v0.1 Go SDK (SCA / SNS /
+> DIDs / VCs / VPs). It will be rewritten to mirror the v0.2 Python example
+> at [`../birthday-credential-py/`](../birthday-credential-py/) once the Go
+> SDK in `core/` finishes migrating to v0.2. Until then it serves as a
+> historical reference of the v0.1 flow.
+
 End-to-end Shadownet credential flow using the Go SDK only. No network, no
 servers, no Docker — pure cryptographic primitives over `did:key`. This
-example mirrors the Python example next door:
-[`../birthday-credential-py/`](../birthday-credential-py/).
+example mirrors the v0.1 Python flow (now archived) — for the current v0.2
+flow see [`../birthday-credential-py/`](../birthday-credential-py/).
 
 ## What it shows
 
