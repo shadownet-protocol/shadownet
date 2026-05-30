@@ -9,15 +9,15 @@ markdown serves both Claude Code and Hermes Agent:
 ```yaml
 ---
 name: shadownet-inbox
-description: Triage your Shadownet inbox; draft replies via social_send.
-version: 1.0.0
+description: Triage your Shadownet inbox; draft replies via respond.
+version: 0.5.0
 metadata:
   hermes:
-    tags: [shadownet, inbox, social, a2a]
-    category: social
-    requires_tools: [social_inbox, social_respond, social_contact_detail]
+    tags: [shadownet, inbox, a2a]
+    category: shadownet
+    requires_tools: [inbox, respond, contact_detail]
   claude:
-    allowed-tools: ["mcp__shadownet__social_inbox", "mcp__shadownet__social_respond"]
+    allowed-tools: ["mcp__shadownet__inbox", "mcp__shadownet__respond"]
 ---
 ```
 
