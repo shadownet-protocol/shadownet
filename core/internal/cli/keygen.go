@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/shadownet-protocol/shadownet/core/pkg/crypto"
+	"github.com/shadownet-protocol/shadownet/core/internal/crypto"
+	"github.com/shadownet-protocol/shadownet/core/internal/identifiers"
 )
 
-// Keygen implements `shadownet keygen`. The v0.2 multibase-encoded public key
-// output is added in the Phase 2 substrate; for the Phase 1 cut this command
-// emits the raw JWK x field and saves a keyfile with an empty kid (Phase 2
-// rewrite re-introduces the multibase `z6Mk...` form and the agentcard-style
-// kid). Tracked: see /Users/perfect/.claude-work/plans/resilient-hugging-graham.md.
+// Keygen implements `shadownet keygen`. It generates an Ed25519 keypair,
+// optionally writes the private JWK to disk (mode 0600), and prints the
+// public key in Shadownet's canonical multibase form (z6Mk… per RFC 0001
+// §3.1 and §3.3). The printed value is what operators paste into provider
+// DNS `pk=` records, Issuer key configuration, and trust-store entries.
 func Keygen(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -26,13 +27,13 @@ func Keygen(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	pub, err := crypto.PublicJWK(kp.Public, "")
+	pub, err := identifiers.EncodePubKey(kp.Public)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, pub.X)
+	fmt.Fprintln(stdout, pub)
 	if *out != "" {
-		if err := crypto.SaveKeyFile(*out, kp, ""); err != nil {
+		if err := crypto.SaveKeyFile(*out, kp, pub); err != nil {
 			return err
 		}
 		fmt.Fprintln(stdout, "wrote", *out, "(mode 0600)")
