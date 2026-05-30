@@ -79,8 +79,14 @@ class StatusList:
 
 
 def encode_status_list(status_list: StatusList) -> str:
-    compressed = gzip.compress(status_list.bits, mtime=0)
-    return base64.urlsafe_b64encode(compressed).rstrip(b"=").decode("ascii")
+    compressed = bytearray(gzip.compress(status_list.bits, mtime=0))
+    # Byte 9 of the gzip envelope (RFC 1952) is the OS field, written from
+    # the host platform by Python's gzip module (3 on Linux, 19 on macOS,
+    # ...). Normalize to 255 ("unknown") so the encoded bytes are
+    # platform-independent — required for deterministic conformance fixtures.
+    if len(compressed) > 9:
+        compressed[9] = 0xFF
+    return base64.urlsafe_b64encode(bytes(compressed)).rstrip(b"=").decode("ascii")
 
 
 def decode_status_list(body: str) -> StatusList:
