@@ -1,27 +1,73 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sh4dow.org/schemas/v0/messages/envelope.schema.json",
-  "title": "Shadownet A2A Message Envelope",
-  "description": "Schema for the `data` of a part with type `shadownet/v1+envelope`. See RFC-0006.",
+  "$id": "urn:shadownet:0.2:schema:envelope",
+  "title": "Shadownet Envelope JWT payload",
+  "description": "Payload of a shadownet-env+jwt. Defined in rfcs/0001-shadownet.md §8.3. Carried as a JWS-compact string in the A2A message's metadata under key 'urn:shadownet:0.2'. The `from` and `to` fields accept either Shadownames (Shadowname mode) or bare multibase Ed25519 public keys (direct mode).",
   "type": "object",
-  "required": ["shadownet:v", "intentId", "payload"],
+  "required": ["v", "from", "to", "iat", "exp", "msgHash", "body"],
+  "additionalProperties": true,
   "properties": {
-    "shadownet:v": { "const": "0.1" },
-    "intentId":    { "type": "string", "format": "uri" },
-    "sessionId":   { "type": "string", "format": "uri" },
-    "interaction": {
+    "v": {
       "type": "string",
-      "format": "uri",
-      "description": "OPTIONAL. URI naming an Interaction Profile when payload follows a typed schema. Absent for free-form (text-default) envelopes. Verifiers MUST NOT reject envelopes solely because `interaction` is absent or unknown."
+      "const": "0.2",
+      "description": "Protocol version."
     },
-    "payload": {
+    "from": {
+      "description": "Sender identifier — Shadowname or bare multibase Ed25519 public key. MUST equal the JWS header `kid`.",
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-z0-9._-]{1,63}@[a-z0-9.-]+$" },
+        { "type": "string", "pattern": "^z6Mk[1-9A-HJ-NP-Za-km-z]+$" }
+      ]
+    },
+    "to": {
+      "description": "Recipient identifier — Shadowname or bare multibase Ed25519 public key.",
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-z0-9._-]{1,63}@[a-z0-9.-]+$" },
+        { "type": "string", "pattern": "^z6Mk[1-9A-HJ-NP-Za-km-z]+$" }
+      ]
+    },
+    "iat": {
+      "type": "integer",
+      "description": "Issued-at, Unix seconds.",
+      "minimum": 0
+    },
+    "exp": {
+      "type": "integer",
+      "description": "Expiry, Unix seconds. Conformance suite enforces exp - iat ≤ 300 (5 minutes) per §8.3.",
+      "minimum": 0
+    },
+    "msgHash": {
+      "type": "string",
+      "description": "sha256:<base64url> hash of canonical JSON of the A2A message with the Shadownet metadata key removed. Computed per §8.4.",
+      "pattern": "^sha256:[A-Za-z0-9_-]+$"
+    },
+    "body": {
       "type": "object",
-      "description": "When `interaction` is absent, payload SHOULD include a `text` field with the natural-language message; senders MAY attach structured `hints`. When `interaction` is present, payload follows the schema set by that Interaction Profile.",
+      "description": "Application content. See §8.5.",
+      "additionalProperties": true,
       "properties": {
-        "text":  { "type": "string" },
-        "hints": { "type": "object" }
+        "text": {
+          "type": "string",
+          "description": "Human-readable message text. RECOMMENDED on every envelope."
+        },
+        "intent": {
+          "type": "string",
+          "format": "uri",
+          "description": "Application-defined identifier for the kind of interaction. Receivers MUST surface envelopes with unknown intents."
+        },
+        "data": {
+          "type": "object",
+          "description": "Application-defined structured payload, schema named by `intent` when present."
+        }
+      }
+    },
+    "creds": {
+      "type": "array",
+      "description": "Credentials presented with this envelope. Included on first contact, or after receiver's cached credentials for this sender expire.",
+      "items": {
+        "type": "string",
+        "description": "JWS-compact credential string (shadownet-cred+jwt)."
       }
     }
-  },
-  "additionalProperties": false
+  }
 }

@@ -1,30 +1,37 @@
-"""`shadownet-conformance-fixtures` — regenerate the canonical fixture set.
+"""``shadownet-conformance-fixtures`` — regenerate the canonical fixture set.
 
-Usage:
+Usage::
+
     shadownet-conformance-fixtures regen [--check] [--only ID]
 
-`--check` runs every emitter pair, byte-diffs the output against the committed
+``--check`` runs every emitter, byte-diffs the output against the committed
 fixture, and exits non-zero on drift. Used by CI to catch SDK serialization
 changes that drift fixtures away from canon.
+
+The v0.1 Go cross-check is removed: until ``core/`` and ``python-sdk`` both
+implement the full v0.2 surface, the Python emitter is the single source of
+truth. Cross-impl checks return as a v0.2.x follow-up using live runs
+against ``core/``'s Provider+Issuer binaries.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from shadownet.crypto.ed25519 import Ed25519KeyPair
-from shadownet.did.key import derive_did_key
+from shadownet.identifiers import encode_public_key
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable
 
-from shadownet_conformance.errors import ConformanceError, FixtureDrift
+from shadownet_conformance.errors import ConformanceError
 from shadownet_conformance.logging import get_logger
-from shadownet_conformance.regen import crosscheck
 from shadownet_conformance.regen.manifest import (
     FixtureEntry,
     Manifest,
@@ -66,7 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     regen.add_argument(
         "--check",
         action="store_true",
-        help="Diff freshly-emitted bytes against committed fixtures; exit non-zero on drift.",
+        help=("Diff freshly-emitted bytes against committed fixtures; exit non-zero on drift."),
     )
     regen.add_argument(
         "--only",
@@ -80,53 +87,50 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_regen(*, check_only: bool, only: list[str] | None) -> int:
     seeds = load_seeds(SEEDS_PATH)
     manifest = load_manifest(MANIFEST_PATH)
-    go_emit = crosscheck.find_go_emit_binary(REPO_ROOT)
 
     targets = _select(manifest, only)
     if not targets:
         raise ConformanceError(f"no fixtures matched --only {only!r}")
 
-    derived = _derive_state(targets, seeds)
+    encoded_keys = _encoded_keys(seeds)
+    written_fixtures: dict[str, bytes] = {}
     drifted: list[str] = []
     written: list[str] = []
     for entry in targets:
-        spec = _resolve_spec(entry, seeds, derived)
-        result = crosscheck.cross_check_emit(entry.kind, spec, go_emit)
-        if not result.matched:
-            _logger.error("CROSS-CHECK MISMATCH for %s", entry.id)
-            _logger.error("  py_emit (%d bytes): %r", len(result.py_bytes), result.py_bytes[:200])
-            _logger.error("  go-emit (%d bytes): %r", len(result.go_bytes), result.go_bytes[:200])
-            raise ConformanceError(
-                f"cross-check failed for {entry.id}: shadownet-py and shadownet-go "
-                "produced different bytes for the same input. This is a wire-level "
-                "interop concern — fix the SDK that drifted before regenerating."
-            )
+        spec = _resolve_spec(entry, seeds, encoded_keys, written_fixtures)
+        try:
+            emitted = _run_py_emit(entry.kind, spec)
+        except subprocess.CalledProcessError as exc:
+            raise ConformanceError(f"py_emit failed for {entry.id}: exit {exc.returncode}") from exc
 
         out_path = FIXTURES_ROOT / entry.out
         if check_only:
-            committed = out_path.read_bytes() if out_path.is_file() else b""
-            if committed != result.bytes_:
-                drifted.append(entry.id)
-                _logger.error(
-                    "DRIFT for %s: committed != freshly-emitted (out=%s)",
-                    entry.id,
-                    entry.out,
+            if not out_path.is_file():
+                drifted.append(f"{entry.id}: committed fixture {out_path} missing")
+                continue
+            current = out_path.read_bytes()
+            if current != emitted:
+                drifted.append(
+                    f"{entry.id}: {out_path} has drifted "
+                    f"(committed {len(current)} bytes, regenerated {len(emitted)} bytes)"
                 )
         else:
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(result.bytes_)
-            written.append(entry.id)
-            _logger.info("wrote %s -> %s (%d bytes)", entry.id, entry.out, len(result.bytes_))
+            out_path.write_bytes(emitted)
+            written.append(str(out_path.relative_to(REPO_ROOT)))
+        written_fixtures[entry.out] = emitted
+
+    if drifted:
+        for line in drifted:
+            _logger.error("DRIFT: %s", line)
+        raise ConformanceError(f"{len(drifted)} fixture(s) drifted; run without --check to update")
 
     if check_only:
-        if drifted:
-            raise FixtureDrift(
-                f"{len(drifted)} fixture(s) drifted from committed bytes: {', '.join(drifted)}. "
-                "Run `shadownet-conformance-fixtures regen` and commit the result."
-            )
-        _logger.info("regen --check OK: %d fixtures verified", len(targets))
+        _logger.info("OK: %d fixtures up to date", len(targets))
     else:
-        _logger.info("regen OK: %d fixtures written", len(written))
+        for line in written:
+            _logger.info("wrote %s", line)
+        _logger.info("regenerated %d fixtures", len(written))
     return 0
 
 
@@ -137,99 +141,71 @@ def _select(manifest: Manifest, only: list[str] | None) -> list[FixtureEntry]:
     return [e for e in manifest.fixtures if e.id in wanted]
 
 
-def _derive_state(entries: Iterable[FixtureEntry], seeds: Mapping[str, bytes]) -> dict[str, Any]:
-    """Pre-compute everything the manifest entries can reference.
-
-    Returns a dict with two keys:
-
-    - ``dids``: {seed_name: did:key DID derived from the seed}
-    - ``read_fixture(rel_path) -> bytes``: callable that reads a previously-written
-      fixture file from FIXTURES_ROOT.
-    """
-    dids: dict[str, str] = {}
+def _encoded_keys(seeds: dict[str, bytes]) -> dict[str, str]:
+    out: dict[str, str] = {}
     for name, seed in seeds.items():
         kp = Ed25519KeyPair.from_seed(seed)
-        dids[name] = derive_did_key(bytes(kp.public_key.public_bytes_raw()))
-
-    return {"dids": dids}
+        out[name] = encode_public_key(kp.public_bytes)
+    return out
 
 
 def _resolve_spec(
     entry: FixtureEntry,
-    seeds: Mapping[str, bytes],
-    derived: Mapping[str, Any],
+    seeds: dict[str, bytes],
+    encoded_keys: dict[str, str],
+    written_fixtures: dict[str, bytes],
 ) -> dict[str, Any]:
-    """Materialize the manifest spec into the JSON the emitters expect.
+    """Materialize an emitter spec from a manifest entry.
 
-    Resolves seed references (`subject_seed` -> `subject_seed_hex` + computed
-    `subject_did`), reads referenced credential fixtures for VPs, and
-    pre-computes the BitstringStatusList encodedList.
+    Translates seed names to hex strings, ``$pk:<seed>`` references to encoded
+    public keys, and ``creds = ["credentials/..."]`` references to the loaded
+    JWS strings of previously-emitted credential fixtures.
     """
-    spec = dict(entry.spec)
-
-    if entry.kind == "key":
-        seed_name = spec.pop("seed")
-        spec["seed_hex"] = seeds[seed_name].hex()
-        return spec
-
-    if entry.kind == "credential":
-        issuer_seed = spec.pop("issuer_seed")
-        spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
-        if "subject_seed" in spec:
-            subject_seed = spec.pop("subject_seed")
-            spec["subject"] = derived["dids"][subject_seed]
-        else:
-            spec["subject"] = spec.pop("subject_did")
-        return spec
-
-    if entry.kind == "freshness":
-        issuer_seed = spec.pop("issuer_seed")
-        spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
-        return spec
-
-    if entry.kind == "presentation":
-        holder_seed = spec.pop("holder_seed")
-        audience_seed = spec.pop("audience_seed")
-        spec["holder_seed_hex"] = seeds[holder_seed].hex()
-        spec["holder_did"] = derived["dids"][holder_seed]
-        spec["audience_did"] = derived["dids"][audience_seed]
-        refs = spec.pop("credential_refs")
-        spec["credentials"] = [_read_committed_jwt(r) for r in refs]
-        return spec
-
-    if entry.kind == "sns_record":
-        provider_seed = spec.pop("provider_seed")
-        subject_seed = spec.pop("subject_seed")
-        spec["provider_seed_hex"] = seeds[provider_seed].hex()
-        spec["subject_seed_hex"] = seeds[subject_seed].hex()
-        spec["subject_did"] = derived["dids"][subject_seed]
-        return spec
-
-    if entry.kind == "status_list":
-        issuer_seed = spec.pop("issuer_seed")
-        spec["issuer_seed_hex"] = seeds[issuer_seed].hex()
-        # encoded_list is hardcoded in the manifest because gzip output is
-        # library-version-dependent. The W3C BitstringStatusList spec only
-        # requires the *decompressed* bits to match, not byte-equal compressed
-        # payloads — see fixtures/_regen/manifest.toml for derivation.
-        if "encoded_list" not in spec:
-            raise ConformanceError(
-                f"status_list fixture {entry.id!r} is missing encoded_list in manifest"
-            )
-        return spec
-
-    raise ConformanceError(f"unknown fixture kind: {entry.kind}")
+    spec: dict[str, Any] = dict(entry.spec)
+    if "seed" in spec:
+        spec["seed_hex"] = seeds[spec.pop("seed")].hex()
+    for key in ("issuer_seed", "subject_seed", "provider_seed", "sender_seed"):
+        if key in spec:
+            spec[f"{key}_hex"] = seeds[spec.pop(key)].hex()
+    if "creds" in spec:
+        creds_jws: list[str] = []
+        for ref in spec.pop("creds"):
+            data = written_fixtures.get(ref)
+            if data is None:
+                disk = FIXTURES_ROOT / ref
+                if not disk.is_file():
+                    raise ConformanceError(
+                        f"credential ref {ref!r} not yet emitted; declare it earlier in manifest.toml"
+                    )
+                data = disk.read_bytes()
+            creds_jws.append(data.decode("ascii").strip())
+        spec["creds_jws"] = creds_jws
+    spec["encoded_keys"] = encoded_keys
+    return spec
 
 
-def _read_committed_jwt(rel_path: str) -> str:
-    full = FIXTURES_ROOT / rel_path
-    if not full.is_file():
-        raise ConformanceError(
-            f"VP references {rel_path} which has not been emitted yet. "
-            "Order your manifest so the referenced fixture comes first."
-        )
-    return full.read_bytes().decode("ascii").strip()
+def _run_py_emit(kind: str, spec: dict[str, Any]) -> bytes:
+    """Invoke the Python emitter in a subprocess and return its stdout.
+
+    The argv components are trusted: ``sys.executable`` is the current
+    interpreter and ``kind`` is constrained to the FixtureKind enum at
+    manifest-load time. Spec data flows in via stdin, not argv.
+    """
+    proc = subprocess.run(  # noqa: S603 — trusted argv per docstring
+        [sys.executable, "-m", "shadownet_conformance.regen.py_emit", kind],
+        input=json.dumps(spec).encode("utf-8"),
+        capture_output=True,
+        check=True,
+    )
+    return proc.stdout
 
 
-if __name__ == "__main__":  # pragma: no cover
+__all__: list[str] = []
+
+
+def _iter_targets(manifest: Manifest) -> Iterable[FixtureEntry]:
+    return iter(manifest.fixtures)
+
+
+if __name__ == "__main__":
     sys.exit(main())

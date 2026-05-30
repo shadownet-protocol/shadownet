@@ -111,7 +111,10 @@ def mint_envelope(
         )
     if payload.exp <= payload.iat:
         raise EnvelopeError("envelope exp must be greater than iat")
-    claims = payload.model_dump(by_alias=True)
+    # ``exclude_none`` drops the absent ``body.intent`` / ``body.data`` so the
+    # wire shape matches the envelope schema (RFC 0001 §8.5: those slots are
+    # optional, not nullable).
+    claims = payload.model_dump(by_alias=True, exclude_none=True)
     if not payload.creds:
         # ``creds`` is optional on the wire (§8.3); omit on this hop.
         claims.pop("creds", None)

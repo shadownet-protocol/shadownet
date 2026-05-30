@@ -3,9 +3,11 @@
 This module is a pytest plugin loaded from `tests/conftest.py`. It does three
 things:
 
-1. Enforces that every test under `tests/{predicate,sca,sns,sidecar,e2e}/`
-   carries an `rfc(number, section=..., requirement=...)` marker. Tests
-   without one cause collection to fail with a clear message.
+1. Enforces that every test under the v0.2 conformance test directories
+   (`tests/{provider,issuer,sidecar,envelope,credential,csr,status,
+   agentcard,addressing,onboarding,e2e,conformance}/`) carries an
+   `rfc(number, section=..., requirement=...)` marker. Tests without one
+   cause collection to fail with a clear message.
 2. Builds an RFC-keyed JSON report keyed by `(rfc, section, requirement)`
    and writes it to `Config.report_json` if set.
 3. Returns the same data so the GHA summary writer can reuse it.
@@ -29,11 +31,18 @@ if TYPE_CHECKING:
 
 # Test directories where `pytest.mark.rfc(...)` is required.
 RFC_REQUIRED_DIRS: Final[tuple[str, ...]] = (
-    "predicate",
-    "sca",
-    "sns",
+    "provider",
+    "issuer",
     "sidecar",
+    "envelope",
+    "credential",
+    "csr",
+    "status",
+    "agentcard",
+    "addressing",
+    "onboarding",
     "e2e",
+    "conformance",
 )
 
 

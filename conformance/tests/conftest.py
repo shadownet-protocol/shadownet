@@ -40,7 +40,6 @@ def _empty_namespace() -> object:
     return argparse.Namespace(
         target=None,
         peer_target=None,
-        proof_method=None,
         specs_path=None,
         http_timeout=None,
         report_junit=None,
@@ -49,8 +48,7 @@ def _empty_namespace() -> object:
         include_draft=False,
         no_network=False,
         marker_expr=None,
-        peer_listen_host=None,
-        sns_test_shadowname=None,
+        test_shadowname=None,
     )
 
 
@@ -70,13 +68,13 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         cfg = Config.from_namespace(_empty_namespace())
 
     skip_no_target = {
-        Role.SCA: pytest.mark.skip(reason="no --target sca configured"),
-        Role.SNS: pytest.mark.skip(reason="no --target sns configured"),
+        Role.PROVIDER: pytest.mark.skip(reason="no --target provider configured"),
+        Role.ISSUER: pytest.mark.skip(reason="no --target issuer configured"),
         Role.SIDECAR: pytest.mark.skip(reason="no --target sidecar configured"),
     }
     skip_no_peer = {
-        Role.SCA: pytest.mark.skip(reason="no --peer-target sca configured"),
-        Role.SNS: pytest.mark.skip(reason="no --peer-target sns configured"),
+        Role.PROVIDER: pytest.mark.skip(reason="no --peer-target provider configured"),
+        Role.ISSUER: pytest.mark.skip(reason="no --peer-target issuer configured"),
         Role.SIDECAR: pytest.mark.skip(reason="no --peer-target sidecar configured"),
     }
     skip_no_network = pytest.mark.skip(reason="--no-network in effect")

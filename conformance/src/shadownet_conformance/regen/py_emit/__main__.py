@@ -1,12 +1,13 @@
-"""Python fixture emitter, invoked as `python -m shadownet_conformance.regen.py_emit <kind>`.
+"""Python fixture emitter — Shadownet v0.2.
 
-Reads a JSON spec from stdin, writes the canonical fixture bytes to stdout.
-The kind argument selects the emitter dispatch.
+Invoked as ``python -m shadownet_conformance.regen.py_emit <kind>``. Reads a
+JSON spec from stdin, writes the canonical fixture bytes to stdout.
 
-This module is intentionally a thin orchestrator over `shadownet-py`'s
-natural signing primitives — the cross-check's value is precisely that both
-SDKs use their natural paths. If shadownet-py changes its serialization in
-a way that drifts from shadownet-go, the regen --check fails on CI.
+The emitter is a thin orchestrator over the v0.2 ``shadownet`` SDK's natural
+signing primitives. The Go round-trip emitter (v0.1's interop oracle) is
+removed at v0.2 until both implementations reach feature parity; until then
+the Python emitter is the single source of truth and cross-impl checks
+move to live runs against ``core/``'s Provider+Issuer binaries.
 """
 
 from __future__ import annotations
@@ -16,20 +17,24 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from shadownet.agentcard import (
+    build_direct_signed_agent_card,
+    build_signed_agent_card,
+)
+from shadownet.credential import (
+    ORG_AFFILIATION,
+    CredentialPayload,
+    RevocationPointer,
+    mint_credential,
+)
 from shadownet.crypto.ed25519 import Ed25519KeyPair
-from shadownet.crypto.jwt import sign_jwt
-from shadownet.did.key import derive_did_key
+from shadownet.csr import CSR_TYP, CsrPayload, CsrRequest, mint_csr
+from shadownet.envelope import EnvelopeBody, EnvelopePayload, mint_envelope
+from shadownet.identifiers import encode_public_key
+from shadownet.status import StatusList, encode_status_list
 
 Emitter = Callable[[dict[str, Any]], bytes]
 EMITTERS: dict[str, Emitter] = {}
-
-CONTEXT_W3C_CRED_V2 = "https://www.w3.org/ns/credentials/v2"
-CONTEXT_SHADOWNET_V1 = "https://sh4dow.org/contexts/v1"
-TYPE_VC = "VerifiableCredential"
-TYPE_SUBJECT_CRED = "ShadownetSubjectCredential"
-TYPE_VP = "VerifiablePresentation"
-TYPE_STATUS_LIST_CRED = "BitstringStatusListCredential"
-TYPE_STATUS_LIST = "BitstringStatusList"
 
 
 def main(argv: list[str]) -> int:
@@ -61,200 +66,133 @@ def _register(kind: str) -> Callable[[Emitter], Emitter]:
     return decorate
 
 
-def _key_for(seed_hex: str) -> Ed25519KeyPair:
+def _key_from_seed(seed_hex: str) -> Ed25519KeyPair:
     return Ed25519KeyPair.from_seed(bytes.fromhex(seed_hex))
 
 
-def _did_key_for(seed_hex: str) -> str:
-    kp = _key_for(seed_hex)
-    return derive_did_key(bytes(kp.public_key.public_bytes_raw()))
+def _resolve_id(value: str, keys: dict[str, str]) -> str:
+    """Resolve a ``$pk:<seed_name>`` reference to the encoded public key.
+
+    The CLI substitutes seeds before invoking the emitter, but tests calling
+    the emitter directly can use the same reference syntax for symmetry.
+    """
+    if value.startswith("$pk:"):
+        return keys[value[len("$pk:") :]]
+    return value
 
 
 @_register("key")
 def emit_key(spec: dict[str, Any]) -> bytes:
     seed_hex = spec["seed_hex"]
-    kp = _key_for(seed_hex)
-    public_jwk = kp.public_jwk()
-    private_jwk = kp.private_jwk()
-    did = derive_did_key(bytes(kp.public_key.public_bytes_raw()))
+    kp = _key_from_seed(seed_hex)
     payload = {
-        "did": did,
-        "public_jwk": public_jwk,
-        "private_jwk": private_jwk,
-        "seed_hex": seed_hex.lower(),
+        "public_key": encode_public_key(kp.public_bytes),
+        "public_jwk": kp.public_jwk(),
+        "private_jwk": kp.private_jwk(),
     }
-    return _canonical_json_bytes(payload)
+    return _canonical_json(payload).encode("utf-8") + b"\n"
 
 
 @_register("credential")
 def emit_credential(spec: dict[str, Any]) -> bytes:
-    issuer = spec["issuer"]
-    issuer_kid = spec["issuer_kid"]
-    subject = spec["subject"]
-    level = spec["level"]
-    subject_type = spec["subject_type"]
-    iat = int(spec["iat"])
-    exp = int(spec["exp"])
-    jti = spec["jti"]
-    issuer_seed_hex = spec["issuer_seed_hex"]
-
-    vc: dict[str, Any] = {
-        "@context": [CONTEXT_W3C_CRED_V2, CONTEXT_SHADOWNET_V1],
-        "type": [TYPE_VC, TYPE_SUBJECT_CRED],
-        "credentialSubject": {
-            "id": subject,
-            "level": level,
-            "subjectType": subject_type,
-        },
-    }
-    status = spec.get("status")
-    if status is not None:
-        vc["credentialStatus"] = {
-            "type": "BitstringStatusListEntry",
-            "statusListIndex": status["status_list_index"],
-            "statusListCredential": status["status_list_credential"],
-        }
-    claims = {
-        "iss": issuer,
-        "sub": subject,
-        "iat": iat,
-        "exp": exp,
-        "jti": jti,
-        "shadownet:v": "0.1",
-        "vc": vc,
-    }
-    token = sign_jwt(
-        claims,
-        _key_for(issuer_seed_hex),
-        header_extras={"typ": "vc+jwt", "kid": issuer_kid},
+    issuer_key = _key_from_seed(spec["issuer_seed_hex"])
+    keys = spec.get("encoded_keys", {})
+    issuer = _resolve_id(spec["issuer"], keys)
+    sub = _resolve_id(spec["sub"], keys)
+    org = _resolve_id(spec["org"], keys)
+    payload = CredentialPayload(
+        iss=issuer,
+        sub=sub,
+        kind=ORG_AFFILIATION,
+        org=org,
+        iat=int(spec["iat"]),
+        exp=int(spec["exp"]),
+        rev=RevocationPointer(epoch=str(spec["epoch"]), idx=int(spec["idx"])),
     )
-    return token.encode()
+    jws = mint_credential(payload, issuer_key)
+    return jws.encode("ascii") + b"\n"
 
 
-@_register("freshness")
-def emit_freshness(spec: dict[str, Any]) -> bytes:
-    claims = {
-        "iss": spec["issuer"],
-        "sub": spec["credential_jti"],
-        "iat": int(spec["iat"]),
-        "exp": int(spec["exp"]),
-        "shadownet:freshness": "v1",
-    }
-    token = sign_jwt(
-        claims,
-        _key_for(spec["issuer_seed_hex"]),
-        header_extras={"typ": "JWT", "kid": spec["issuer_kid"]},
+@_register("csr")
+def emit_csr(spec: dict[str, Any]) -> bytes:
+    subject_key = _key_from_seed(spec["subject_seed_hex"])
+    keys = spec.get("encoded_keys", {})
+    payload = CsrPayload(
+        iss=_resolve_id(spec["iss"], keys),
+        aud=_resolve_id(spec["aud"], keys),
+        iat=int(spec["iat"]),
+        exp=int(spec["exp"]),
+        req=CsrRequest(
+            kind=str(spec["req_kind"]),
+            org=_resolve_id(spec["req_org"], keys),
+        ),
     )
-    return token.encode()
+    jws = mint_csr(payload, subject_key)
+    assert jws.count(".") == 2
+    assert CSR_TYP  # ensures import survives lint
+    return jws.encode("ascii") + b"\n"
 
 
-@_register("presentation")
-def emit_presentation(spec: dict[str, Any]) -> bytes:
-    holder_seed_hex = spec["holder_seed_hex"]
-    holder_did = spec["holder_did"]
-    audience_did = spec["audience_did"]
-    nonce = spec["nonce"]
-    iat = int(spec["iat"])
-    exp = int(spec["exp"])
-    credentials: list[str] = list(spec["credentials"])
-
-    claims = {
-        "iss": holder_did,
-        "aud": audience_did,
-        "iat": iat,
-        "exp": exp,
-        "nonce": nonce,
-        "vp": {
-            "@context": [CONTEXT_W3C_CRED_V2],
-            "type": [TYPE_VP],
-            "verifiableCredential": credentials,
-        },
-    }
-    token = sign_jwt(
-        claims,
-        _key_for(holder_seed_hex),
-        header_extras={"typ": "vp+jwt", "kid": f"{holder_did}#key-1"},
+@_register("envelope")
+def emit_envelope(spec: dict[str, Any]) -> bytes:
+    sender_key = _key_from_seed(spec["sender_seed_hex"])
+    keys = spec.get("encoded_keys", {})
+    creds_jws = tuple(spec.get("creds_jws", ()))
+    payload = EnvelopePayload(
+        v="0.2",
+        sender=_resolve_id(spec["from_id"], keys),
+        recipient=_resolve_id(spec["to_id"], keys),
+        msg_hash=str(spec.get("msg_hash") or "sha256:placeholder"),
+        iat=int(spec["iat"]),
+        exp=int(spec["exp"]),
+        body=EnvelopeBody(text=str(spec["body_text"])),
+        creds=creds_jws,
     )
-    return token.encode()
+    jws = mint_envelope(payload, sender_key)
+    return jws.encode("ascii") + b"\n"
 
 
-@_register("sns_record")
-def emit_sns_record(spec: dict[str, Any]) -> bytes:
-    subject_seed_hex = spec["subject_seed_hex"]
-    subject_did = spec["subject_did"]
-    public_jwk = _key_for(subject_seed_hex).public_jwk()
-    iat = int(spec["iat"])
-    ttl = int(spec["ttl"])
-    record = {
-        "shadowname": spec["shadowname"],
-        "did": subject_did,
-        "endpoint": spec["endpoint"],
-        "publicKey": public_jwk,
-        "subjectType": spec["subject_type"],
-        "ttl": ttl,
-        "issuedAt": iat,
-        "shadownet:v": "0.1",
-    }
-    claims = {
-        "iss": spec["provider_did"],
-        "sub": spec["shadowname"],
-        "iat": iat,
-        "exp": iat + ttl,
-        "shadownet:v": "0.1",
-        "record": record,
-    }
-    token = sign_jwt(
-        claims,
-        _key_for(spec["provider_seed_hex"]),
-        header_extras={"typ": "JWT", "kid": spec["provider_kid"]},
-    )
-    return token.encode()
+@_register("agentcard")
+def emit_agentcard(spec: dict[str, Any]) -> bytes:
+    mode = spec["mode"]
+    if mode == "shadowname":
+        card = build_signed_agent_card(
+            name=str(spec["name"]),
+            description=str(spec["description"]),
+            version=str(spec["version"]),
+            a2a_url=str(spec["a2a_url"]),
+            shadow_public_key=encode_public_key(
+                _key_from_seed(spec["subject_seed_hex"]).public_bytes
+            ),
+            provider_key=_key_from_seed(spec["provider_seed_hex"]),
+            provider_domain=str(spec["provider_domain"]),
+        )
+    elif mode == "direct":
+        card = build_direct_signed_agent_card(
+            name=str(spec["name"]),
+            description=str(spec["description"]),
+            version=str(spec["version"]),
+            a2a_url=str(spec["a2a_url"]),
+            shadow_key=_key_from_seed(spec["subject_seed_hex"]),
+        )
+    else:
+        raise ValueError(f"unknown agentcard mode: {mode!r}")
+    return _canonical_json(card).encode("utf-8") + b"\n"
 
 
-@_register("status_list")
-def emit_status_list(spec: dict[str, Any]) -> bytes:
-    # encoded_list is pre-computed by the regen CLI and passed in opaque.
-    # Reason: gzip / deflate output is implementation-defined; Python and Go
-    # zlib produce semantically-equivalent but byte-different compressed
-    # payloads. The W3C BitstringStatusList spec only requires the
-    # decompressed bits to match, not the compressed bytes — see the regen
-    # CLI for the canonical encoder.
-    encoded_list = spec["encoded_list"]
-    iat = int(spec["iat"])
-    exp = int(spec["exp"])
-    claims = {
-        "iss": spec["issuer"],
-        "sub": spec["status_list_url"],
-        "iat": iat,
-        "exp": exp,
-        "shadownet:v": "0.1",
-        "vc": {
-            "@context": [CONTEXT_W3C_CRED_V2],
-            "type": [TYPE_VC, TYPE_STATUS_LIST_CRED],
-            "credentialSubject": {
-                "id": f"{spec['status_list_url']}#list",
-                "type": TYPE_STATUS_LIST,
-                "statusPurpose": spec["purpose"],
-                "encodedList": encoded_list,
-            },
-        },
-    }
-    token = sign_jwt(
-        claims,
-        _key_for(spec["issuer_seed_hex"]),
-        header_extras={"typ": "vc+jwt", "kid": spec["issuer_kid"]},
-    )
-    return token.encode()
+@_register("status_bitstring")
+def emit_status_bitstring(spec: dict[str, Any]) -> bytes:
+    size = int(spec["size_bits"])
+    sl = StatusList.empty(size)
+    for idx in spec.get("revoked_idx", ()):
+        sl = sl.with_revoked(int(idx))
+    encoded = encode_status_list(sl)
+    return encoded.encode("ascii") + b"\n"
 
 
-def _canonical_json_bytes(payload: dict[str, Any]) -> bytes:
-    """JSON serialize with sorted keys + 2-space indent, trailing newline.
-
-    Used for non-JWT fixtures (keys). Sorted keys give deterministic output
-    independent of dict construction order in the emitter.
-    """
-    return (json.dumps(payload, sort_keys=True, indent=2) + "\n").encode()
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     sys.exit(main(sys.argv))
