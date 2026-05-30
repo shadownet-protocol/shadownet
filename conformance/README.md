@@ -84,29 +84,28 @@ verify itself before merging:
 ### Smoke-testing locally against the in-repo Go reference
 
 ```sh
-# In one terminal, boot the reference SCA + SNS from this monorepo:
+# In one terminal, boot the reference Provider + Issuer from this monorepo:
 ( cd ../core
-  go build -o /tmp/sca-server ./cmd/sca-server
-  go build -o /tmp/sns-server ./cmd/sns-server
-  go build -o /tmp/shadownet  ./cmd/shadownet
+  go build -o /tmp/provider-server ./cmd/provider-server
+  go build -o /tmp/issuer-server   ./cmd/issuer-server
 )
 mkdir -p /tmp/sn-self
-/tmp/shadownet keygen --out /tmp/sn-self/issuer.jwk
-/tmp/shadownet keygen --out /tmp/sn-self/provider.jwk
-SHADOWNET_ALLOW_INSTANT_APPROVAL=1 \
-  /tmp/sca-server -config ci/sca-server.yaml &
-/tmp/sns-server -config ci/sns-server.yaml &
+( cd ../core && go run ./internal/cli keygen --out /tmp/sn-self/provider.jwk )
+( cd ../core && go run ./internal/cli keygen --out /tmp/sn-self/issuer.jwk )
+
+/tmp/provider-server serve --config ci/provider-server.yaml &
+SHADOWNET_ALLOW_AUTO_APPROVE=1 \
+  /tmp/issuer-server serve --config ci/issuer-server.yaml &
 
 # In another terminal:
 uv run shadownet-conformance \
-    --target sca=http://127.0.0.1:18443 \
-    --target sns=http://127.0.0.1:18444 \
-    --proof-method instant-approval
+    --target provider=http://127.0.0.1:8443 \
+    --target issuer=http://127.0.0.1:8444
 ```
 
-The pre-baked `ci/sca-server.yaml` and `ci/sns-server.yaml` configs use
-`did:web:127.0.0.1%3A18443/8444` (URL-encoded loopback) so no DNS or TLS
-plumbing is required. The full automated version of this lives in
+The pre-baked `ci/provider-server.yaml` and `ci/issuer-server.yaml`
+configs bind to loopback so no DNS or TLS plumbing is required. The full
+automated version of this lives in
 [`.github/workflows/conformance.yml`](../.github/workflows/conformance.yml)
 at the monorepo root.
 
@@ -129,9 +128,9 @@ The fixture set is the protocol's empirical contract. New normative behavior in 
 > - Never list a fixture public key in a production trust store.
 >
 > The reference servers under `../core/` enforce the first rule at startup:
-> `sca-server` and `sns-server` refuse to boot if their signing key matches
-> any fixture public key, unless `SHADOWNET_ALLOW_FIXTURE_KEYS=1` is set
-> (used by this suite's CI self-test, never in production).
+> `provider-server` and `issuer-server` refuse to boot if their signing
+> key matches any fixture public key, unless `SHADOWNET_ALLOW_FIXTURE_KEYS=1`
+> is set (used by this suite's CI self-test, never in production).
 
 ## Tooling
 

@@ -1,0 +1,41 @@
+# Shadownet provider-server-pg (RFC 0001 §5.2, Postgres backend).
+#
+# Build context is the repository root. The pgstore submodule has its own
+# go.mod with a `replace ../` directive that points the parent module at
+# the in-tree checkout; both modules are present in the build context so
+# the replace resolves cleanly.
+
+ARG GO_VERSION=1.25.0
+
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+
+# Bring in both module manifests; the pgstore go.sum references parent
+# checksums via the replace, so the parent's go.mod must be present.
+COPY core/go.mod core/go.sum ./core/
+COPY core/pgstore/go.mod core/pgstore/go.sum ./core/pgstore/
+
+# Then the source for both modules.
+COPY core/ ./core/
+
+WORKDIR /src/core/pgstore
+RUN go mod download
+
+ARG VERSION="dev"
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath" \
+    go build -ldflags "-s -w -X main.version=${VERSION}" \
+    -o /out/provider-server-pg ./cmd/provider-server-pg
+
+# ── runtime ────────────────────────────────────────────────────────────
+
+FROM alpine:3 AS final
+RUN addgroup -S shadownet && adduser -S -G shadownet shadownet && \
+    apk add --no-cache ca-certificates wget && \
+    mkdir -p /var/lib/shadownet && \
+    chown shadownet:shadownet /var/lib/shadownet
+USER shadownet
+WORKDIR /var/lib/shadownet
+COPY --from=build /out/provider-server-pg /usr/local/bin/provider-server-pg
+EXPOSE 8443
+ENTRYPOINT ["/usr/local/bin/provider-server-pg"]
+CMD ["serve", "--config", "/etc/shadownet/provider.yaml"]

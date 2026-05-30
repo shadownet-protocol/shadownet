@@ -1,4 +1,4 @@
-# Lint configuration for shadownet-go (golangci-lint v2 schema).
+# Lint configuration for shadownet/core (golangci-lint v2 schema).
 # Conventions live in CLAUDE.md; this file enforces them.
 version: "2"
 

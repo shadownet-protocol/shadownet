@@ -2,7 +2,7 @@ name: release (core/pgstore)
 
 # Triggered by tags of the shape `core/pgstore/vX.Y.Z`. The pgstore
 # submodule has its own go.mod and ships the `-pg` reference images
-# (sca-server-pg, sns-server-pg).
+# (provider-server-pg, issuer-server-pg).
 
 on:
   push:
@@ -59,10 +59,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: sca-server-pg
-            dockerfile: build/Dockerfile.sca-server-pg
-          - name: sns-server-pg
-            dockerfile: build/Dockerfile.sns-server-pg
+          - name: provider-server-pg
+            dockerfile: core/pgstore/build/Dockerfile.provider-server-pg
+          - name: issuer-server-pg
+            dockerfile: core/pgstore/build/Dockerfile.issuer-server-pg
     steps:
       - uses: actions/checkout@v4
 
@@ -88,11 +88,11 @@ jobs:
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v6
         with:
-          # Dockerfile is in core/build/ and copies both the parent
-          # module's go.mod and pgstore/go.mod; the build context must
-          # therefore be the parent module root.
-          context: core
-          file: core/${{ matrix.dockerfile }}
+          # Build context is the repo root; the Dockerfile lives under
+          # core/pgstore/build/ and COPYs from both core/ and core/pgstore/
+          # (pgstore's go.mod uses a `replace ../` to the parent module).
+          context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: true

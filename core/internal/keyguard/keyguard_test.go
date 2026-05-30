@@ -72,12 +72,12 @@ func TestAssertNotFixtureRefusesFixtureKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hex decode: %v", err)
 	}
-	err = AssertNotFixture(ed25519.PublicKey(raw), "sca-server")
+	err = AssertNotFixture(ed25519.PublicKey(raw), "issuer-server")
 	if err == nil {
 		t.Fatal("expected error refusing fixture key")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "sca-server") {
+	if !strings.Contains(msg, "issuer-server") {
 		t.Errorf("error message should name the role; got %q", msg)
 	}
 	if !strings.Contains(msg, AllowEnv) {
