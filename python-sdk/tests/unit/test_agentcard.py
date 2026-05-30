@@ -9,11 +9,18 @@ import pytest
 import respx
 
 from shadownet.agentcard import (
+    DIRECT_AGENT_CARD_PATH,
+    PINNED_SELF_SIGNED_SCHEME,
     AgentCardError,
     AgentCardSignatureError,
+    build_direct_signed_agent_card,
     build_signed_agent_card,
+    extract_issuer_endpoint,
+    extract_status_list_base,
     fetch_and_verify_agent_card,
+    fetch_and_verify_direct_agent_card,
     verify_agent_card,
+    verify_self_signed_agent_card,
 )
 from shadownet.crypto.ed25519 import Ed25519KeyPair
 from shadownet.identifiers import encode_public_key
@@ -321,3 +328,95 @@ class TestFetchAndVerifyAgentCard:
         )
         with pytest.raises(AgentCardError, match="not a JSON object"):
             fetch_and_verify_agent_card("alice@sh4dow.org", provider_record)
+
+
+class TestDirectMode:
+    def test_self_signed_roundtrip(self) -> None:
+        bob_key = Ed25519KeyPair.generate()
+        bob_pk = encode_public_key(bob_key.public_bytes)
+        signed = build_direct_signed_agent_card(
+            name="Bob",
+            description="Bob's Shadow",
+            version="1.0.0",
+            a2a_url="https://bob-vps.example.com:8443/a2a",
+            shadow_key=bob_key,
+        )
+        assert signed["securitySchemes"][PINNED_SELF_SIGNED_SCHEME] == {}
+        result = verify_self_signed_agent_card(signed, bob_pk)
+        assert result.shadow_public_key == bob_pk
+        assert result.endpoint_url == "https://bob-vps.example.com:8443/a2a"
+
+    def test_self_signed_with_wrong_expected_key_rejected(self) -> None:
+        bob_key = Ed25519KeyPair.generate()
+        signed = build_direct_signed_agent_card(
+            name="Bob",
+            description="Bob's Shadow",
+            version="1.0.0",
+            a2a_url="https://bob-vps.example.com:8443/a2a",
+            shadow_key=bob_key,
+        )
+        wrong = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        with pytest.raises(AgentCardSignatureError):
+            verify_self_signed_agent_card(signed, wrong)
+
+    def test_missing_security_scheme_rejected(self) -> None:
+        bob_key = Ed25519KeyPair.generate()
+        bob_pk = encode_public_key(bob_key.public_bytes)
+        signed = build_direct_signed_agent_card(
+            name="Bob",
+            description="Bob's Shadow",
+            version="1.0.0",
+            a2a_url="https://bob-vps.example.com:8443/a2a",
+            shadow_key=bob_key,
+        )
+        del signed["securitySchemes"]
+        # Resigning would update signature, but we want to test the validator
+        # rejects cards missing the scheme even if signed correctly. Build a
+        # fresh card without the scheme and sign it manually.
+        from shadownet.agentcard import build_unsigned_agent_card_body, sign_agent_card_body
+
+        body = build_unsigned_agent_card_body(
+            name="Bob",
+            description="Bob's Shadow",
+            version="1.0.0",
+            a2a_url="https://bob-vps.example.com:8443/a2a",
+            shadow_public_key=bob_pk,
+        )
+        unsigned_no_scheme = sign_agent_card_body(body, bob_key, kid=bob_pk)
+        with pytest.raises(AgentCardError, match="securitySchemes"):
+            verify_self_signed_agent_card(unsigned_no_scheme, bob_pk)
+
+    def test_status_list_base_extras(self) -> None:
+        bob_key = Ed25519KeyPair.generate()
+        bob_pk = encode_public_key(bob_key.public_bytes)
+        signed = build_direct_signed_agent_card(
+            name="Hub",
+            description="Hub Shadow",
+            version="1.0.0",
+            a2a_url="https://hub.example.com/a2a",
+            shadow_key=bob_key,
+            extras={
+                "shadownet:statusListBase": "https://hub.example.com/status",
+                "shadownet:issueEndpoint": "https://hub.example.com/issue",
+            },
+        )
+        verified = verify_self_signed_agent_card(signed, bob_pk)
+        assert extract_status_list_base(verified.raw) == "https://hub.example.com/status"
+        assert extract_issuer_endpoint(verified.raw) == "https://hub.example.com/issue"
+
+    @respx.mock
+    def test_fetch_direct_path(self) -> None:
+        bob_key = Ed25519KeyPair.generate()
+        bob_pk = encode_public_key(bob_key.public_bytes)
+        signed = build_direct_signed_agent_card(
+            name="Bob",
+            description="Bob's Shadow",
+            version="1.0.0",
+            a2a_url="https://bob-vps.example.com:8443/a2a",
+            shadow_key=bob_key,
+        )
+        respx.get("https://bob-vps.example.com:8443" + DIRECT_AGENT_CARD_PATH).mock(
+            return_value=httpx.Response(200, json=signed)
+        )
+        result = fetch_and_verify_direct_agent_card("https://bob-vps.example.com:8443", bob_pk)
+        assert result.shadow_public_key == bob_pk

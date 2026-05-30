@@ -36,8 +36,9 @@ from shadownet.crypto.jwt import (
 )
 from shadownet.errors import ShadownetError
 from shadownet.identifiers import (
-    Domain,
-    Shadowname,
+    Identifier,
+    IssuerIdentifier,
+    is_public_key_identifier,
     is_subdomain_of,
     parse_public_key,
 )
@@ -80,14 +81,19 @@ class RevocationPointer(BaseModel):
 
 
 class CredentialPayload(BaseModel):
-    """Decoded payload of a ``shadownet-cred+jwt``."""
+    """Decoded payload of a ``shadownet-cred+jwt``.
+
+    ``iss`` and ``org`` accept either a domain (Shadowname-mode issuer / org)
+    or a multibase Ed25519 public key (keyed issuer / Hub). ``sub`` accepts
+    a Shadowname or a public key (direct-mode Shadow).
+    """
 
     model_config = ConfigDict(extra="allow", frozen=True, populate_by_name=True)
 
-    iss: Domain
-    sub: Shadowname
+    iss: IssuerIdentifier
+    sub: Identifier
     kind: Annotated[str, Field(pattern="^[a-z_]+$")]
-    org: Domain
+    org: IssuerIdentifier
     iat: int = Field(ge=0)
     exp: int = Field(ge=0)
     rev: RevocationPointer
@@ -178,19 +184,38 @@ def verify_credential(
     return VerifiedCredential(payload=payload, issuer_key=issuer_key_multibase, raw_jws=token)
 
 
-def default_issuer_key_resolver(issuer_domain: str) -> str:
-    """Resolve the issuer's signing key via its provider DNS record (§4.2)."""
+def default_issuer_key_resolver(issuer: str) -> str:
+    """Resolve the issuer's signing key.
+
+    Keyed issuers (RFC 0001 §3.3): ``iss`` IS the verification key, returned
+    verbatim. Domain issuers: DNS-resolve ``_shadownet.<iss>`` TXT (§4.2) and
+    return the published ``pk``.
+    """
+    if is_public_key_identifier(issuer):
+        return issuer
     try:
-        record = lookup_provider_record(issuer_domain)
+        record = lookup_provider_record(issuer)
     except ProviderResolutionError as exc:
-        raise CredentialError(f"could not resolve issuer {issuer_domain!r}: {exc}") from exc
+        raise CredentialError(f"could not resolve issuer {issuer!r}: {exc}") from exc
     if not record.provider_keys:
-        raise CredentialError(f"issuer {issuer_domain!r} has no provider key")
+        raise CredentialError(f"issuer {issuer!r} has no provider key")
     return record.provider_keys[0]
 
 
 def default_issuer_authorization_check(issuer: str, org: str) -> None:
-    """Apply RFC 0001 §6.6 with the provider DNS delegate path enabled."""
+    """Apply RFC 0001 §6.6.
+
+    Rule 1 — ``iss == org`` — is the **only** path open to keyed issuers and
+    the trivial case for domain issuers. Rules 2 (sub-domain) and 3 (DNS
+    delegate) are domain-only.
+    """
+    if issuer == org:
+        return
+    if is_public_key_identifier(issuer) or is_public_key_identifier(org):
+        raise CredentialError(
+            f"keyed issuer {issuer!r} not authorized to attest for org {org!r} "
+            "(only iss == org accepted for keyed issuers per §6.6)"
+        )
     if is_subdomain_of(issuer, org):
         return
     try:

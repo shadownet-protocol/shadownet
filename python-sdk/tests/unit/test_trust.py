@@ -79,6 +79,18 @@ class TestTrustStore:
         )
         assert is_credential_trusted(_credential(), store) is True
 
+    def test_keyed_issuer_matched(self) -> None:
+        # Keyed Hub: pubkey identifier is matched exactly (case-sensitive).
+        pk = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        store = TrustStore(entries=(TrustEntry(issuer=pk, accept=("org_affiliation",)),))
+        assert is_credential_trusted(_credential(iss=pk), store) is True
+
+    def test_invalid_issuer_lookup_returns_false(self) -> None:
+        store = TrustStore(
+            entries=(TrustEntry(issuer="acme.example", accept=("org_affiliation",)),)
+        )
+        assert store.accepts("not_a_valid_identifier", "org_affiliation") is False
+
 
 class TestAcceptancePolicy:
     def test_default_from_stranger(self) -> None:

@@ -37,15 +37,24 @@ if TYPE_CHECKING:
     from shadownet.provider import ProviderRecord
 
 __all__ = [
+    "AGENT_CARD_MEDIA_TYPE",
+    "DIRECT_AGENT_CARD_PATH",
+    "PINNED_SELF_SIGNED_SCHEME",
     "AgentCardError",
     "AgentCardSignatureError",
     "FetchedAgentCard",
+    "build_direct_signed_agent_card",
     "build_signed_agent_card",
     "build_unsigned_agent_card_body",
+    "extract_issuer_endpoint",
+    "extract_status_list_base",
     "fetch_agent_card_json",
     "fetch_and_verify_agent_card",
+    "fetch_and_verify_direct_agent_card",
+    "fetch_direct_agent_card_json",
     "sign_agent_card_body",
     "verify_agent_card",
+    "verify_self_signed_agent_card",
 ]
 
 
@@ -53,6 +62,8 @@ SHADOWNET_EXTENSION_URI: Final = "urn:shadownet:0.2"
 EXPECTED_ALG: Final = "EdDSA"
 EXPECTED_TYP: Final = "JOSE"
 AGENT_CARD_MEDIA_TYPE: Final = "application/a2a+json"
+DIRECT_AGENT_CARD_PATH: Final = "/.well-known/agent-card.json"
+PINNED_SELF_SIGNED_SCHEME: Final = "shadownet:pinned-self-signed"
 DEFAULT_FETCH_TIMEOUT: Final = 10.0
 
 
@@ -66,7 +77,11 @@ class AgentCardSignatureError(AgentCardError):
 
 @dataclass(frozen=True, slots=True)
 class FetchedAgentCard:
-    """Verified AgentCard for a Shadowname."""
+    """Verified AgentCard for a Shadow.
+
+    ``shadowname`` carries the Shadowname when known; for direct-mode Shadows
+    it holds the bare multibase public key (the wire identifier).
+    """
 
     shadowname: str
     shadow_public_key: MultibasePublicKey
@@ -136,22 +151,7 @@ def verify_agent_card(
     payload_b64 = _b64url(payload_bytes)
 
     expected_kid = f"shadownet@{provider_record.domain}"
-    last_error: Exception | None = None
-    for sig in signatures:
-        if not isinstance(sig, dict):
-            continue
-        try:
-            _verify_one(sig, payload_b64, provider_record, expected_kid)
-            break
-        except AgentCardSignatureError as exc:
-            last_error = exc
-            continue
-    else:
-        raise AgentCardSignatureError(
-            f"no valid signature on AgentCard ({last_error})"
-            if last_error
-            else "no parseable signatures on AgentCard"
-        )
+    _verify_signatures(signatures, payload_b64, provider_record.provider_keys, expected_kid)
 
     shadow_pk = _require_str(card, "shadownet:pk")
     try:
@@ -177,6 +177,98 @@ def verify_agent_card(
     )
 
 
+def verify_self_signed_agent_card(
+    card: dict[str, Any],
+    expected_public_key: str,
+) -> FetchedAgentCard:
+    """Verify a direct-mode (self-signed) AgentCard — RFC 0001 §5.3.
+
+    The card is signed by the Shadow itself; the JWS ``kid`` MUST equal the
+    embedded ``shadownet:pk`` and the URI's pubkey (caller supplies it as
+    ``expected_public_key``). The signature verifies against that same key.
+    """
+    signatures = card.get("signatures")
+    if not isinstance(signatures, list) or not signatures:
+        raise AgentCardSignatureError("AgentCard has no signatures")
+
+    payload_bytes = _canonical_card_payload(card)
+    payload_b64 = _b64url(payload_bytes)
+
+    _verify_signatures(signatures, payload_b64, (expected_public_key,), expected_public_key)
+
+    shadow_pk = _require_str(card, "shadownet:pk")
+    if shadow_pk != expected_public_key:
+        raise AgentCardError(
+            f"AgentCard shadownet:pk={shadow_pk!r} does not match URI key {expected_public_key!r}"
+        )
+    try:
+        parse_public_key(shadow_pk)
+    except InvalidIdentifierError as exc:
+        raise AgentCardError(f"invalid shadownet:pk: {exc}") from exc
+
+    version = _require_str(card, "shadownet:v")
+    if version != "0.2":
+        raise AgentCardError(f"unsupported shadownet:v={version!r}")
+
+    _validate_extensions(card)
+    _validate_direct_security_scheme(card)
+
+    endpoint_url = _supported_interface_url(card)
+
+    return FetchedAgentCard(
+        shadowname=expected_public_key,
+        shadow_public_key=shadow_pk,
+        endpoint_url=endpoint_url,
+        cache_max_age=None,
+        etag=None,
+        raw=card,
+    )
+
+
+def _verify_signatures(
+    signatures: list[Any],
+    payload_b64: str,
+    expected_signers: tuple[str, ...],
+    expected_kid: str,
+) -> None:
+    last_error: Exception | None = None
+    for sig in signatures:
+        if not isinstance(sig, dict):
+            continue
+        try:
+            _verify_one(sig, payload_b64, expected_signers, expected_kid)
+            return
+        except AgentCardSignatureError as exc:
+            last_error = exc
+            continue
+    raise AgentCardSignatureError(
+        f"no valid signature on AgentCard ({last_error})"
+        if last_error
+        else "no parseable signatures on AgentCard"
+    )
+
+
+def _validate_direct_security_scheme(card: dict[str, Any]) -> None:
+    schemes = card.get("securitySchemes")
+    if not isinstance(schemes, dict) or PINNED_SELF_SIGNED_SCHEME not in schemes:
+        raise AgentCardError(
+            f"direct-mode AgentCard must declare "
+            f"securitySchemes[{PINNED_SELF_SIGNED_SCHEME!r}] per RFC 0001 §5.4"
+        )
+
+
+def extract_status_list_base(card: dict[str, Any]) -> str | None:
+    """Return ``shadownet:statusListBase`` if present (keyed issuers, §6.4)."""
+    value = card.get("shadownet:statusListBase")
+    return value if isinstance(value, str) and value else None
+
+
+def extract_issuer_endpoint(card: dict[str, Any]) -> str | None:
+    """Return ``shadownet:issueEndpoint`` if present (keyed issuers, §6.5)."""
+    value = card.get("shadownet:issueEndpoint")
+    return value if isinstance(value, str) and value else None
+
+
 def fetch_and_verify_agent_card(
     shadowname: str,
     provider_record: ProviderRecord,
@@ -188,6 +280,63 @@ def fetch_and_verify_agent_card(
         shadowname, provider_record, client=client, timeout=timeout
     )
     verified = verify_agent_card(card, provider_record, shadowname)
+    cache_max_age = _parse_max_age(headers.get("Cache-Control"))
+    etag = headers.get("ETag")
+    return FetchedAgentCard(
+        shadowname=verified.shadowname,
+        shadow_public_key=verified.shadow_public_key,
+        endpoint_url=verified.endpoint_url,
+        cache_max_age=cache_max_age,
+        etag=etag,
+        raw=verified.raw,
+    )
+
+
+def fetch_direct_agent_card_json(
+    endpoint_origin: str,
+    *,
+    client: httpx.Client | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> tuple[dict[str, Any], httpx.Headers]:
+    """``GET <origin>/.well-known/agent-card.json`` for direct-mode resolution.
+
+    Caller is responsible for TLS posture: WebPKI when the endpoint uses a
+    CA-issued cert, or fingerprint pinning when the URI carried a
+    ``#sha256:`` pin. Configure the ``client`` accordingly.
+    """
+    url = endpoint_origin.rstrip("/") + DIRECT_AGENT_CARD_PATH
+    owned: httpx.Client | None = None
+    try:
+        c = client
+        if c is None:
+            c = owned = httpx.Client(timeout=timeout)
+        response = c.get(url, headers={"Accept": AGENT_CARD_MEDIA_TYPE})
+    except httpx.HTTPError as exc:
+        raise AgentCardError(f"fetch failed for {url!r}: {exc}") from exc
+    finally:
+        if owned is not None:
+            owned.close()
+
+    if response.status_code != 200:
+        raise AgentCardError(f"AgentCard {url!r} returned HTTP {response.status_code}")
+    try:
+        body = response.json()
+    except json.JSONDecodeError as exc:
+        raise AgentCardError(f"AgentCard {url!r} not valid JSON: {exc}") from exc
+    if not isinstance(body, dict):
+        raise AgentCardError(f"AgentCard {url!r} is not a JSON object")
+    return body, response.headers
+
+
+def fetch_and_verify_direct_agent_card(
+    endpoint_origin: str,
+    expected_public_key: str,
+    *,
+    client: httpx.Client | None = None,
+    timeout: float = DEFAULT_FETCH_TIMEOUT,
+) -> FetchedAgentCard:
+    card, headers = fetch_direct_agent_card_json(endpoint_origin, client=client, timeout=timeout)
+    verified = verify_self_signed_agent_card(card, expected_public_key)
     cache_max_age = _parse_max_age(headers.get("Cache-Control"))
     etag = headers.get("ETag")
     return FetchedAgentCard(
@@ -228,7 +377,7 @@ def _strip_empty(value: Any) -> Any:
 def _verify_one(
     signature_obj: dict[str, Any],
     payload_b64: str,
-    provider_record: ProviderRecord,
+    expected_signers: tuple[str, ...],
     expected_kid: str,
 ) -> None:
     protected_b64 = signature_obj.get("protected")
@@ -256,16 +405,16 @@ def _verify_one(
 
     signing_input = (protected_b64 + "." + payload_b64).encode("ascii")
     last_failure: Exception | None = None
-    for provider_pk in provider_record.provider_keys:
+    for pk in expected_signers:
         try:
-            key = Ed25519KeyPair.from_public_bytes(parse_public_key(provider_pk))
+            key = Ed25519KeyPair.from_public_bytes(parse_public_key(pk))
             key.verify(signature_bytes, signing_input)
             return
         except Exception as exc:
             last_failure = exc
             continue
     raise AgentCardSignatureError(
-        f"signature did not verify against any provider key ({last_failure})"
+        f"signature did not verify against any expected signer ({last_failure})"
     )
 
 
@@ -354,25 +503,32 @@ def build_unsigned_agent_card_body(
 
 def sign_agent_card_body(
     body: dict[str, Any],
-    provider_key: Ed25519KeyPair,
+    signing_key: Ed25519KeyPair,
     *,
-    provider_domain: str,
+    kid: str | None = None,
+    provider_domain: str | None = None,
 ) -> dict[str, Any]:
     """Attach a JWS signature to an AgentCard body per A2A §8.4.
 
-    Returns a *new* dict with the ``signatures`` array populated. The
-    canonical payload is the input minus ``signatures`` with empty / default
-    values stripped, JCS-canonicalized; the signing input is
-    ``BASE64URL(header) || '.' || BASE64URL(payload)``.
+    Pass either ``kid`` (explicit; used for direct-mode self-signed cards
+    where it equals the Shadow's own pubkey) or ``provider_domain`` (which
+    is rewritten to ``shadownet@<domain>`` for Shadowname-mode cards).
     """
+    if kid is None:
+        if provider_domain is None:
+            raise AgentCardError("must supply kid or provider_domain")
+        kid = f"shadownet@{provider_domain}"
+    elif provider_domain is not None:
+        raise AgentCardError("supply kid OR provider_domain, not both")
+
     pruned = _strip_empty({k: v for k, v in body.items() if k != "signatures"})
     if pruned is None:
         raise AgentCardError("AgentCard canonical form is empty")
     payload_b64 = _b64url(canonicalize(pruned))
-    header = {"alg": EXPECTED_ALG, "typ": EXPECTED_TYP, "kid": f"shadownet@{provider_domain}"}
+    header = {"alg": EXPECTED_ALG, "typ": EXPECTED_TYP, "kid": kid}
     header_b64 = _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     signing_input = (header_b64 + "." + payload_b64).encode("ascii")
-    signature = provider_key.sign(signing_input)
+    signature = signing_key.sign(signing_input)
     out = dict(body)
     out["signatures"] = [
         {"protected": header_b64, "signature": _b64url(signature)},
@@ -400,6 +556,38 @@ def build_signed_agent_card(
         extras=extras,
     )
     return sign_agent_card_body(body, provider_key, provider_domain=provider_domain)
+
+
+def build_direct_signed_agent_card(
+    *,
+    name: str,
+    description: str,
+    version: str,
+    a2a_url: str,
+    shadow_key: Ed25519KeyPair,
+    extras: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build and self-sign a direct-mode AgentCard — RFC 0001 §5.3, §5.4.
+
+    The card declares ``shadownet:pinned-self-signed`` in ``securitySchemes``
+    and is signed by ``shadow_key`` with ``kid`` equal to that key's encoded
+    public form (so callers can verify against the URI-supplied pubkey).
+    """
+    from shadownet.identifiers import encode_public_key
+
+    shadow_public_key = encode_public_key(shadow_key.public_bytes)
+    merged_extras: dict[str, Any] = {"securitySchemes": {PINNED_SELF_SIGNED_SCHEME: {}}}
+    if extras:
+        merged_extras.update(extras)
+    body = build_unsigned_agent_card_body(
+        name=name,
+        description=description,
+        version=version,
+        a2a_url=a2a_url,
+        shadow_public_key=shadow_public_key,
+        extras=merged_extras,
+    )
+    return sign_agent_card_body(body, shadow_key, kid=shadow_public_key)
 
 
 def _b64url(data: bytes) -> str:

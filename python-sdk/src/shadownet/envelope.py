@@ -26,7 +26,9 @@ from shadownet.crypto.jwt import (
     sign_jwt,
 )
 from shadownet.errors import ShadownetError
-from shadownet.identifiers import Shadowname  # noqa: TC001  pydantic needs Shadowname at runtime
+from shadownet.identifiers import (
+    Identifier,  # noqa: TC001  pydantic needs Identifier at runtime
+)
 from shadownet.jcs import canonicalize
 
 __all__ = [
@@ -70,8 +72,8 @@ class EnvelopePayload(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True, populate_by_name=True)
 
     v: Annotated[str, Field(pattern=r"^0\.2$")]
-    sender: Shadowname = Field(alias="from")
-    recipient: Shadowname = Field(alias="to")
+    sender: Identifier = Field(alias="from")
+    recipient: Identifier = Field(alias="to")
     iat: int = Field(ge=0)
     exp: int = Field(ge=0)
     msg_hash: Annotated[str, Field(pattern=r"^sha256:[A-Za-z0-9_-]+$")] = Field(alias="msgHash")

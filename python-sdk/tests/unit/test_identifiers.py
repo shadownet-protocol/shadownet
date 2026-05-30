@@ -5,7 +5,11 @@ import pytest
 from shadownet.crypto.ed25519 import Ed25519KeyPair
 from shadownet.identifiers import (
     InvalidIdentifierError,
+    canonicalize_identifier,
+    canonicalize_issuer_or_org_identifier,
     encode_public_key,
+    is_public_key_identifier,
+    is_shadowname,
     is_subdomain_of,
     parse_public_key,
     parse_shadowname,
@@ -71,3 +75,45 @@ class TestMultibasePublicKey:
     def test_rejects_bad_prefix(self) -> None:
         with pytest.raises(InvalidIdentifierError):
             parse_public_key("zNotMk0000")
+
+
+class TestDiscriminator:
+    def test_is_shadowname(self) -> None:
+        assert is_shadowname("alice@sh4dow.org") is True
+        assert is_shadowname("z6MkAlice123") is False
+        assert is_shadowname("") is False
+
+    def test_is_public_key_identifier(self) -> None:
+        key = Ed25519KeyPair.generate()
+        encoded = encode_public_key(key.public_bytes)
+        assert is_public_key_identifier(encoded) is True
+        assert is_public_key_identifier("alice@sh4dow.org") is False
+        assert is_public_key_identifier("zSomethingElse") is False
+
+
+class TestCanonicalizeIdentifier:
+    def test_shadowname_passthrough(self) -> None:
+        assert canonicalize_identifier("Alice@SH4DOW.org") == "alice@sh4dow.org"
+
+    def test_public_key_passthrough(self) -> None:
+        encoded = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        assert canonicalize_identifier(encoded) == encoded
+
+    def test_garbage_rejected(self) -> None:
+        with pytest.raises(InvalidIdentifierError, match="Shadowname or"):
+            canonicalize_identifier("just-some-string")
+
+
+class TestCanonicalizeIssuerOrOrg:
+    def test_domain(self) -> None:
+        assert canonicalize_issuer_or_org_identifier("ACME.example") == "acme.example"
+
+    def test_public_key(self) -> None:
+        encoded = encode_public_key(Ed25519KeyPair.generate().public_bytes)
+        assert canonicalize_issuer_or_org_identifier(encoded) == encoded
+
+    def test_shadowname_rejected(self) -> None:
+        # iss / org accept domain or pubkey; Shadowname is not a valid issuer
+        # or org identifier — the domain validator should fail it via @ char.
+        with pytest.raises(InvalidIdentifierError):
+            canonicalize_issuer_or_org_identifier("alice@sh4dow.org")
