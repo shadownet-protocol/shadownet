@@ -40,8 +40,11 @@ __all__ = [
     "AgentCardError",
     "AgentCardSignatureError",
     "FetchedAgentCard",
+    "build_signed_agent_card",
+    "build_unsigned_agent_card_body",
     "fetch_agent_card_json",
     "fetch_and_verify_agent_card",
+    "sign_agent_card_body",
     "verify_agent_card",
 ]
 
@@ -301,6 +304,103 @@ def _require_str(card: dict[str, Any], key: str) -> str:
     if not isinstance(value, str):
         raise AgentCardError(f"AgentCard missing required string field {key!r}")
     return value
+
+
+def build_unsigned_agent_card_body(
+    *,
+    name: str,
+    description: str,
+    version: str,
+    a2a_url: str,
+    shadow_public_key: str,
+    protocol_binding: str = "HTTP+JSON",
+    a2a_protocol_version: str = "1.0",
+    extras: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the AgentCard body Shadownet receivers serve at /identity/<local>.
+
+    The result has the §5.3 required Shadownet extension declaration, the
+    ``shadownet:v`` / ``shadownet:pk`` fields, and one supported interface
+    pointing at the Shadow's A2A endpoint. Caller signs via
+    :func:`sign_agent_card_body`.
+    """
+    body: dict[str, Any] = {
+        "name": name,
+        "description": description,
+        "version": version,
+        "supportedInterfaces": [
+            {
+                "url": a2a_url,
+                "protocolBinding": protocol_binding,
+                "protocolVersion": a2a_protocol_version,
+            }
+        ],
+        "capabilities": {
+            "extensions": [
+                {
+                    "uri": SHADOWNET_EXTENSION_URI,
+                    "required": True,
+                    "description": "Shadownet identity envelope",
+                }
+            ]
+        },
+        "shadownet:v": "0.2",
+        "shadownet:pk": shadow_public_key,
+    }
+    if extras:
+        for k, v in extras.items():
+            body[k] = v
+    return body
+
+
+def sign_agent_card_body(
+    body: dict[str, Any],
+    provider_key: Ed25519KeyPair,
+    *,
+    provider_domain: str,
+) -> dict[str, Any]:
+    """Attach a JWS signature to an AgentCard body per A2A §8.4.
+
+    Returns a *new* dict with the ``signatures`` array populated. The
+    canonical payload is the input minus ``signatures`` with empty / default
+    values stripped, JCS-canonicalized; the signing input is
+    ``BASE64URL(header) || '.' || BASE64URL(payload)``.
+    """
+    pruned = _strip_empty({k: v for k, v in body.items() if k != "signatures"})
+    if pruned is None:
+        raise AgentCardError("AgentCard canonical form is empty")
+    payload_b64 = _b64url(canonicalize(pruned))
+    header = {"alg": EXPECTED_ALG, "typ": EXPECTED_TYP, "kid": f"shadownet@{provider_domain}"}
+    header_b64 = _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    signing_input = (header_b64 + "." + payload_b64).encode("ascii")
+    signature = provider_key.sign(signing_input)
+    out = dict(body)
+    out["signatures"] = [
+        {"protected": header_b64, "signature": _b64url(signature)},
+    ]
+    return out
+
+
+def build_signed_agent_card(
+    *,
+    name: str,
+    description: str,
+    version: str,
+    a2a_url: str,
+    shadow_public_key: str,
+    provider_key: Ed25519KeyPair,
+    provider_domain: str,
+    extras: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    body = build_unsigned_agent_card_body(
+        name=name,
+        description=description,
+        version=version,
+        a2a_url=a2a_url,
+        shadow_public_key=shadow_public_key,
+        extras=extras,
+    )
+    return sign_agent_card_body(body, provider_key, provider_domain=provider_domain)
 
 
 def _b64url(data: bytes) -> str:

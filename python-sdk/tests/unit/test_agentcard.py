@@ -11,6 +11,7 @@ import respx
 from shadownet.agentcard import (
     AgentCardError,
     AgentCardSignatureError,
+    build_signed_agent_card,
     fetch_and_verify_agent_card,
     verify_agent_card,
 )
@@ -239,6 +240,24 @@ class TestVerifyAgentCard:
     ) -> None:
         with pytest.raises(AgentCardError, match="does not match"):
             verify_agent_card(signed_card, provider_record, "alice@other.example")
+
+    def test_signing_helper_roundtrips(
+        self,
+        shadow_key: Ed25519KeyPair,
+        provider_key: Ed25519KeyPair,
+        provider_record: ProviderRecord,
+    ) -> None:
+        signed = build_signed_agent_card(
+            name="Alice",
+            description="Alice's Shadow",
+            version="1.0.0",
+            a2a_url="https://shadow.sh4dow.org/v1/a2a/alice",
+            shadow_public_key=encode_public_key(shadow_key.public_bytes),
+            provider_key=provider_key,
+            provider_domain="sh4dow.org",
+        )
+        result = verify_agent_card(signed, provider_record, "alice@sh4dow.org")
+        assert result.shadow_public_key == encode_public_key(shadow_key.public_bytes)
 
     def test_multi_key_split_acceptance(
         self,
