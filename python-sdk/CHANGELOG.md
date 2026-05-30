@@ -52,11 +52,11 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 ### Added
 
 - `ShadownetMCPSession` accepts an optional `mcp_endpoint` constructor
-  kwarg. When supplied, it overrides the synthesized
+``  kwarg. When supplied, it overrides the synthesized
   `{base_url}/u/{shadowname}/mcp` URL. Sidecars MAY serve MCP from a
   different host than the dashboard (e.g., `api.example.org` for MCP vs
   `app.example.org` for the integration-bundle endpoint); the bundle's
-  `mcp_endpoint` field is the canonical source per RFC-0007 amendment A.
+``  `mcp_endpoint` field is the canonical source per RFC-0007 amendment A.
   Callers fetching the bundle SHOULD pass
   `mcp_endpoint=bundle.mcp_endpoint`. Existing callers passing only
   `base_url + shadowname` continue to work unchanged.

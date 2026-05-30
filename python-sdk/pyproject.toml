@@ -33,12 +33,6 @@ dependencies = [
     "a2a-sdk>=0.2",
 ]
 
-[project.optional-dependencies]
-fastapi = [
-    "fastapi>=0.115",
-    "starlette>=0.40",
-]
-
 [project.urls]
 Homepage = "https://github.com/shadownet-protocol/shadownet/tree/main/py"
 Repository = "https://github.com/shadownet-protocol/shadownet"
