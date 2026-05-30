@@ -32,7 +32,8 @@ const schemaLockTimeout = 30 * time.Second
 //	postgres://user:pass@host:5432/db?sslmode=require&pool_max_conns=20
 //
 // Caller is responsible for Close() on the returned *pgxpool.Pool. A typical
-// binary defers it after handing the pool to the SCA/SNS store constructors.
+// binary defers it after handing the pool to NewProviderStore /
+// NewIssuerStore.
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -49,23 +50,25 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// applySchema is the schema apply hook. Phase 1 of the v0.2 migration
-// removed the v0.1 schema (sca_*, sns_* tables) without yet introducing the
-// v0.2 schema (provider_records, issuer_credentials, issuer_status_epochs,
-// issuer_revocations, issuer_pending_ceremonies). Phase 5 re-introduces an
-// embedded schema.sql + the advisory-lock-guarded apply path; for now Open
-// returns a usable *pgxpool.Pool with no DDL, and callers that need tables
-// must apply them out-of-band. See /Users/perfect/.claude-work/plans/
-// resilient-hugging-graham.md Phase 5.
-func applySchema(ctx context.Context, _ *pgxpool.Pool) error {
-	_ = ctx
-	_ = schemaLockKey
-	_ = schemaLockTimeout
-	return nil
+// applySchema runs schemaSQL inside a transaction guarded by a session-
+// level advisory lock. Postgres CREATE TABLE IF NOT EXISTS is not a
+// synchronization primitive — concurrent callers can both pass the
+// existence check and race on pg_type_typname_nsp_index. The advisory
+// lock serializes the DDL across backends; pg_advisory_xact_lock releases
+// automatically at COMMIT/ROLLBACK so there's no leak risk.
+func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
+	ctx, cancel := context.WithTimeout(ctx, schemaLockTimeout)
+	defer cancel()
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", schemaLockKey); err != nil {
+			return fmt.Errorf("pgstore: acquire schema lock: %w", err)
+		}
+		if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+			return fmt.Errorf("pgstore: apply schema: %w", err)
+		}
+		return nil
+	})
 }
-
-// Keep the BeginFunc import live so Phase 5 doesn't have to re-add it.
-var _ = pgx.BeginFunc
 
 // Ping returns nil when the pool can round-trip a Ping to the server. Used
 // as the /readyz hook in the cmd binaries.
