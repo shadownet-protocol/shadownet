@@ -57,6 +57,13 @@ func Empty(size int) List {
 	return List{bits: make([]byte, bytes), size: bytes * 8}
 }
 
+// FromRaw wraps an existing bitstring byte slice (most often returned by
+// a Store's LoadStatusBits) in a List. The caller MUST NOT mutate `bits`
+// after calling FromRaw — the slice is shared, not copied.
+func FromRaw(bits []byte) List {
+	return List{bits: bits, size: len(bits) * 8}
+}
+
 // Size returns the number of bit-indices the List addresses.
 func (l List) Size() int { return l.size }
 
