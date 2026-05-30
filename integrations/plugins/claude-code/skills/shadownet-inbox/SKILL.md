@@ -1,22 +1,22 @@
 ---
 name: shadownet-inbox
-description: Triage pending inbound A2A messages on Shadownet. Surface the most recent unhandled item, propose a reply, and send via social_respond after the user confirms.
-version: 0.2.0
+description: Triage pending inbound A2A messages on Shadownet. Surface the most recent unhandled item, propose a reply, and send via respond after the user confirms.
+version: 0.5.0
 allowed-tools:
-  - mcp__shadownet__social_inbox
-  - mcp__shadownet__social_inbox_wait
-  - mcp__shadownet__social_respond
-  - mcp__shadownet__social_contact_detail
+  - mcp__shadownet__inbox
+  - mcp__shadownet__inbox_wait
+  - mcp__shadownet__respond
+  - mcp__shadownet__contact_detail
 disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, inbox, triage, a2a]
     related_skills: [shadownet-setup, shadownet-reach-out, shadownet-coordinate]
     requires_tools:
-      - mcp_shadownet_social_inbox
-      - mcp_shadownet_social_inbox_wait
-      - mcp_shadownet_social_respond
-      - mcp_shadownet_social_contact_detail
+      - mcp_shadownet_inbox
+      - mcp_shadownet_inbox_wait
+      - mcp_shadownet_respond
+      - mcp_shadownet_contact_detail
 ---
 
 # Shadownet — Inbox Triage
@@ -35,30 +35,32 @@ propose a reply, and send it after the user confirms.
 ### 1. List recent inbound
 
 ```
-social_inbox(limit=10)
+inbox(limit=10)
 ```
 
-Optional filters: `contact_id=<id>`, `data_type=<type>`. Default returns
-the most recent 10 across all contacts.
+Optional filters: `contact="<shadowname>"`, `intent="<intent URI>"`,
+`includeReview=true` to also see items held in `stranger_review`. Default
+returns the most recent 10 across all contacts.
 
 ### 2. Identify the most recent unhandled
 
-Inbound rows that have already been responded to are still listed; treat as
-"unhandled" anything that has `status: "received"` (not "responded").
-If the user asked about a specific message, prefer that one.
+Each inbox item has a `status` of `inbox` (in the primary inbox) or
+`stranger_review` (held pending the user's review). Prefer the most recent
+`inbox` item the user hasn't seen. If the user asked about a specific
+message, prefer that one.
 
 If the inbox is empty, say so plainly — do NOT poll repeatedly.
 
 ### 3. Surface the message
 
 Show the user, in one short message:
-- Sender (display name from `social_contact_detail` if known)
-- `data_type` label — tells you what kind of exchange it is
-- The message content (verbatim if short; summarised if long)
+- Sender (display name from `contact_detail` if known)
+- `intent` URI when present — tells you what kind of exchange it is
+- The body `text` (verbatim if short; summarised if long)
 - Whether the sender expects a reply (most do)
 
 Example:
-> 📥 From **bob@sh4dow.org** (type `coordination_request`):
+> 📥 From **bob@sh4dow.org** (intent `urn:shadownet:intent:coordinate_v1`):
 >
 > > "Free for coffee Friday morning?"
 >
@@ -76,23 +78,29 @@ If the user wants to reply, draft something concrete and read it back:
 Wait for explicit confirmation before sending. Never auto-send a reply on
 the user's behalf.
 
-### 5. Send via `social_respond`
+### 5. Send via `respond`
 
 ```
-social_respond(
-  intentId="<intent_id from inbox item>",
-  payload='{"type":"response","text":"Friday 10am works — a cafe in Mitte?"}'
+respond(
+  contextId="<contextId from the inbox item>",
+  body={"text": "Friday 10am works — a cafe in Mitte?"}
 )
 ```
 
-Confirm to the user that the response was sent.
+Confirm to the user that the response was sent. The `contextId` from the
+inbox item is what threads the reply to the original conversation.
 
 ## Pitfalls
 
 - **Don't auto-send replies.** The user always confirms.
-- **Match the `data_type` contract.** If the inbound was
-  `coordination_request`, include `"type": "response"` in your payload.
-- **Don't loop on inbox empty.** If `social_inbox` returns an empty list,
+- **Thread by `contextId`, not by sender.** A user can have multiple
+  parallel conversations with the same Shadow; the contextId is what
+  makes the reply land in the right thread.
+- **Don't loop on inbox empty.** If `inbox` returns an empty list,
   tell the user "nothing pending" and end the session.
-- **Use `social_inbox_wait` for event-driven delivery.** Don't poll
-  `social_inbox` in a loop — the long-poll handles real-time delivery.
+- **Use `inbox_wait` for event-driven delivery.** Don't poll `inbox` in
+  a loop — the long-poll handles real-time delivery.
+- **Typed flows have their own tools.** If the inbound carries
+  `intent=urn:shadownet:intent:coordinate_v1` and the user wants to
+  agree on a plan, use the `shadownet-coordinate` skill, not a free-form
+  `respond`.
