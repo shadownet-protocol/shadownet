@@ -1,0 +1,35 @@
+# Shadownet issuer-server (RFC 0001 §6).
+#
+# Same build conventions as Dockerfile.provider-server. The build context
+# is the repository root (parent of core/).
+
+ARG GO_VERSION=1.25.0
+
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+COPY core/go.mod core/go.sum ./core/
+WORKDIR /src/core
+RUN go mod download
+
+WORKDIR /src
+COPY core/ ./core/
+WORKDIR /src/core
+
+ARG VERSION="dev"
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath" \
+    go build -ldflags "-s -w -X main.version=${VERSION}" \
+    -o /out/issuer-server ./cmd/issuer-server
+
+# ── runtime ────────────────────────────────────────────────────────────
+
+FROM alpine:3 AS final
+RUN addgroup -S shadownet && adduser -S -G shadownet shadownet && \
+    apk add --no-cache ca-certificates wget && \
+    mkdir -p /var/lib/shadownet && \
+    chown shadownet:shadownet /var/lib/shadownet
+USER shadownet
+WORKDIR /var/lib/shadownet
+COPY --from=build /out/issuer-server /usr/local/bin/issuer-server
+EXPOSE 8444
+ENTRYPOINT ["/usr/local/bin/issuer-server"]
+CMD ["serve", "--config", "/etc/shadownet/issuer.yaml"]

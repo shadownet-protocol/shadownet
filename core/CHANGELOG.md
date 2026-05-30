@@ -1,9 +1,9 @@
 # Changelog
 
-All notable changes to the Shadownet Go SDK are documented here. The format
-follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
-project follows semantic versioning (`vMAJOR.MINOR.PATCH`). Pre-1.0, breaking
-changes land in minor bumps.
+All notable changes to the Shadownet reference Go binaries are documented
+here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project follows semantic versioning (`vMAJOR.MINOR.PATCH`). Pre-1.0,
+breaking changes land in minor bumps.
 
 The `pgstore` submodule is versioned in lockstep with the main module:
 historically tagged `pgstore/vX.Y.Z`; in the monorepo it is tagged
@@ -12,27 +12,55 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
-### Changed — Phase 1 of the v0.2 protocol rebuild
+### Changed — v0.2 protocol rebuild
 
-- **Hard cut of the v0.1 protocol surface.** `core/` is being rebuilt as
-  two Go reference HTTP server binaries for v0.2 of the Shadownet
-  protocol: `cmd/provider-server` (serves signed A2A AgentCards at
-  `<ep>/identity/<local>`) and `cmd/issuer-server` (CSR-in /
-  credential-out + per-epoch revocation bitstring). There is no public
-  Go SDK in v0.2; the canonical SDK is `python-sdk` (PyPI: `shadownet`).
+`core/` is now **two Go reference HTTP server binaries** plus the Postgres
+backend submodule. **There is no public Go SDK.** The canonical client SDK
+is `python-sdk` (PyPI: `shadownet`).
+
+- `cmd/provider-server` — multi-tenant Shadowname host (RFC 0001 §5.2).
+  Serves signed A2A AgentCards at `<ep>/identity/<local>` with ETag /
+  conditional-refresh handling. Subcommands: `serve`, `dns-record`,
+  `admin {add, remove, list}`. Default SQLite store + optional Postgres
+  via the `core/pgstore` submodule.
+- `cmd/issuer-server` — `org_affiliation` credential issuer + per-epoch
+  revocation bitstring (RFC 0001 §6.4–§6.5). Supports both addressing
+  modes:
+  - *domain mode* — routes at `/.well-known/shadownet/issue` +
+    `/.well-known/shadownet/status/{epoch}`; §6.6 authorization covers
+    same-domain, sub-domain, and DNS-delegate paths.
+  - *keyed mode* — self-serves an AgentCard at
+    `/.well-known/agent-card.json` declaring `shadownet:issueEndpoint` +
+    `shadownet:statusListBase`, with §6.6 collapsed to `iss == org`.
+  Subcommands: `serve`, `admin {approve, reject, revoke, rotate-epoch,
+  list-pending}`. Default ceremony driver is `queue` (store-backed,
+  admin CLI drives state); `dev` driver auto-approves and refuses to
+  start on non-loopback listeners unless `SHADOWNET_ALLOW_AUTO_APPROVE=1`.
+- New in-tree primitives under `internal/`: RFC 8785 JCS canonicalizer
+  (cross-corpus tested against python-sdk's `shadownet.jcs`), Domain ∣
+  Shadowname ∣ MultibasePubKey identifier union, A2A §8.4 AgentCard
+  build + JWS sign + verify, `shadownet-cred+jwt` and `shadownet-csr+jwt`
+  mint + verify, gzip+base64url big-endian-within-byte bitstring.
 - Removed: `pkg/{a2a,did,sca,scaserver,sns,snsserver,vc,storemem,storesqlite}`,
   `cmd/{sca-server,sns-server,shadownet}`, `api/{sca,sns,messages}`,
-  `deploy/{sca,sns}-server.yaml`, `deploy/docker-compose.yml`,
-  `build/Dockerfile.{sca,sns}-*`, `internal/cli/{resolve,handshake,doctor}.go`,
-  `pgstore/{sca,sns,schema}.{go,sql}`, `pgstore/cmd/{sca,sns}-server`.
-- `pkg/{crypto,httpx,keyguard}` survive Phase 1 unchanged and move to
-  `core/internal/{crypto,httpx,keyguard}` in Phase 2.
-- `internal/cli`: kept `keygen` + `inspect`; both are minimally rewired
-  for compilation against Phase 1 cuts. The v0.2-shaped keygen output
-  (multibase Ed25519, `kid=shadownet@<domain>`) lands in Phase 2.
+  `deploy/{sca,sns}-server.yaml`, `build/Dockerfile.{sca,sns}-*`,
+  `internal/cli/{resolve,handshake,doctor}.go`, the legacy
+  `pgstore/{sca,sns,schema}.{go,sql}` and `pgstore/cmd/{sca,sns}-server`.
+  `pkg/` is now empty — everything is `internal/`.
+- `core/pgstore` rewritten: `ProviderStore` + `IssuerStore` over pgx/v5,
+  with `AllocateIndex` using `SELECT ... FOR UPDATE` for concurrent-safe
+  index assignment. Schema applied under `pg_advisory_xact_lock` so
+  concurrent boots don't race on DDL.
+- New deploy artefacts: `deploy/{provider,issuer}-server.yaml` (annotated
+  example configs), `deploy/docker-compose.yml`, and
+  `build/Dockerfile.{provider,issuer}-server`.
+- GHCR image rename:
+  `sca-server` → `issuer-server`, `sns-server` → `provider-server`
+  (`-pg` variants follow). The v0.1 image paths remain available at
+  their old names — pin explicitly if you operate the v0.1 servers.
 - The v0.1 Go module versions (`core/v0.2.x` on the Go proxy) remain
-  reachable for anyone pinned to them; the first v0.2-protocol Go
-  release will be tagged `core/v0.3.0`.
+  reachable for anyone pinned to them; the first v0.2-protocol release
+  will be tagged `core/v0.3.0`.
 
 ## [v0.2.1] — 2026-05-22
 
