@@ -10,6 +10,135 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-30
+
+This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec
+(`shadownet-specs/feat/shadow1`) replacing v0.1's nine RFCs with three:
+`rfcs/0001-shadownet.md` (wire), `rfcs/0002-shadownet-mcp.md` (MCP control
+surface), `rfcs/0003-shadownet-onboarding.md` (onboarding URI). Direct
+addressing (`shadow://key:z6Mk...@host:port`) is first-class peer to
+Shadownames. The protocol extension URN moves to `urn:shadownet:0.2`.
+
+**This is a breaking change. There are no v0.1 shims.** v0.1 users
+should pin `shadownet<0.5`; downstream consumers (sidecars, plugins,
+conformance) migrate at their own cadence. The v0.4.x series remains
+on PyPI as the v0.1 release line.
+
+### Added
+
+- New module `shadownet.identifiers` exposing `Identifier`,
+  `IssuerIdentifier`, `Shadowname`, `Domain`, `MultibasePublicKey`
+  pydantic types plus discriminators (`is_shadowname`,
+  `is_public_key_identifier`) and canonicalizers.
+- New module `shadownet.addressing` parses RFC 0001 §3.2
+  `shadow://` Shadow-addressing URIs (Shadowname or direct mode) plus
+  optional `#sha256:` TLS pin fragments.
+- New module `shadownet.jcs` implementing RFC 8785 JSON Canonicalization.
+  Floats unsupported by design; this is what backs `msgHash`.
+- New module `shadownet.provider` resolves `_shadownet.<domain>` TXT
+  per RFC 0001 §4.2.
+- New module `shadownet.agentcard` fetches and verifies A2A AgentCards
+  per RFC 0001 §5 and A2A §8.4. Supports both Shadowname-mode
+  (provider-signed at `<ep>/identity/<local>`) and direct-mode
+  (self-signed at `<endpoint>/.well-known/agent-card.json`). Includes
+  `build_signed_agent_card` and `build_direct_signed_agent_card` for
+  provider / Sidecar implementations.
+- New module `shadownet.credential` for `org_affiliation` JWT mint and
+  verify per RFC 0001 §6. Keyed issuers and keyed orgs supported (§6.6
+  rule 1 only path for keyed issuers).
+- New module `shadownet.csr` for CSR mint, verify, and issuer client
+  per RFC 0001 §6.5. Maps the §6.5 response statuses (200 / 409 / 403
+  / 429) to typed exceptions.
+- New module `shadownet.status` fetches the per-epoch revocation
+  bitstring at `/.well-known/shadownet/status/<epoch>` and runs the
+  `is_revoked` check per RFC 0001 §6.4. Big-endian within byte;
+  fail-closed on any error.
+- New module `shadownet.envelope` mints and verifies envelope JWS
+  (`shadownet-env+jwt`) and computes `msgHash` per RFC 0001 §8.3 / §8.4.
+- New module `shadownet.a2a` wraps A2A `message:send` around the
+  envelope, maps RFC 7807 problem+json responses to typed
+  `ShadownetWireError` subclasses per RFC 0001 §8.8, and exposes
+  receiver-side helpers (`extract_envelope_jws`,
+  `build_acceptance_response`).
+- New module `shadownet.receiver` runs the full RFC 0001 §8.6
+  validation pipeline + §9 classification (`inbox` /
+  `stranger_review` / `rejected` + auto-add-on-outbound-initiated +
+  same-provider-domain shortcut). Pluggable replay cache, contact
+  graph, credential cache, AgentCard fetcher.
+- New module `shadownet.tls` implements TLS pin verification for
+  direct-mode connections per RFC 0001 §4.1 / §5.3.
+  `make_pinned_httpx_client(direct_address)` returns an httpx.Client
+  configured with verify_mode=CERT_NONE + TLSv1.3 + post-handshake
+  fingerprint check (URI pin → TOFU recorded → first-use).
+- New `shadownet.mcp` subpackage with typed pydantic models for every
+  RFC 0002 §4 tool's input/output, the three v0.2 intent payload models
+  (`CoordinateV1Data`, `ConfirmPlanV1Data`, `AcceptPlanV1Data`), the
+  Path 1 notification event models, and a `ShadownetMCPClient` async
+  wrapper around the upstream MCP streamable-HTTP client.
+- New module `shadownet.onboarding` parses `shadow://connect?...` URIs
+  per RFC 0003 §3, redeems handoff codes (§4), and refreshes access
+  tokens (§7). Typed exception per HTTP status family.
+
+### Changed
+
+- **Hard cut.** The v0.1 modules `shadownet.{did, vc, sca, sns, a2a,
+  mcp, connect, trust, webhook}` are removed entirely. There are no
+  backwards-compatibility shims (project policy while protocol is at
+  v0.1/v0.2). v0.1 users pin `shadownet<0.5`.
+- `shadownet.trust` rewritten for the v0.2 flat trust store. The
+  predicate language is gone. `AcceptancePolicy` is a `{fromContact,
+  fromStranger}` pair of kind lists. Default trust store ships
+  **empty** (RFC 0001 §7.1).
+- `shadownet.errors` exposes only the root `ShadownetError`; the eight
+  RFC 0001 §8.8 wire error codes live in `shadownet.a2a` as
+  `ShadownetWireError` subclasses (`ParseError`, `SignatureError`,
+  `CredsRequiredError`, `CredsRejectedError`, `PolicyError`,
+  `ReplayError`, `UnknownRecipientError`, `RateLimitedError`).
+- `shadownet.crypto` retained as-is (Ed25519 + JWS-EdDSA + multibase
+  z-base58); the rest of the SDK builds on top.
+
+### Removed
+
+- DID method machinery (`did:key`, `did:web`, DID documents,
+  `shadownet:delegatedIssuers`).
+- W3C VC wrapping, Verifiable Presentations, freshness proofs,
+  the L1/L2/L3/O1 personhood ladder. Credentials are plain JWTs
+  with one kind: `org_affiliation`.
+- SCA proof-session state machine and HMAC callback. CSR endpoint
+  at `/.well-known/shadownet/issue` is idempotent within a ceremony.
+- SNS (per-Shadowname signed JWT HTTP records). DNS TXT replaces it.
+- Webhook delivery path. Inbound is MCP notifications (Path 1) or
+  `inbox_wait` long-poll (Path 2, RECOMMENDED).
+- `social_*` MCP tool name prefix. v0.2 tools are `identity`,
+  `resolve`, `contacts`, `contact_detail`, `add_contact`, `grant`,
+  `set_contact_profile`, `send`, `respond`, `coordinate`,
+  `confirm_plan`, `accept_plan`, `inbox`, `inbox_wait`.
+- v0.1 dropped tools: `social_set_webhook`, `social_present`,
+  `social_audit`. Server-side MCP tool registration helpers are not
+  in the SDK; live in shadownet-local.
+- OAuth 2.1 profile (v0.1 RFC-0009). Opaque bearer tokens sufficient
+  for the local-only control plane.
+
+### Downstream impact
+
+- **shadownet-conformance**: pinned at v0.1 SDK; needs migration
+  before its next release. Tracking issue / branch TBD.
+- **shadownet-hermes-plugin**: pinned at `shadownet>=0.4.1,<0.5`;
+  needs adapter rewrite (RFC 0003 onboarding, RFC 0002 tool names,
+  intent-URI dispatch replacing v0.1 `data_type` strings) before
+  its next release.
+- **integrations/plugins/{claude-code,openclaw}**: same.
+- **integrations/skills/\***: already updated in this release cycle
+  to the v0.2 tool surface.
+- **shadownet-local** (reference Sidecar): pinned at v0.1 SDK; needs
+  migration to the new receiver pipeline / MCP server-side tool set.
+- **`core/`** (Go SDK + reference servers): tracks separately; the
+  `feat/shadownet-0.2-migration` branch carries Phase 1 (hard cut)
+  + Phase 2 (substrate) + Phase 3 (provider-server) of the Go
+  rebuild; Issuer + receiver phases follow.
+
+[0.5.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/python-sdk%2Fv0.5.0
+
 ## [0.4.3] — 2026-05-28
 
 ### Fixed
