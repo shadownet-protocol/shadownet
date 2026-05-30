@@ -12,6 +12,28 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
+### Changed — Phase 1 of the v0.2 protocol rebuild
+
+- **Hard cut of the v0.1 protocol surface.** `core/` is being rebuilt as
+  two Go reference HTTP server binaries for v0.2 of the Shadownet
+  protocol: `cmd/provider-server` (serves signed A2A AgentCards at
+  `<ep>/identity/<local>`) and `cmd/issuer-server` (CSR-in /
+  credential-out + per-epoch revocation bitstring). There is no public
+  Go SDK in v0.2; the canonical SDK is `python-sdk` (PyPI: `shadownet`).
+- Removed: `pkg/{a2a,did,sca,scaserver,sns,snsserver,vc,storemem,storesqlite}`,
+  `cmd/{sca-server,sns-server,shadownet}`, `api/{sca,sns,messages}`,
+  `deploy/{sca,sns}-server.yaml`, `deploy/docker-compose.yml`,
+  `build/Dockerfile.{sca,sns}-*`, `internal/cli/{resolve,handshake,doctor}.go`,
+  `pgstore/{sca,sns,schema}.{go,sql}`, `pgstore/cmd/{sca,sns}-server`.
+- `pkg/{crypto,httpx,keyguard}` survive Phase 1 unchanged and move to
+  `core/internal/{crypto,httpx,keyguard}` in Phase 2.
+- `internal/cli`: kept `keygen` + `inspect`; both are minimally rewired
+  for compilation against Phase 1 cuts. The v0.2-shaped keygen output
+  (multibase Ed25519, `kid=shadownet@<domain>`) lands in Phase 2.
+- The v0.1 Go module versions (`core/v0.2.x` on the Go proxy) remain
+  reachable for anyone pinned to them; the first v0.2-protocol Go
+  release will be tagged `core/v0.3.0`.
+
 ## [v0.2.1] — 2026-05-22
 
 ### Changed
