@@ -70,17 +70,18 @@ def _write_config(yaml: Any, cfg: dict[str, Any]) -> bool:
 def ensure_mcp_server_in_config() -> None:
     """Write ``mcp_servers.shadownet`` to ``config.yaml`` so the agent sees ``mcp_shadownet_*`` tools.
 
-    Resolves the canonical ``mcp_endpoint`` from the sidecar's integration
-    bundle (the dashboard and MCP endpoint may live on different hosts),
-    then merges the entry into ``config.yaml``. Idempotent: skips the
-    write if the desired block is already present and identical.
+    The v0.2 ``shadow://connect?...`` URI carries the MCP endpoint and
+    bearer token directly (RFC 0003 §3) — no separate ``integration-bundle``
+    fetch needed. For inline URIs we use the embedded token verbatim; for
+    handoff URIs we skip the write because handoff redemption is the host
+    LLM's onboarding-time concern, not the plugin's runtime concern.
 
-    Fault-tolerant: every failure path logs at WARNING and returns
-    without raising. The plugin's other surfaces remain functional even
-    if this fails.
+    Fault-tolerant: every failure path logs at WARNING and returns without
+    raising. The plugin's other surfaces remain functional even if this
+    fails.
     """
-    connect_url = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
-    if not connect_url:
+    connect_uri = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
+    if not connect_uri:
         _log.debug(
             "shadownet plugin: SHADOWNET_CONNECT_URL not set; skipping "
             "mcp_servers.shadownet config write"
@@ -88,7 +89,7 @@ def ensure_mcp_server_in_config() -> None:
         return
 
     try:
-        from shadownet.connect.url import parse_connect_url
+        from shadownet.onboarding import parse_connect_uri
     except ImportError as e:
         _log.warning(
             "shadownet plugin: shadownet SDK not importable (%s); skipping MCP config write",
@@ -97,7 +98,7 @@ def ensure_mcp_server_in_config() -> None:
         return
 
     try:
-        parsed = parse_connect_url(connect_url)
+        parsed = parse_connect_uri(connect_uri)
     except Exception as e:  # noqa: BLE001 — any parse error is non-fatal
         _log.warning(
             "shadownet plugin: failed to parse SHADOWNET_CONNECT_URL (%s); "
@@ -106,51 +107,16 @@ def ensure_mcp_server_in_config() -> None:
         )
         return
 
-    if not getattr(parsed, "is_inline", False):
+    if not parsed.is_inline:
         _log.debug(
-            "shadownet plugin: connect URL not in inline form; "
-            "MCP config write needs the bearer inline — skipping"
+            "shadownet plugin: connect URI is in handoff form; redemption is "
+            "the host LLM's responsibility — skipping config write"
         )
         return
 
-    base_url = parsed.base_url.rstrip("/")
-    token = parsed.token
-    if not base_url or not token:
-        return
-
-    try:
-        import httpx
-    except ImportError:
-        _log.warning("shadownet plugin: httpx not installed; skipping MCP config write")
-        return
-
-    bundle_url = f"{base_url}/v1/account/me/integration-bundle"
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(
-                bundle_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/json",
-                },
-            )
-            resp.raise_for_status()
-            bundle = resp.json()
-    except Exception as e:  # noqa: BLE001
-        _log.warning(
-            "shadownet plugin: failed to fetch integration bundle from %s (%s); "
-            "skipping MCP config write — agent will not have mcp_shadownet_* tools "
-            "until config.yaml is set manually",
-            bundle_url,
-            e,
-        )
-        return
-
-    mcp_endpoint = bundle.get("mcp_endpoint")
-    if not mcp_endpoint:
-        _log.warning(
-            "shadownet plugin: bundle response missing mcp_endpoint; skipping MCP config write"
-        )
+    mcp_endpoint = parsed.mcp_endpoint
+    token = parsed.access_token
+    if not mcp_endpoint or not token:
         return
 
     yaml, cfg = _load_config()

@@ -58,12 +58,13 @@ _materialize_skills_into_data_dir = _skills.materialize_skills_into_data_dir
 
 
 _PLATFORM_HINT = (
-    "Shadownet is connected. Use mcp_shadownet_social_contacts to list "
-    "contacts, mcp_shadownet_social_send to message one, "
-    "mcp_shadownet_social_inbox / mcp_shadownet_social_inbox_wait for inbox "
-    "triage, and mcp_shadownet_social_coordinate for multi-party plans. "
-    "Slash commands: /shadownet-setup, /shadownet-inbox, /shadownet-reach-out, "
-    "/shadownet-coordinate, /shadownet-status, /shadownet-logout."
+    "Shadownet is connected. Use mcp_shadownet_contacts to list contacts, "
+    "mcp_shadownet_send to message one, mcp_shadownet_inbox / "
+    "mcp_shadownet_inbox_wait for inbox triage, and mcp_shadownet_coordinate "
+    "(plus mcp_shadownet_confirm_plan / mcp_shadownet_accept_plan) for "
+    "multi-party plans. Slash commands: /shadownet-setup, /shadownet-inbox, "
+    "/shadownet-reach-out, /shadownet-coordinate, /shadownet-status, "
+    "/shadownet-logout."
 )
 
 

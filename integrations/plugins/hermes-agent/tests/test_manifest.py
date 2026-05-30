@@ -12,14 +12,14 @@ def _load_manifest() -> dict:
 
 
 def test_manifest_version_format_and_kind() -> None:
-    """plugin.yaml has a valid 0.4.x version and the right kind."""
+    """plugin.yaml has a valid 0.5.x version and the right kind."""
     manifest = _load_manifest()
     version = manifest["version"]
     assert isinstance(version, str)
     parts = version.split(".")
     assert len(parts) == 3 and all(p.isdigit() for p in parts)
     assert parts[0] == "0"
-    assert parts[1] == "4"
+    assert parts[1] == "5"
     assert manifest["kind"] == "platform"
 
 
