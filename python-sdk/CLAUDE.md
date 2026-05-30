@@ -82,9 +82,10 @@ If a library not listed here gets added, document it in this table in the same P
 ## Code conventions
 
 - **Naming.** Per RFC 0001 §2: JSON keys camelCase (use pydantic `alias`), value strings snake_case, JWS `typ` kebab + `+jwt`. Python identifiers are snake_case; expose camelCase only on the wire via aliases.
-- **Errors.** Wire-mapped errors raise `shadownet.errors.<Code>Error` subclasses of `ShadownetError`. Receiver-side error responses serialize to RFC 7807 `application/problem+json` per RFC 0001 §8.8.
+- **Errors.** Wire-mapped errors raise `shadownet.a2a.<Code>Error` subclasses of `ShadownetWireError`. Receiver-side error responses serialize to RFC 7807 `application/problem+json` per RFC 0001 §8.8.
 - **No backwards-compatibility shims** while the protocol is at v0.1/v0.2 (root CLAUDE.md). Old types/functions get deleted, not deprecated.
 - **No emojis, no banner comments, no multi-paragraph docstrings.** One-sentence module/class/function docstrings; non-obvious WHY-comments only.
+- **No dashed / asterisk section divider lines** inside source files (`# ----`, `# ====`, `# ***`). Function and class boundaries are the structure; if a file genuinely needs hard sub-divisions, split it into modules instead.
 - **Strict mypy.** `pyproject.toml` is `strict = true`; type every public surface.
 
 ## Local gate
