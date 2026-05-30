@@ -348,8 +348,7 @@ def build_unsigned_agent_card_body(
         "shadownet:pk": shadow_public_key,
     }
     if extras:
-        for k, v in extras.items():
-            body[k] = v
+        body.update(extras)
     return body
 
 
