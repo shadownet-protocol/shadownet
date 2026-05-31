@@ -1,5 +1,5 @@
 // `registerFull` callback for the bundled-channel-entry contract — installs
-// the ten Shadownet `social_*` tools as native OpenClaw tools.
+// the Shadownet v0.2 MCP tools (RFC 0002 §4) as native OpenClaw tools.
 //
 // Reads `endpoint` + `token` from `api.pluginConfig` (the same channel
 // configSchema the channel plugin uses), constructs a ShadownetClient, and

@@ -1,10 +1,9 @@
 // Inbound webhook handler for the Shadownet channel plugin.
 //
-// Validates RFC-0007 signatures (`X-Webhook-Signature` — the compatibility
-// header shadownet-cloud emits alongside `X-Shadownet-Sidecar-Sig`), enforces
-// the 5-minute replay window via `X-Shadownet-Sidecar-Ts`, and dispatches the
-// resolved inbound message into OpenClaw's turn pipeline via the messaging
-// module.
+// Validates the webhook HMAC (`X-Webhook-Signature`), enforces the 5-minute
+// replay window via `X-Shadownet-Sidecar-Ts`, and dispatches the resolved
+// inbound message into OpenClaw's turn pipeline via the messaging module.
+// Event taxonomy follows RFC 0002 §7.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -28,13 +27,9 @@ import type {
 } from "./types";
 
 const CHANNEL_ID = "shadownet";
-const KNOWN_EVENTS = new Set([
-  "inbox.message",
-  "task.update",
-  "freshness.expired",
-  "presentation.failed",
-  "test.ping",
-]);
+// RFC 0002 §7 defines two event types. Anything else falls through the
+// "ignore unrecognised" path (receivers MUST ignore unknown events).
+const KNOWN_EVENTS = new Set(["inbox.message", "task.update"]);
 const REPLAY_WINDOW_SECONDS = 5 * 60;
 const PREAUTH_MAX_BODY_BYTES = 64 * 1024;
 const PREAUTH_BODY_TIMEOUT_MS = 5_000;
@@ -62,9 +57,9 @@ export function _resetWebhookStateForTest(): void {
 
 function recordSeen(eventId: string, now = Date.now()): boolean {
   // Returns true if this is a fresh delivery, false if it has been seen
-  // within the TTL. Keyed on RFC-0007 envelope.event_id so receivers
+  // within the TTL. Keyed on the RFC 0002 §7 envelope.event_id so receivers
   // dedupe across webhook retries AND cross-transport deliveries
-  // (social_inbox_wait, notifications/shadownet/*).
+  // (inbox_wait, notifications/shadownet/*).
   const seen = idempotencyLru.get(eventId);
   if (seen !== undefined && now - seen < IDEMPOTENCY_TTL_MS) {
     return false;
@@ -197,12 +192,12 @@ export function createWebhookHandler(
         respond(res, 400, JSON.stringify({ error: "invalid_json" }));
         return;
       }
-      if (envelope?.["shadownet:v"] !== "0.1" || typeof envelope.event !== "string") {
+      if (envelope?.["shadownet:v"] !== "0.2" || typeof envelope.event !== "string") {
         respond(res, 400, JSON.stringify({ error: "unrecognised_envelope" }));
         return;
       }
 
-      // RFC-0007: receivers MUST ignore unrecognised events. We ACK 200 but
+      // RFC 0002 §7: receivers MUST ignore unrecognised events. We ACK 200 but
       // skip dispatch.
       if (!KNOWN_EVENTS.has(envelope.event)) {
         log?.info?.(`shadownet: ignoring unrecognised event ${envelope.event}`);
@@ -218,12 +213,11 @@ export function createWebhookHandler(
         return;
       }
 
-      // RFC-0007 § Path 2 receiver requirements: be idempotent on
+      // RFC 0002 §7 Path 2 receiver requirements: be idempotent on
       // envelope.event_id (the top-level field, NOT data.messageId).
       // The same event MAY arrive via webhook retry AND/OR another
-      // transport (social_inbox_wait, notifications/shadownet/*) — all
-      // three carry byte-identical event_id strings for cross-transport
-      // dedupe.
+      // transport (inbox_wait, notifications/shadownet/*) — all carry
+      // byte-identical event_id strings for cross-transport dedupe.
       const eventId =
         typeof envelope.event_id === "string" && envelope.event_id.length > 0
           ? envelope.event_id
@@ -236,67 +230,75 @@ export function createWebhookHandler(
         return;
       }
 
-      // ACK before dispatching — RFC-0007 receivers respond 2xx and process
-      // asynchronously.
+      // ACK before dispatching — RFC 0002 §7 receivers respond 2xx and
+      // process asynchronously.
       respond(res, 200, JSON.stringify({ ok: true }));
 
-      // For non-`inbox.message` events (task.update, freshness.expired,
-      // presentation.failed, test.ping) we just log and skip turn dispatch
-      // for v1.
+      // For non-`inbox.message` events (task.update) we just log and skip
+      // turn dispatch for v1.
       if (envelope.event !== "inbox.message") {
         log?.info?.(`shadownet: received ${envelope.event} (no turn dispatch in v1)`);
         return;
       }
 
+      // RFC 0002 §7 inbox.message data: { from, contextId, messageId, intent?,
+      // status }. v0.2 replaces v0.1's intentId/contactId with contextId/from.
       const data = envelope.data as Record<string, unknown>;
-      const intentId = typeof data.intentId === "string" ? data.intentId : "";
-      const contactId = typeof data.contactId === "string" ? data.contactId : "";
-      if (!intentId || !contactId) {
-        log?.warn?.("shadownet: inbox.message missing intentId or contactId");
+      const contextId = typeof data.contextId === "string" ? data.contextId : "";
+      const from = typeof data.from === "string" ? data.from : "";
+      if (!contextId || !from) {
+        log?.warn?.("shadownet: inbox.message missing contextId or from");
         return;
       }
+      const eventIntent = typeof data.intent === "string" ? data.intent : undefined;
+      const eventMessageId =
+        typeof data.messageId === "string" ? data.messageId : "";
 
       const client = new ShadownetClient(account.endpoint, account.token);
       let inbound: ShadownetInboundMessage;
       try {
-        const inboxResult = (await client.call("social_inbox", {
-          contact_id: contactId,
-          limit: 1,
+        // The event carries only correlation metadata; fetch the body via the
+        // inbox tool (RFC 0002 §4). Filter to the sender and match on the
+        // event's messageId; fall back to the most recent item.
+        const inboxResult = (await client.call("inbox", {
+          contact: from,
+          limit: 10,
         })) as { items?: Array<Record<string, unknown>> } | null;
-        const item = inboxResult?.items?.[0];
+        const items = inboxResult?.items ?? [];
+        const item =
+          items.find((i) => i.messageId === eventMessageId) ?? items[0];
         if (!item) {
-          log?.warn?.(`shadownet: no inbox item for intent ${intentId}`);
+          log?.warn?.(`shadownet: no inbox item for context ${contextId}`);
           return;
         }
-        const payload = (item.payload ?? {}) as Record<string, unknown>;
+        const body = (item.body ?? {}) as Record<string, unknown>;
         const text =
-          typeof payload.text === "string"
-            ? payload.text
-            : JSON.stringify(payload);
-        const interaction =
-          typeof item.interaction === "string" ? item.interaction : undefined;
-        // OpenClaw's internal identifier for this inbound. The webhook's
-        // envelope.event_id is stable per event (cross-transport dedupe
-        // contract — see RFC-0007 § Path 2), so we reuse it here. If
-        // social_inbox returned its own message id, prefer that since
-        // it survives across re-deliveries of the same logical message.
+          typeof body.text === "string" ? body.text : JSON.stringify(body);
+        const intent =
+          typeof body.intent === "string"
+            ? body.intent
+            : eventIntent;
+        // OpenClaw's internal identifier for this inbound. Prefer the inbox
+        // item's messageId (stable across re-deliveries); otherwise the
+        // event's messageId, then the webhook event_id (cross-transport
+        // dedupe contract — RFC 0002 §7 Path 2).
         const messageId =
           typeof item.messageId === "string" && item.messageId.length > 0
             ? (item.messageId as string)
-            : eventId;
+            : eventMessageId || eventId;
         inbound = {
           accountId: account.accountId,
-          intentId,
-          contactId,
+          contextId,
+          from,
           messageId,
-          ...(interaction !== undefined ? { interaction } : {}),
+          ...(intent !== undefined ? { intent } : {}),
           body: text,
           receivedAt:
             typeof item.receivedAt === "number" ? item.receivedAt : Math.floor(now() / 1000),
         };
       } catch (err) {
         log?.error?.(
-          `shadownet: failed to fetch inbox body for ${intentId}: ${
+          `shadownet: failed to fetch inbox body for ${contextId}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
@@ -307,7 +309,7 @@ export function createWebhookHandler(
         await deliver({ account, msg: inbound });
       } catch (err) {
         log?.error?.(
-          `shadownet: dispatch failed for ${intentId}: ${
+          `shadownet: dispatch failed for ${contextId}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );

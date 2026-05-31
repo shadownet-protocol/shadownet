@@ -6,6 +6,41 @@ monorepo, npm releases are cut by tagging `openclaw-plugin-vX.Y.Z`.
 
 ## [Unreleased]
 
+r## [0.4.0] — 2026-05-31
+
+Shadownet v0.2 migration. The plugin's tool layer and channel webhook were
+wholesale v0.1; against a v0.2 Sidecar they called MCP tools that no longer
+exist and parsed an event shape that changed. **Breaking** — requires a v0.2
+Sidecar.
+
+### Changed
+
+- MCP tool names drop the `social_` prefix to the RFC 0002 §4 names
+  (`social_contacts` → `contacts`, `social_send` → `send`, …). The
+  OpenClaw-facing `shadownet_*` tool names are unchanged.
+- Tool argument shapes move to the v0.2 wire contract (forwarded verbatim to
+  the Sidecar): `contact_detail`/`resolve`/`add_contact`/`grant` take `name`
+  (identifier) instead of `id`/`shadowname`/`contact_id`; `send` takes
+  `{to, body, contextId?}` and `respond` takes `{contextId, body}` instead of
+  the v0.1 `contact_id`/`intent_id`/`payload`; `inbox` takes an opaque string
+  `since` cursor plus `contact`/`intent`/`includeReview` filters. Identifiers
+  accept a Shadowname or a `shadow://` URI (RFC 0001 §3.3).
+- Outbound `sendText` routes through `send` / `respond` and reads
+  `{messageId, contextId}` from the result; `replyToId` now maps to a v0.2
+  `contextId` (was an `intentId`).
+- Webhook event taxonomy is RFC 0002 §7: envelope `"shadownet:v"` is `"0.2"`;
+  known events are `inbox.message` + `task.update`; `inbox.message` data
+  carries `{from, contextId, messageId, intent?, status}` (was
+  `intentId`/`contactId`); the body is fetched via the `inbox` tool and read
+  from the v0.2 `InboxItem` (`body.text` / `body.intent`).
+
+### Note
+
+- `src/connect/url.ts` (the `shadownet://connect` onboarding-URL parser) and
+  the remaining `RFC-000x` documentation references are NOT migrated here —
+  the runtime config path uses `endpoint` + `token` directly, so the
+  onboarding-URL format is a separate follow-up.
+
 ## [0.3.0] — 2026-05-11
 
 ### Added

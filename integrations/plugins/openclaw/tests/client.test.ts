@@ -31,7 +31,7 @@ describe("ShadownetClient", () => {
     });
     const client = new ShadownetClient(ENDPOINT, TOKEN, fetchImpl as unknown as typeof fetch);
 
-    const result = await client.call("social_identity", {});
+    const result = await client.call("identity", {});
 
     expect(result).toEqual({ ok: true });
     expect(captured.headers.get("authorization")).toBe(`Bearer ${TOKEN}`);
@@ -40,7 +40,7 @@ describe("ShadownetClient", () => {
     expect(body).toMatchObject({
       jsonrpc: "2.0",
       method: "tools/call",
-      params: { name: "social_identity", arguments: {} },
+      params: { name: "identity", arguments: {} },
     });
     expect(typeof body.id).toBe("number");
   });
@@ -53,14 +53,14 @@ describe("ShadownetClient", () => {
     });
     const client = new ShadownetClient(ENDPOINT, TOKEN, fetchImpl as unknown as typeof fetch);
 
-    await client.call("social_send", {
-      contact_id: "ctc_001",
-      payload: { text: "hello" },
+    await client.call("send", {
+      to: "bob@sh4dow.org",
+      body: { text: "hello" },
     });
 
     expect(captured).toEqual({
-      name: "social_send",
-      arguments: { contact_id: "ctc_001", payload: { text: "hello" } },
+      name: "send",
+      arguments: { to: "bob@sh4dow.org", body: { text: "hello" } },
     });
   });
 
@@ -70,7 +70,7 @@ describe("ShadownetClient", () => {
     );
     const client = new ShadownetClient(ENDPOINT, TOKEN, fetchImpl as unknown as typeof fetch);
 
-    await expect(client.call("social_identity", {})).rejects.toThrow(
+    await expect(client.call("identity", {})).rejects.toThrow(
       /HTTP 403.*forbidden/,
     );
   });
@@ -88,7 +88,7 @@ describe("ShadownetClient", () => {
     );
     const client = new ShadownetClient(ENDPOINT, TOKEN, fetchImpl as unknown as typeof fetch);
 
-    await expect(client.call("social_send", {})).rejects.toThrow(
+    await expect(client.call("send", {})).rejects.toThrow(
       /RPC -32602: invalid params/,
     );
   });
@@ -101,9 +101,9 @@ describe("ShadownetClient", () => {
     });
     const client = new ShadownetClient(ENDPOINT, TOKEN, fetchImpl as unknown as typeof fetch);
 
-    await client.call("social_identity", {});
-    await client.call("social_identity", {});
-    await client.call("social_identity", {});
+    await client.call("identity", {});
+    await client.call("identity", {});
+    await client.call("identity", {});
 
     expect(ids).toEqual([1, 2, 3]);
   });

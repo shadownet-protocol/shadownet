@@ -26,33 +26,36 @@ describe("sendShadownetText", () => {
   beforeEach(() => vi.useFakeTimers().setSystemTime(new Date("2026-05-10T12:00:00Z")));
   afterEach(() => vi.useRealTimers());
 
-  it("routes new conversations through social_send", async () => {
-    const spy = vi.fn(async () => ({ intent_id: "int-001", task_id: "tsk-001" }));
+  it("routes new conversations through the send tool", async () => {
+    const spy = vi.fn(async () => ({ messageId: "msg-001", contextId: "ctx-001" }));
     const result = await sendShadownetText(
-      { cfg: {}, to: "ctc_001", text: "hi", accountId: "default" },
+      { cfg: {}, to: "bob@sh4dow.org", text: "hi", accountId: "default" },
       { client: stubClient(spy), resolveAccount: () => ACCOUNT },
     );
-    expect(spy).toHaveBeenCalledWith("social_send", {
-      contact_id: "ctc_001",
-      payload: { text: "hi" },
+    expect(spy).toHaveBeenCalledWith("send", {
+      to: "bob@sh4dow.org",
+      body: { text: "hi" },
     });
     expect(result.channel).toBe("shadownet");
-    expect(result.messageId).toBe("tsk-001");
-    expect(result.receipt.platformMessageIds).toEqual(["tsk-001"]);
-    expect(result.receipt.threadId).toBe("int-001");
+    expect(result.messageId).toBe("msg-001");
+    expect(result.receipt.platformMessageIds).toEqual(["msg-001"]);
+    expect(result.receipt.threadId).toBe("ctx-001");
   });
 
-  it("routes replies through social_respond when replyToId is set", async () => {
-    const spy = vi.fn(async () => ({ task_id: "tsk-reply" }));
+  it("routes replies through the respond tool when replyToId is set", async () => {
+    const spy = vi.fn(async () => ({ messageId: "msg-reply" }));
     const result = await sendShadownetText(
-      { cfg: {}, to: "ctc_001", text: "ack", accountId: "default", replyToId: "int-orig" },
+      { cfg: {}, to: "bob@sh4dow.org", text: "ack", accountId: "default", replyToId: "ctx-orig" },
       { client: stubClient(spy), resolveAccount: () => ACCOUNT },
     );
-    expect(spy).toHaveBeenCalledWith("social_respond", {
-      intent_id: "int-orig",
-      payload: { text: "ack" },
+    expect(spy).toHaveBeenCalledWith("respond", {
+      contextId: "ctx-orig",
+      body: { text: "ack" },
     });
-    expect(result.receipt.replyToId).toBe("int-orig");
+    expect(result.messageId).toBe("msg-reply");
+    expect(result.receipt.replyToId).toBe("ctx-orig");
+    // respond returns no contextId; the reply thread is the replyToId.
+    expect(result.receipt.threadId).toBe("ctx-orig");
   });
 
   it("constructs a fallback messageId when the server omits both ids", async () => {
@@ -83,7 +86,7 @@ describe("sendShadownetText", () => {
       const req = new Request(typeof input === "string" || input instanceof URL ? input.toString() : input.url, init);
       fetched.headers = req.headers;
       fetched.body = await req.text();
-      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { intent_id: "i", task_id: "t" } }), {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { messageId: "m", contextId: "c" } }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

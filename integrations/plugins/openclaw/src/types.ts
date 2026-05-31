@@ -47,22 +47,17 @@ export interface ResolvedShadownetAccount {
   rateLimitPerMinute: number;
 }
 
-// RFC-0007 §Inbound notifications event types. Receivers MUST ignore
-// unrecognised event types — but at parse time we narrow to the four we
-// understand and route the rest through `unknownEvents`.
-export type ShadownetEventType =
-  | "inbox.message"
-  | "task.update"
-  | "freshness.expired"
-  | "presentation.failed"
-  | "test.ping";
+// RFC 0002 §7 inbound notification event types. Receivers MUST ignore
+// unrecognised event types — at parse time we narrow to the two v0.2
+// events and route the rest through the "ignore unrecognised" path.
+export type ShadownetEventType = "inbox.message" | "task.update";
 
 export interface ShadownetEventEnvelope {
-  "shadownet:v": "0.1";
-  // RFC-0007 § Path 2: webhook payloads carry a top-level event_id that
-  // receivers MUST use for idempotency. Byte-identical to the event_id
-  // the same event would carry via social_inbox_wait or
-  // notifications/shadownet/* — cross-transport dedupe relies on it.
+  "shadownet:v": "0.2";
+  // RFC 0002 §7 Path 2: webhook payloads carry a top-level event_id that
+  // receivers MUST use for idempotency. Byte-identical to the eventId the
+  // same event would carry via inbox_wait or notifications/shadownet/* —
+  // cross-transport dedupe relies on it.
   event_id: string;
   event: ShadownetEventType | (string & {});
   occurredAt: number;
@@ -71,13 +66,18 @@ export interface ShadownetEventEnvelope {
 
 export interface ShadownetInboundMessage {
   accountId: string;
-  intentId: string;
-  contactId: string;
+  // A2A contextId threads the conversation (RFC 0001 §8.2); replaces v0.1
+  // intentId.
+  contextId: string;
+  // Sender identifier — a Shadowname or a shadow:// URI (RFC 0001 §3.3);
+  // replaces v0.1 contactId.
+  from: string;
   messageId: string;
-  interaction?: string | undefined;
-  // Resolved by social_inbox after the webhook fires; the bare envelope only
-  // carries metadata.
+  // The envelope's body.intent URI when present (RFC 0001 §8.5); replaces
+  // v0.1 interaction.
+  intent?: string | undefined;
+  // Resolved by the inbox tool after the webhook fires; the bare event only
+  // carries correlation metadata.
   body: string;
-  senderShadowname?: string | undefined;
   receivedAt: number;
 }

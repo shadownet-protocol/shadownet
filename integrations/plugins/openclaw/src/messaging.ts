@@ -61,7 +61,7 @@ export async function dispatchShadownetInboundTurn(params: {
     cfg,
     channel: CHANNEL_ID,
     accountId: params.account.accountId,
-    peer: { kind: "direct", id: params.msg.contactId },
+    peer: { kind: "direct", id: params.msg.from },
   });
   void route; // route is consumed by the runtime via the closure binding below.
   await runtime.channel.turn.run({
@@ -69,7 +69,7 @@ export async function dispatchShadownetInboundTurn(params: {
     accountId: params.account.accountId,
     raw: params.msg,
     adapter: {
-      senderName: params.msg.senderShadowname,
+      senderName: params.msg.from,
       body: params.msg.body,
     },
   });
@@ -82,8 +82,8 @@ export interface ShadownetSendContext {
   to: string;
   text: string;
   accountId?: string | null;
-  // If the SDK supplies a `replyToId` we treat it as a Shadownet `intentId`
-  // and route through `social_respond`. Otherwise we open a fresh `social_send`.
+  // If the SDK supplies a `replyToId` we treat it as a Shadownet `contextId`
+  // and route through the `respond` tool. Otherwise we open a fresh `send`.
   replyToId?: string;
   threadId?: string;
 }
@@ -122,27 +122,27 @@ export async function sendShadownetText(
   }
   const client = deps.client ?? new ShadownetClient(account.endpoint, account.token);
 
-  let mcpName: "social_send" | "social_respond";
+  // v0.2 (RFC 0002 §4): `send` takes {to, body, contextId?} and returns
+  // {messageId, contextId, status, error?}; `respond` takes {contextId, body}
+  // and returns {messageId, status, error?}. The body is the opaque slot from
+  // RFC 0001 §8.5 — here we send free-form text.
+  let mcpName: "send" | "respond";
   let args: Record<string, unknown>;
   if (ctx.replyToId) {
-    mcpName = "social_respond";
-    args = { intent_id: ctx.replyToId, payload: { text: ctx.text } };
+    mcpName = "respond";
+    args = { contextId: ctx.replyToId, body: { text: ctx.text } };
   } else {
-    mcpName = "social_send";
-    args = { contact_id: ctx.to, payload: { text: ctx.text } };
+    mcpName = "send";
+    args = { to: ctx.to, body: { text: ctx.text } };
   }
 
   const result = (await client.call(mcpName, args)) as {
-    intent_id?: string;
-    intentId?: string;
-    task_id?: string;
-    taskId?: string;
+    messageId?: string;
+    contextId?: string;
   } | null;
 
-  const intentId =
-    (result && (result.intent_id ?? result.intentId)) ?? ctx.replyToId ?? "";
-  const taskId = (result && (result.task_id ?? result.taskId)) ?? "";
-  const messageId = taskId || intentId || `${Date.now()}`;
+  const messageId = (result && result.messageId) || `${Date.now()}`;
+  const contextId = (result && result.contextId) || ctx.replyToId || "";
 
   return {
     channel: CHANNEL_ID,
@@ -150,7 +150,7 @@ export async function sendShadownetText(
     receipt: {
       primaryPlatformMessageId: messageId,
       platformMessageIds: [messageId],
-      threadId: ctx.threadId ?? (intentId || undefined),
+      threadId: ctx.threadId ?? (contextId || undefined),
       replyToId: ctx.replyToId,
       sentAt: Math.floor(Date.now() / 1000),
     },

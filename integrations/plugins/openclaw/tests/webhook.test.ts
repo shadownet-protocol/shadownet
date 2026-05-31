@@ -75,7 +75,7 @@ describe("Shadownet webhook handler", () => {
 
   it("rejects requests missing X-Webhook-Signature with 401", async () => {
     const result = await invoke({
-      body: Buffer.from('{"shadownet:v":"0.1"}'),
+      body: Buffer.from('{"shadownet:v":"0.2"}'),
       headers: { "x-shadownet-sidecar-ts": String(NOW_S), "content-type": "application/json" },
     });
     expect(result.status).toBe(401);
@@ -83,7 +83,7 @@ describe("Shadownet webhook handler", () => {
   });
 
   it("rejects bad HMAC with 401", async () => {
-    const { body } = buildSignedPayload({ "shadownet:v": "0.1", event: "inbox.message", occurredAt: NOW_S, data: {} });
+    const { body } = buildSignedPayload({ "shadownet:v": "0.2", event: "inbox.message", occurredAt: NOW_S, data: {} });
     const result = await invoke({
       body,
       headers: {
@@ -99,11 +99,11 @@ describe("Shadownet webhook handler", () => {
   it("rejects requests with stale timestamps (>5 min skew) with 401", async () => {
     const stale = NOW_S - 600;
     const { body, signature } = buildSignedPayload({
-      "shadownet:v": "0.1",
+      "shadownet:v": "0.2",
       event: "inbox.message",
       occurredAt: stale,
       event_id: "01HQZX0000000000000000m1",
-      data: { messageId: "m1", intentId: "i1", contactId: "c1" },
+      data: { messageId: "m1", contextId: "ctx1", from: "bob@sh4dow.org" },
     });
     const result = await invoke({
       body,
@@ -119,7 +119,7 @@ describe("Shadownet webhook handler", () => {
 
   it("ACKs unknown events (RFC-0007: receivers MUST ignore)", async () => {
     const env = {
-      "shadownet:v": "0.1",
+      "shadownet:v": "0.2",
       event: "future.event",
       event_id: "01HQZX0000000000000FUTUR",
       occurredAt: NOW_S,
@@ -140,14 +140,14 @@ describe("Shadownet webhook handler", () => {
 
   it("ACKs inbox.message and dispatches asynchronously", async () => {
     const env = {
-      "shadownet:v": "0.1" as const,
+      "shadownet:v": "0.2" as const,
       event: "inbox.message",
       occurredAt: NOW_S,
       event_id: "01HQZX0000000000000000m1",
-      data: { messageId: "m1", intentId: "i1", contactId: "c1" },
+      data: { messageId: "m1", contextId: "ctx1", from: "bob@sh4dow.org" },
     };
     const { body, signature } = buildSignedPayload(env);
-    // Stub social_inbox call by mocking global fetch.
+    // Stub the inbox tool call by mocking global fetch.
     const fetchSpy = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -156,10 +156,11 @@ describe("Shadownet webhook handler", () => {
           result: {
             items: [
               {
-                contactId: "c1",
-                intentId: "i1",
-                interaction: "urn:msg",
-                payload: { text: "hi from peer" },
+                messageId: "m1",
+                contextId: "ctx1",
+                from: "bob@sh4dow.org",
+                status: "inbox",
+                body: { text: "hi from peer", intent: "urn:shadownet:intent:coordinate_v1" },
                 receivedAt: NOW_S,
               },
             ],
@@ -190,8 +191,8 @@ describe("Shadownet webhook handler", () => {
       // inside the request handler (before returning), so by the time invoke()
       // returns, delivery has happened.
       expect(delivered).toHaveLength(1);
-      expect(delivered[0]?.body).toBe("hi from peer");
-      expect(delivered[0]?.contactId).toBe("c1");
+      expect(delivered[0]?.body).toBe("hi from peer");expect(delivered[0]?.from).toBe("bob@sh4dow.org");
+      expect(delivered[0]?.contextId).toBe("ctx1");
     } finally {
       globalThis.fetch = original;
     }
@@ -199,11 +200,11 @@ describe("Shadownet webhook handler", () => {
 
   it("is idempotent on envelope.event_id — second delivery is short-circuited", async () => {
     const env = {
-      "shadownet:v": "0.1",
+      "shadownet:v": "0.2",
       event: "inbox.message",
       event_id: "01HQZX0000000000000000DUP",
       occurredAt: NOW_S,
-      data: { messageId: "m-dup", intentId: "i1", contactId: "c1" },
+      data: { messageId: "m-dup", contextId: "ctx1", from: "bob@sh4dow.org" },
     };
     const { body, signature } = buildSignedPayload(env);
 
@@ -212,7 +213,18 @@ describe("Shadownet webhook handler", () => {
         JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
-          result: { items: [{ contactId: "c1", intentId: "i1", payload: { text: "x" }, receivedAt: NOW_S }] },
+          result: {
+            items: [
+              {
+                messageId: "m-dup",
+                contextId: "ctx1",
+                from: "bob@sh4dow.org",
+                status: "inbox",
+                body: { text: "x" },
+                receivedAt: NOW_S,
+              },
+            ],
+          },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
