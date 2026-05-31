@@ -1,9 +1,9 @@
 """Unit tests for the Claude Code MCP proxy's pure helpers.
 
-The stdio<->HTTP bridge itself is integration territory — it requires a
-live MCP server upstream. We cover the failure paths and the URL parsing
-hand-off here; the bridge logic is exercised by the python-sdk's existing
-``test_connect_session.py`` against the in-memory MCP transport.
+The stdio<->streamable_http bridge itself is integration territory — it
+requires a live MCP server upstream. We cover the failure paths and the
+URL parsing hand-off here; the bridge logic is exercised by the
+python-sdk's MCP client tests against the in-memory transport.
 
 Run with::
 
@@ -16,17 +16,22 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
 HERE = Path(__file__).resolve().parent
 
+# v0.2 inline / handoff URI templates. The MCP endpoint must be https://
+# (or loopback http://) per RFC 0003 §3.
+_INLINE_URI = f"shadow://connect?mcp={quote('http://localhost:1/mcp', safe='')}&token=tok-from-plugin"
+_HANDOFF_URI = f"shadow://connect?mcp={quote('https://x.example/mcp', safe='')}&handoff=ABCDEFGHIJ12345678"
+
 
 def _load_proxy_module():
     """Load the proxy script as a module. It has no .py-importable name
     because it's a ``uv run --script`` PEP 723 script, but the file is
-    importable directly when its deps are in scope (i.e., from this test
-    suite, where pytest is invoked from the conformance/python-sdk env)."""
+    importable directly when its deps are in scope."""
     spec = importlib.util.spec_from_file_location(
         "mcp_shadownet_proxy", HERE / "mcp-shadownet-proxy.py"
     )
@@ -55,27 +60,8 @@ async def test_run_exits_1_when_url_empty(monkeypatch: pytest.MonkeyPatch) -> No
     assert rc == 1
 
 
-async def test_run_prefers_claude_plugin_option_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude Code exports userConfig as CLAUDE_PLUGIN_OPTION_* — including
-    `sensitive: true` fields, whose `${user_config.X}` substitution into
-    .mcp.json env blocks doesn't always resolve. The proxy must read the
-    plugin-option form first."""
-    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    monkeypatch.setenv(
-        "CLAUDE_PLUGIN_OPTION_CONNECT_URL",
-        "shadownet://connect?base=http://localhost:1&token=tok-from-plugin",
-    )
-    rc = await proxy._run()
-    # exit 4 = bundle unreachable, which means the URL parsed and the proxy
-    # got far enough to attempt the bundle fetch. That's all we want to
-    # prove here: the value was picked up from CLAUDE_PLUGIN_OPTION_*.
-    assert rc == 4
-
-
 async def test_run_exits_2_on_malformed_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SHADOWNET_CONNECT_URL", "not-a-shadownet-url")
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", "not-a-shadow-url")
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     rc = await proxy._run()
     assert rc == 2
@@ -86,36 +72,48 @@ async def test_run_exits_3_when_handoff_cannot_be_redeemed(
 ) -> None:
     """Handoff URL whose code has been consumed/expired: surface a clean
     exit 3 instead of crashing on the HTTP 404."""
+    from shadownet.onboarding import HandoffError
 
-    from shadownet.connect.redeem import HandoffRedemptionError
+    async def _fail_redeem(mcp_origin: str, code: str, *, client: object = None) -> object:
+        raise HandoffError("handoff code rejected (404)")
 
-    async def _fail(http: object, url: str, *, store: object) -> tuple[str, str]:
-        raise HandoffRedemptionError("handoff code rejected (404)")
-
-    monkeypatch.setattr(proxy, "redeem_connect_url", _fail)
-    monkeypatch.setenv(
-        "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=https://x.example&handoff=ABCDEFGHIJ12345678",
-    )
+    monkeypatch.setattr(proxy, "aredeem_handoff", _fail_redeem)
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", _HANDOFF_URI)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     rc = await proxy._run()
     assert rc == 3
 
 
-async def test_run_exits_4_when_bundle_unreachable(
+async def test_run_prefers_claude_plugin_option_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A token-bearing URL pointing at a sidecar that won't answer the
-    integration-bundle endpoint produces a clean exit 4 (rather than an
-    unhandled exception)."""
-    monkeypatch.setenv(
-        "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=http://localhost:1&token=tok",
-    )
-    rc = await proxy._run()
-    assert rc == 4
+    """Claude Code exports userConfig as CLAUDE_PLUGIN_OPTION_* — including
+    ``sensitive: true`` fields, whose ``${user_config.X}`` substitution into
+    .mcp.json env blocks doesn't always resolve. The proxy must read the
+    plugin-option form first.
+
+    We assert the URL was picked up by patching the resolver to fail with
+    a known exception once a value reached it.
+    """
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", _INLINE_URI)
+
+    seen: dict[str, str] = {}
+
+    async def _record_resolver(url: str) -> tuple[str, str]:
+        seen["url"] = url
+        # Force a clean post-resolution exit by raising before the bridge
+        # would try to dial localhost:1.
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(proxy, "_resolve_endpoint_and_token", _record_resolver)
+    with pytest.raises(RuntimeError, match="stop here"):
+        await proxy._run()
+    assert seen["url"] == _INLINE_URI
 
 
 def test_main_propagates_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
     """main() returns the integer rc from _run()."""
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     assert proxy.main() == 1

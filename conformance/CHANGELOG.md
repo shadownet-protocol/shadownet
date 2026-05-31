@@ -8,6 +8,80 @@ the `conformance/vX.Y.Z` prefix.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-30
+
+This is the **Shadownet v0.2 release** of the conformance suite. Tracks
+`shadownet-specs/feat/shadow1` and depends on `shadownet>=0.5.0,<0.6`. The
+v0.1 SCA / SNS / DID / VC / VP test surface is removed; the suite now
+exercises the v0.2 wire artifacts directly. The v0.4.x line stays available
+for implementations still running v0.1.
+
+### Added
+
+- New conformance Role enum: `PROVIDER` (DNS TXT + AgentCard host),
+  `ISSUER` (CSR + status list host), `SIDECAR` (A2A endpoint terminating
+  envelope validation). Old `SCA` / `SNS` roles are gone.
+- New test categories under `tests/`:
+  - `conformance/` — schema validation of freshly-minted v0.2 artifacts
+    (credential, csr, envelope, both AgentCard modes) against the schemas
+    embedded under `_specs/`.
+  - `envelope/` — `msgHash` binding invariants per RFC 0001 §8.4.
+  - `addressing/` — `shadow://` URI grammar (both modes + TLS pin).
+  - `credential/` — mint/verify round-trip including the keyed-issuer
+    §6.6 rule-1 path.
+  - `agentcard/` — Shadowname-mode (provider-signed) and direct-mode
+    (self-signed) signing per A2A §8.4.
+- New embedded schemas under `_specs/`:
+  - `credentials/credential.schema.json` + `csr.schema.json`
+  - `messages/envelope.schema.json`
+  - `agentcard/shadownet-extension.schema.json`
+  - `errors/problem.schema.json`
+- New v0.2 fixture kinds: `credential`, `csr`, `envelope`, `agentcard`
+  (Shadowname + direct), `status_bitstring`. Manifest schema_version 2.
+- `--test-shadowname` CLI flag replaces v0.1's `--sns-test-shadowname` for
+  Provider-target AgentCard fetch tests.
+
+### Changed
+
+- SDK pin: `shadownet>=0.4.0,<0.5` → `shadownet>=0.5.0,<0.6`. Conformance
+  v0.5.x will not load against v0.4.x SDKs.
+- `seeds.toml` updated to v0.2 vocabulary: `provider` (was `sns_provider`),
+  `hub_issuer` (was `sca_issuer`), `peer_shadow` (was `peer_holder`).
+- `_markers.RFC_REQUIRED_DIRS` extended to cover the new test category
+  layout. Marker namespace stays compatible.
+- Fixture emitter rewritten as a single Python emitter using the v0.2
+  SDK directly. The Go round-trip (v0.1's interop oracle) is removed
+  until both implementations reach feature parity; cross-impl checks
+  will return as a v0.2.x follow-up using live runs against `core/`'s
+  Provider+Issuer binaries.
+
+### Removed
+
+- `tests/sca/`, `tests/sns/`, `tests/predicate/` directories and all of
+  their tests.
+- `tests/sidecar/`, `tests/e2e/`, and the v0.1 `tests/conformance/`
+  schema validators (the new envelope flow tests replace them).
+- v0.1 fixture categories: `presentations/`, `freshness/`,
+  `status_lists/` (W3C VC wrapper), `sns_records/`.
+- The in-process A2A test peer (`shadownet_conformance.peer`). v0.1's
+  `mint_session_token` dependency is dead; the v0.2 receiver pipeline
+  doesn't require a peer harness for the schema-level tests. A v0.2
+  in-process peer will return when `tests/sidecar/` lands.
+- `Config.proof_method_uri`, `Config.peer_listen_host`, the
+  `--proof-method` and `--peer-listen-host` CLI flags. v0.1 concepts.
+- The Go fixture emitter (`fixtures/_regen/go-emit/`).
+- `Config.sns_test_shadowname` (renamed; see `--test-shadowname`).
+- The `regen/crosscheck.py` module (Go round-trip support).
+
+### Downstream impact
+
+- Conformance v0.5.x runs against any v0.2 implementation; the
+  Python SDK at 0.5.0 passes the full suite. Live cross-impl runs
+  against `core/`'s Provider and Issuer binaries unlock as those
+  ship from the `feat/shadownet-0.2-migration` core/ Phase 4+.
+
+[0.5.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/conformance%2Fv0.5.0
+
 ## [0.4.0] — 2026-05-25
 
 ### Removed

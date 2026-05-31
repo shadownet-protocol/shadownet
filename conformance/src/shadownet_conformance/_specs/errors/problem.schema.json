@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:shadownet:0.2:schema:problem",
+  "title": "Shadownet error response (RFC 7807 problem+json)",
+  "description": "Error response format from a Shadownet receiver, per RFC 0001 §8.8. Returned with Content-Type: application/problem+json.",
+  "type": "object",
+  "required": ["type", "title", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Canonical error identifier. URN suffix is one of the defined Shadownet error codes.",
+      "pattern": "^urn:shadownet:error:(parse_error|signature|creds_required|creds_rejected|policy|replay|unknown_recipient|rate_limited)$"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short human-readable summary of the error."
+    },
+    "status": {
+      "type": "integer",
+      "description": "HTTP status code matching the error type per §8.8.",
+      "enum": [400, 401, 403, 404, 409, 429]
+    },
+    "detail": {
+      "type": "string",
+      "description": "Human-readable explanation. MUST NOT leak receiver-side classification state (stranger_review, user-review status, rate-limit budget, etc.) per §8.8 / §11."
+    }
+  }
+}

@@ -9,11 +9,12 @@ MARKERS: Final[tuple[tuple[str, str], ...]] = (
     (
         "rfc(number, *, section, requirement)",
         "Tag a test with the RFC + section + requirement identifier it asserts. "
-        "Required on every test under tests/{predicate,sca,sns,sidecar,e2e}.",
+        "Required on every test under tests/{provider,issuer,sidecar,envelope,"
+        "credential,csr,status,agentcard,addressing,onboarding,e2e,conformance}.",
     ),
     (
         "class_(role)",
-        "Tag a test with the conformance class it exercises: 'sca', 'sns', or 'sidecar'.",
+        "Tag a test with the conformance class it exercises: 'provider', 'issuer', or 'sidecar'.",
     ),
     (
         "draft",

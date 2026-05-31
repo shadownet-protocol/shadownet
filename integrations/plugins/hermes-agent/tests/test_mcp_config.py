@@ -93,43 +93,43 @@ def test_ensure_mcp_server_skips_without_connect_url(
 
 
 def test_ensure_mcp_server_writes_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ensure_mcp_server_in_config writes mcp_servers.shadownet using the bundle's endpoint."""
+    """ensure_mcp_server_in_config writes mcp_servers.shadownet from an inline connect URI.
+
+    RFC 0003 §3 inline URIs carry the MCP endpoint and bearer token directly,
+    so the v0.2 code path makes no HTTP call to fetch a bundle.
+    """
+    from urllib.parse import quote
+
+    mcp_endpoint = "https://api.example/mcp/v1"
     monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
     monkeypatch.setenv(
         "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=https://app.example&token=tok-abc",
+        f"shadow://connect?mcp={quote(mcp_endpoint, safe='')}&token=tok-abc",
     )
-
-    class _FakeResp:
-        status_code = 200
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {"mcp_endpoint": "https://api.example/mcp/v1"}
-
-    class _FakeClient:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            pass
-
-        def __enter__(self) -> _FakeClient:
-            return self
-
-        def __exit__(self, *exc: object) -> None:
-            return None
-
-        def get(self, url: str, headers: dict) -> _FakeResp:
-            assert headers["Authorization"] == "Bearer tok-abc"
-            return _FakeResp()
-
-    import httpx
-
-    monkeypatch.setattr(httpx, "Client", _FakeClient)
 
     _mcp_config.ensure_mcp_server_in_config()
 
     loaded = yaml.safe_load((tmp_path / "config.yaml").read_text())
     entry = loaded["mcp_servers"]["shadownet"]
-    assert entry["url"] == "https://api.example/mcp/v1"
+    assert entry["url"] == mcp_endpoint
     assert entry["headers"]["Authorization"] == "Bearer tok-abc"
+
+
+def test_ensure_mcp_server_skips_handoff_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Handoff URIs require redemption first — the plugin skips the config write."""
+    from urllib.parse import quote
+
+    mcp_endpoint = "https://api.example/mcp/v1"
+    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "SHADOWNET_CONNECT_URL",
+        f"shadow://connect?mcp={quote(mcp_endpoint, safe='')}&handoff=8K3J9-W2L1Q-Y5R7T-V1234",
+    )
+
+    _mcp_config.ensure_mcp_server_in_config()
+
+    # No config.yaml should have been created; handoff redemption is a host
+    # LLM concern, not the plugin's runtime concern.
+    assert not (tmp_path / "config.yaml").is_file()

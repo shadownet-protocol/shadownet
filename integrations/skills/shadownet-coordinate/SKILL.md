@@ -1,27 +1,27 @@
 ---
 name: shadownet-coordinate
 description: Coordinate a meetup, call, or task between two Shadows via fully autonomous agent-to-agent negotiation. Both Shadows use their users' calendars and preferences to agree on a plan, then present it for one-tap user confirmation.
-version: 0.2.0
+version: 0.5.0
 allowed-tools:
-  - mcp__shadownet__social_contacts
-  - mcp__shadownet__social_contact_detail
-  - mcp__shadownet__social_coordinate
-  - mcp__shadownet__social_confirm_plan
-  - mcp__shadownet__social_accept_plan
-  - mcp__shadownet__social_respond
-  - mcp__shadownet__social_inbox_wait
+  - mcp__shadownet__contacts
+  - mcp__shadownet__contact_detail
+  - mcp__shadownet__coordinate
+  - mcp__shadownet__confirm_plan
+  - mcp__shadownet__accept_plan
+  - mcp__shadownet__respond
+  - mcp__shadownet__inbox_wait
 disable-model-invocation: true
 metadata:
   hermes:
     tags: [shadownet, coordination, meetups, scheduling, a2a]
     related_skills: [shadownet-setup, shadownet-reach-out, shadownet-inbox]
     requires_tools:
-      - mcp_shadownet_social_contacts
-      - mcp_shadownet_social_coordinate
-      - mcp_shadownet_social_confirm_plan
-      - mcp_shadownet_social_accept_plan
-      - mcp_shadownet_social_respond
-      - mcp_shadownet_social_inbox_wait
+      - mcp_shadownet_contacts
+      - mcp_shadownet_coordinate
+      - mcp_shadownet_confirm_plan
+      - mcp_shadownet_accept_plan
+      - mcp_shadownet_respond
+      - mcp_shadownet_inbox_wait
 ---
 
 # Shadownet — Autonomous Coordination
@@ -35,37 +35,48 @@ This skill is **user-invocable only** (`disable-model-invocation: true`) —
 the model should not auto-trigger autonomous coordination on its own
 inference of intent.
 
+## Intent flow
+
+The three RFC 0002 §5 intent URIs map to the three steps of this
+coordination dance:
+
+| Intent | Sent by | Wraps |
+| --- | --- | --- |
+| `urn:shadownet:intent:coordinate_v1` | Initiator | `{activity, details?}` |
+| `urn:shadownet:intent:confirm_plan_v1` | Initiator (after agreement) | `PlanObject` (activity, when, where, participants) |
+| `urn:shadownet:intent:accept_plan_v1` | Receiver | `{acceptsMessageId}` |
+
 ## Roles
 
 Every coordination has an **initiator** and a **receiver**.
-
----
 
 ## INITIATOR FLOW (your user asked to plan something)
 
 ### Step 1 — Start coordination
 
-Look up the contact, then call `social_coordinate`:
+Look up the contact, then call `coordinate`:
 
 ```
-social_contacts(query="<name>")
-social_coordinate(contactId="<id>", activity="coffee", details="Friday morning in Mitte")
+contacts(query="<name>")
+coordinate(name="bob@sh4dow.org", activity="coffee", details="Friday morning in Mitte")
 ```
 
-The sidecar sends a `coordination_request` to the receiver's Shadow. Their
-agent will negotiate autonomously and respond with an agreed plan.
+The sidecar sends a `coordinate_v1` envelope to the receiver's Shadow.
+The response carries `messageId` and `contextId`; remember the
+`contextId` — every subsequent message in this coordination uses it.
 
 ### Step 2 — End the session
 
 > Sent a coordination request to **bob@sh4dow.org**. I'll let you know
 > when we've agreed on a plan.
 
-DONE. Do NOT poll. The `social_inbox_wait` long-poll handles delivery.
+DONE. Do NOT poll. The `inbox_wait` long-poll handles delivery.
 
 ### Step 3 — Response arrives (new session via inbox event)
 
-When the receiver's Shadow responds, it carries an **agreed plan**. Present
-ONE clean message to your user:
+When the receiver's Shadow responds (via free-form `respond` or another
+intent), it carries an **agreed plan** in the body. Present ONE clean
+message to your user:
 
 > ☕ Agreed with **bob@sh4dow.org**: Coffee at The Daily Grind,
 > Friday at 10am. Confirm?
@@ -73,20 +84,31 @@ ONE clean message to your user:
 ### Step 4 — User confirms
 
 ```
-social_confirm_plan()
+confirm_plan(
+  name="bob@sh4dow.org",
+  contextId="<same contextId from the original coordinate call>",
+  plan={
+    "activity": "Coffee",
+    "when": "2026-05-15T10:00:00+02:00",
+    "where": {"city": "Berlin", "name": "The Daily Grind", "type": "cafe"},
+    "participants": ["alice@sh4dow.org", "bob@sh4dow.org"]
+  }
+)
 ```
 
-No arguments needed — it auto-finds the pending plan. End session.
+The `plan` is a typed `PlanObject` (RFC 0002 §5.0) carrying activity,
+when (ISO 8601), where, and the full participant list. Do not omit
+fields — receivers may validate against the schema and reject with
+`payload_invalid`. End session.
 
 ### Step 5 — Final acceptance arrives (new session via inbox event)
 
-When the receiver accepts:
+When the receiver sends `accept_plan_v1`, the plan is committed on both
+sides:
 
 > All set! Coffee Friday 10am at The Daily Grind.
 
 DONE.
-
----
 
 ## RECEIVER FLOW (another Shadow sent you a coordination request)
 
@@ -94,9 +116,8 @@ DONE.
 
 ### Step 1 — Read the request and YOUR user's data
 
-The inbound message contains the initiator's availability, preferences, and
-proposed dates/times. Load YOUR user's calendar / preferences from local
-memory or profile skills.
+The inbound `coordinate_v1` body carries `{activity, details?}`. Load
+YOUR user's calendar / preferences from local memory or profile skills.
 
 ### Step 2 — Find the best match AUTONOMOUSLY
 
@@ -111,19 +132,28 @@ DO NOT ask your user for input. YOU decide based on what you know.
 ### Step 3 — Respond with the agreed plan
 
 ```
-social_respond(
-  intentId="<inbound intent_id>",
-  payload='{"type":"response","status":"agreed","plan":{"activity":"Coffee","date":"Friday","time":"10:00 AM","location":"The Daily Grind","notes":"Great spot in Mitte"}}'
+respond(
+  contextId="<contextId from the inbound coordinate envelope>",
+  body={
+    "text": "Coffee at The Daily Grind, Friday 10am — great spot in Mitte.",
+    "intent": "urn:shadownet:intent:confirm_plan_v1",
+    "data": {
+      "activity": "Coffee",
+      "when": "2026-05-15T10:00:00+02:00",
+      "where": {"city": "Berlin", "name": "The Daily Grind", "type": "cafe"},
+      "participants": ["alice@sh4dow.org", "bob@sh4dow.org"]
+    }
+  }
 )
 ```
 
 **CRITICAL: Do NOT write ANY text to the user during this phase.**
-Your only output is the `social_respond` tool call. Say nothing.
+Your only output is the `respond` tool call. Say nothing.
 End the session immediately after the tool call.
 
 ### Step 4 — Confirmation arrives (new session via inbox event)
 
-When you receive a confirmation, NOW notify your user:
+When the initiator's Shadow sends `confirm_plan_v1`, NOW notify your user:
 
 > ☕ **alice@sh4dow.org** confirmed: Coffee at The Daily Grind, Friday 10am.
 > Accept?
@@ -131,37 +161,35 @@ When you receive a confirmation, NOW notify your user:
 ### Step 5 — User accepts
 
 ```
-social_accept_plan()
+accept_plan(
+  name="alice@sh4dow.org",
+  contextId="<contextId from the confirm_plan inbox item>",
+  acceptsMessageId="<messageId of the confirm_plan envelope>"
+)
 ```
 
-No arguments needed — it auto-finds the pending confirmation. DONE.
-
----
-
-## Message Types
-
-| `data_type` | Sent by | Meaning |
-|---|---|---|
-| `coordination_request` | Initiator | Rich request with activity + details |
-| `response` | Receiver | Agreed plan (receiver negotiated autonomously) |
-| `confirmation` | Initiator | "My user approved" |
-| `confirmed` | Receiver | "My user approved too — we're set" |
-
----
+After this returns, the coordination is **complete on both sides** (RFC
+0002 §4 `accept_plan`). The sidecar will typically write the plan into
+the user's calendar at this point.
 
 ## Output Rules
 
 - **ONE message per step.** Never multiple bot messages.
 - **No narration.** Don't say "Loading skill...", "Checking inbox...". Just do it.
 - **Be concise.** "Coffee at X, Friday 10am. Confirm?" — that's it.
-- **Include reasoning in the `social_respond` payload** so it shows up in
-  the message log, but do NOT show it to the user.
+- **Use the typed intent URIs.** `confirm_plan_v1` and `accept_plan_v1`
+  let the peer's sidecar validate the shape and the user's calendar to
+  auto-populate. Don't fall back to free-form text mid-flow.
 
 ## Pitfalls
 
 - **DO NOT ask the receiver's user during negotiation.** This is the #1
   rule. You have their preferences and calendar — use them.
-- **DO NOT poll with `social_inbox`.** The `social_inbox_wait` long-poll
-  handles all inbound delivery.
-- **STOP on `confirmed`.** Never respond to a `confirmed` message.
+- **DO NOT poll with `inbox`.** The `inbox_wait` long-poll handles all
+  inbound delivery.
+- **Reuse the contextId across the whole flow.** Every step
+  (`coordinate`, `respond` with `confirm_plan_v1`, `accept_plan`) uses
+  the SAME `contextId`. That's how the sidecar threads the conversation.
+- **STOP after `accept_plan_v1`.** The flow is terminal — do not respond
+  to the acceptance.
 - **One tool call per session** for coordination flows.

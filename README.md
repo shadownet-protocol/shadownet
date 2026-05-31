@@ -8,8 +8,8 @@
 [![Conformance](https://github.com/shadownet-protocol/shadownet/actions/workflows/conformance.yml/badge.svg)](https://github.com/shadownet-protocol/shadownet/actions/workflows/conformance.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
-This repository hosts the official **Go and Python SDKs** and the **reference
-SCA / SNS / CLI binaries** for the
+This repository hosts the official **Python SDK** and the **reference Go
+server binaries** (`provider-server`, `issuer-server`) for the
 [Shadownet protocol](https://github.com/shadownet-protocol/shadownet-specs).
 
 If Shadownet is useful — or it could be — please ⭐ this repo. It's the
@@ -21,33 +21,29 @@ matters.
 Most of us already have a personal agent (Hermes, OpenClaw, Claude, …). They
 are capable and **completely alone** — they can't talk to each other.
 Shadownet is the protocol layer that fixes that, built on open standards
-(W3C [DIDs](https://www.w3.org/TR/did-core/) and
-[Verifiable Credentials](https://www.w3.org/TR/vc-data-model/),
-[Google A2A](https://google.github.io/A2A/),
+([Google A2A](https://a2a-protocol.org/),
 [Anthropic MCP](https://modelcontextprotocol.io)):
 
-- **SCA — Shadow Certificate Authority.** Proof of personhood: every agent
-  is bound to a verified human via a Verifiable Credential.
-- **SNS — Shadow Name Service.** Discovery: resolve `alice@sh4dow.org` to a
-  DID and an agent endpoint.
-- **A2A profile.** A hardened handshake — session token + Verifiable
-  Presentation, mutually authenticated, end-to-end verifiable.
+- **Shadowname addressing.** `alice@sh4dow.org` resolves via DNS-TXT to a
+  Provider that serves a signed A2A AgentCard.
+- **Direct addressing.** `shadow://key:z6Mk...@host:port` bypasses DNS for
+  self-hosted Hubs and key-identified peers.
+- **Org-affiliation credentials.** A `shadownet-cred+jwt` (signed by an
+  Issuer) lets one Shadow prove "I belong to acme.example" to another
+  Shadow as part of the A2A handshake.
 
 The full picture is in the spec repo: the
 [philosophy](https://github.com/shadownet-protocol/shadownet-specs#philosophy),
-the [v0.1 RFC set](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs),
-the
-[typed (birthday-flow) wire walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/birthday-flow.md),
-or the
-[free-form coordination walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/free-form-coordination.md)
-(the v0.1.4+ default envelope shape).
+the [v0.2 RFC set](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs),
+and the appendix walkthroughs covering both the typed (birthday-flow) and
+free-form coordination handshakes.
 
 ## What's in this repo
 
 ```
 shadownet/
-├── core/            Go reference implementation: SDK (pkg/) + reference SCA / SNS servers (cmd/) + operator CLI; Postgres backend in pgstore/
-├── python-sdk/      Python SDK (PyPI: shadownet); consumed by shadownet-local and downstream Sidecar deployments
+├── core/            Go reference servers (cmd/provider-server + cmd/issuer-server); Postgres backend in pgstore/. No public Go SDK.
+├── python-sdk/      Python SDK (PyPI: shadownet) — the canonical client SDK; consumed by shadownet-local and downstream Sidecar deployments
 ├── conformance/     Wire-level interop test suite (PyPI: shadownet-conformance) + ghcr.io/shadownet-protocol/conformance image + GitHub Action
 ├── integrations/    Host-agent plugins (Claude Code, Hermes Agent, OpenClaw, raw skill bundles)
 ├── examples/        Runnable end-to-end examples (one per language)
@@ -57,11 +53,13 @@ shadownet/
 
 What lives where, and why:
 
-- **`core/`** is the protocol's **reference implementation** — it bundles the
-  client SDK, the reference SCA + SNS server binaries, and the operator CLI
-  as one Go module. Idiomatic for Go projects that ship `pkg/` + `cmd/`
-  together.
-- **`python-sdk/`** is a **client SDK port** — no servers; downstream Sidecar
+- **`core/`** ships **two reference HTTP servers** for the two operator
+  roles in RFC 0001: `provider-server` (multi-tenant Shadowname host;
+  serves signed AgentCards at `<ep>/identity/<local>`) and `issuer-server`
+  (issues `org_affiliation` credentials, serves the per-epoch revocation
+  bitstring; supports both DNS-routed and key-identified Hubs). It is
+  **not** a public Go SDK — all shared code lives under `internal/`.
+- **`python-sdk/`** is the **canonical client SDK** — downstream Sidecar
   deployments compose it with
   [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) or
   any other A2A-capable host runtime.
@@ -85,15 +83,6 @@ against in-tree reference servers on every PR.
 
 ## Get started
 
-### Go developers
-
-```sh
-go get github.com/shadownet-protocol/shadownet/core
-```
-
-Quickstart and API surface: [`core/README.md`](./core/README.md) ·
-[`pkg.go.dev`](https://pkg.go.dev/github.com/shadownet-protocol/shadownet/core)
-
 ### Python developers
 
 ```sh
@@ -104,50 +93,50 @@ pip install shadownet
 Quickstart and API surface: [`python-sdk/README.md`](./python-sdk/README.md) ·
 [PyPI](https://pypi.org/project/shadownet/)
 
-### Operators (run an SCA / SNS)
+### Operators (run a Provider or Issuer)
 
-The Go SDK ships container images for the reference SCA + SNS servers and a
-sample `docker-compose.yml`. See the
-[operator quickstart](./core/README.md#as-an-operator--run-the-reference-servers)
-and [`core/deploy/`](./core/deploy/).
+`core/` ships container images for `provider-server` and `issuer-server`
+plus a sample `docker-compose.yml`. See the
+[operator quickstart](./core/README.md) and [`core/deploy/`](./core/deploy/).
 
 ## Architecture at a glance
 
 ```
-                              issues VC
-   +--------+ ---------------------------> +-----------+
-   |  SCA   |                              |   Holder  |
-   +--------+                              | (Shadow)  |
-                                           +-----------+
-                                                 |
-                                          registers DID + endpoint
-                                                 v
-                                             +-------+
-                                             |  SNS  |
-                                             +-------+
-                                                 ^
-                                          alice@sh4dow.org
-                                                 |
-   +-----------+              +-----------+      +     +-----------+
-   |  Shadow A | <==A2A handshake (VP exchange)====>   |  Shadow B |
-   +-----------+              +-----------+            +-----------+
-         ^                                                  ^
-         | MCP                                          MCP |
-   +-----------+                                       +-----------+
-   |  Human A  |                                       |  Human B  |
-   +-----------+                                       +-----------+
+                       issues shadownet-cred+jwt
+   +----------+ ---------------------------------> +-----------+
+   |  Issuer  |                                    |  Subject  |
+   +----------+                                    |  (Shadow) |
+                                                   +-----------+
+                                                         |
+                                          registers Shadowname (local + pk)
+                                                         v
+                                                  +-----------+
+                                                  |  Provider |
+                                                  +-----------+
+                                                         ^
+                                              alice@sh4dow.org → DNS-TXT
+                                                         |
+   +-----------+              +-----------+              +     +-----------+
+   |  Shadow A | <==A2A handshake (signed AgentCard)========>  |  Shadow B |
+   +-----------+              +-----------+                    +-----------+
+         ^                                                          ^
+         | MCP                                                  MCP |
+   +-----------+                                               +-----------+
+   |  Human A  |                                               |  Human B  |
+   +-----------+                                               +-----------+
 ```
 
 Agents speak A2A to each other; they speak MCP to their human. A human only
 ever sees content from their own agent — never from another person's agent
-claiming to speak for them.
+claiming to speak for them. Direct addressing (`shadow://key:z6Mk...@host:port`)
+bypasses Provider + DNS entirely for self-hosted Hubs.
 
 ## Implementations & related repos
 
 | Repo | Status | Role |
 | --- | --- | --- |
 | [`shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs) | Active | RFCs, JSON Schemas, fixture seeds — protocol source of truth |
-| **`shadownet`** (this repo) | Active | Go + Python SDKs, reference SCA / SNS, CLI, conformance suite, host-agent integrations |
+| **`shadownet`** (this repo) | Active | Python SDK, reference Provider + Issuer servers, conformance suite, host-agent integrations |
 | [`shadownet-local`](https://github.com/shadownet-protocol/shadownet-local) | Active | Sidecar reference implementation; drop-in for any A2A-capable runtime |
 | `shadownet-ts` | Planned | TypeScript SDK for browser + Node |
 
@@ -158,19 +147,19 @@ subtree's tags with its directory:
 
 | Tag pattern | Subject |
 | --- | --- |
-| `core/vX.Y.Z` | Go SDK + reference binaries |
+| `core/vX.Y.Z` | Reference Provider + Issuer binaries (GHCR images) |
 | `core/pgstore/vX.Y.Z` | Postgres backend submodule |
 | `python-sdk/vX.Y.Z` | Python SDK (PyPI: `shadownet`) |
 
 Each subtree maintains its own `CHANGELOG.md`. The protocol version
-(currently `v0.1`) is independent of SDK versions.
+(currently `v0.2`) is independent of subtree versions.
 
 ## Migrating from `shadownet-go` / `shadownet-py`
 
-Both SDKs were previously published from standalone repos. See
-[`MIGRATION.md`](./MIGRATION.md) for what changed for existing consumers
-(Go import path change, Python URL updates, tag scheme) and what stayed the
-same (PyPI distribution name, container image paths, public APIs).
+The Python SDK was previously published from a standalone repo; the legacy
+Go SDK shipped from `shadownet-go`. See [`MIGRATION.md`](./MIGRATION.md) for
+the v0.2 protocol cut and what changed for existing consumers (Go SDK
+deprecation, Python URL updates, tag scheme).
 
 ## Contributing
 

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:shadownet:0.2:schema:agentcard-extension",
+  "title": "Shadownet extension fields on the A2A AgentCard",
+  "description": "Fields added by the Shadownet extension to an A2A AgentCard. Defined in rfcs/0001-shadownet.md §5.3. The full AgentCard structure (name, supportedInterfaces, capabilities, signatures, etc.) is defined by the A2A specification; this schema covers only the Shadownet-specific additions and the required extension declaration.",
+  "type": "object",
+  "required": ["shadownet:v", "shadownet:pk", "capabilities"],
+  "additionalProperties": true,
+  "properties": {
+    "shadownet:v": {
+      "type": "string",
+      "const": "0.2",
+      "description": "Shadownet protocol version."
+    },
+    "shadownet:pk": {
+      "type": "string",
+      "description": "The Shadow's signing public key, multibase-encoded Ed25519 (base58btc, multicodec 0xed01). Self-describing via the z6Mk prefix.",
+      "pattern": "^z6Mk[1-9A-HJ-NP-Za-km-z]+$"
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "A2A AgentCapabilities. MUST declare the Shadownet extension as required.",
+      "required": ["extensions"],
+      "additionalProperties": true,
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "description": "MUST contain at least one entry with uri == 'urn:shadownet:0.2' and required == true.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["uri"],
+            "additionalProperties": true,
+            "properties": {
+              "uri": { "type": "string" },
+              "required": { "type": "boolean" },
+              "description": { "type": "string" }
+            }
+          },
+          "contains": {
+            "type": "object",
+            "required": ["uri", "required"],
+            "properties": {
+              "uri": { "const": "urn:shadownet:0.2" },
+              "required": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -40,11 +40,20 @@ class Seed(BaseModel):
 class SeedsFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     seeds: dict[str, Seed]
 
 
-FixtureKind = Literal["key", "credential", "freshness", "presentation", "sns_record", "status_list"]
+# v0.2 fixture kinds. CSR, envelope, and agentcard replace the dead v0.1
+# kinds (sns_record, presentation, freshness, status_list-as-VC).
+FixtureKind = Literal[
+    "key",
+    "credential",
+    "csr",
+    "envelope",
+    "agentcard",
+    "status_bitstring",
+]
 
 
 class FixtureEntry(BaseModel):
@@ -61,7 +70,7 @@ class FixtureEntry(BaseModel):
 class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1]
+    schema_version: Literal[2]
     fixtures: Annotated[list[FixtureEntry], Field(min_length=1)]
 
 

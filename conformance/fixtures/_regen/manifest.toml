@@ -1,22 +1,23 @@
-# Declarative fixture manifest.
+# Declarative fixture manifest — Shadownet v0.2.
 #
 # Each entry describes exactly one fixture file. The regen CLI:
 #   1. Resolves seeds from ../seeds.toml.
-#   2. Pipes the resolved spec (JSON) to BOTH the Python emitter
-#      (`python -m shadownet_conformance.regen.py_emit <kind>`) and the
-#      Go emitter (`fixtures/_regen/go-emit/go-emit <kind>`).
-#   3. Diffs the two outputs byte-for-byte.
-#   4. On match: writes to `fixtures/<out>`. On mismatch: errors, writes
-#      nothing.
+#   2. Emits the resolved spec via the Python emitter
+#      (`python -m shadownet_conformance.regen.py_emit <kind>`).
+#   3. Writes the result to `fixtures/<out>`.
 #
-# Order matters: VPs reference credentials, status lists are referenced
-# by credentials, etc. The CLI emits in declaration order.
+# The Go round-trip emitter (v0.1's interop safety net) is removed at v0.2
+# until both `core/` (Go SDK + reference Provider/Issuer) and `python-sdk`
+# reach feature parity. The Python emitter is the single source of truth
+# until then. Cross-impl byte-equality checks will be reinstated as a v0.2.x
+# follow-up using core/'s Provider+Issuer binaries as the Go-side oracle.
+#
+# Order matters where one fixture references another (envelopes reference
+# credentials, etc.). The CLI emits in declaration order.
 
-schema_version = 1
+schema_version = 2
 
-# ---------------------------------------------------------------------------
-# Keys (one per seed). Output: {did, public_jwk, private_jwk} JSON.
-# ---------------------------------------------------------------------------
+# Keys (one per seed). Output: {public_key, private_jwk} JSON.
 
 [[fixtures]]
 id   = "key_subject_alice"
@@ -40,218 +41,189 @@ out  = "keys/subject_acme.json"
 seed = "subject_acme"
 
 [[fixtures]]
-id   = "key_sca_issuer"
+id   = "key_hub_issuer"
 kind = "key"
-out  = "keys/sca_issuer.json"
+out  = "keys/hub_issuer.json"
 [fixtures.spec]
-seed = "sca_issuer"
+seed = "hub_issuer"
 
 [[fixtures]]
-id   = "key_sns_provider"
+id   = "key_provider"
 kind = "key"
-out  = "keys/sns_provider.json"
+out  = "keys/provider.json"
 [fixtures.spec]
-seed = "sns_provider"
+seed = "provider"
 
 [[fixtures]]
-id   = "key_peer_holder"
+id   = "key_peer_shadow"
 kind = "key"
-out  = "keys/peer_holder.json"
+out  = "keys/peer_shadow.json"
 [fixtures.spec]
-seed = "peer_holder"
+seed = "peer_shadow"
 
-# ---------------------------------------------------------------------------
-# Status list (issued first so credentials can point at it).
-# ---------------------------------------------------------------------------
+# Status bitstrings (issued first so credential `rev.idx` references match).
 
 [[fixtures]]
-id   = "status_list_2026_q3"
-kind = "status_list"
-out  = "status_lists/2026-q3.jwt"
+id   = "status_bitstring_hub_2026q2"
+kind = "status_bitstring"
+out  = "status_bitstrings/hub_2026q2.txt"
 [fixtures.spec]
-issuer            = "did:web:sca.sh4dow.org"
-issuer_seed       = "sca_issuer"
-issuer_kid        = "did:web:sca.sh4dow.org#k1"
-status_list_url   = "https://sca.sh4dow.org/status/2026-q3"
-iat               = 1756684800        # 2025-09-01T00:00:00Z
-exp               = 1759276800        # 2025-10-01T00:00:00Z
-purpose           = "revocation"
-# encoded_list is hardcoded (not regenerated) because gzip output is
-# library-version-dependent. The committed value below was produced once
-# from a 131072-bit (16384-byte) bitstring with bit 5 set:
-#
-#   buf = bytearray(16384); buf[0] |= 1 << 2
-#   base64.urlsafe_b64encode(gzip.compress(bytes(buf), mtime=0)).rstrip(b'=')
-#
-# Decoding it (decompress + check bit 5) is what verifiers do; the exact
-# byte-encoding of the compressed payload is not normative.
-encoded_list      = "H4sIAAAAAAACE-3BIQEAAAACIIP_NzvDAjQAAAAAAAAAAAAAAAAAAADA2wC5foOwAEAAAA"
+# 8192-bit (1 KiB) bitstring with bit 871 set — matches alice's
+# rev.idx in credentials below for revocation-positive fixtures.
+size_bits     = 8192
+revoked_idx   = [871]
 
-# ---------------------------------------------------------------------------
-# Credentials.
-# ---------------------------------------------------------------------------
+# Credentials — v0.2 `shadownet-cred+jwt` with kind=org_affiliation.
 
 [[fixtures]]
-id   = "credential_alice_l1"
+id   = "credential_alice_hub"
 kind = "credential"
-out  = "credentials/alice_l1.jwt"
+out  = "credentials/alice_hub.jwt"
 [fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
-subject_seed  = "subject_alice"   # subject DID derived as did:key:z6Mk...
-level         = "urn:shadownet:level:L1"
-subject_type  = "person"
+issuer_seed   = "hub_issuer"
+issuer        = "tiergarten-club.example"  # delegate-mode domain issuer
+sub           = "alice@sh4dow.org"
+org           = "tiergarten-club.example"
 iat           = 1756684800        # 2025-09-01T00:00:00Z
 exp           = 1759276800        # 2025-10-01T00:00:00Z
-jti           = "urn:uuid:00000000-0000-4000-8000-000000000001"
+epoch         = "2026q2"
+idx           = 42                # NOT in the status bitstring; this cred is live
 
 [[fixtures]]
-id   = "credential_alice_l2"
+id   = "credential_alice_keyed_hub"
 kind = "credential"
-out  = "credentials/alice_l2.jwt"
+out  = "credentials/alice_keyed_hub.jwt"
 [fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
+# Keyed-issuer variant: iss == org == hub's pubkey. RFC 0001 §6.6 rule 1
+# is the only authorization path open to keyed issuers / Hubs.
+issuer_seed   = "hub_issuer"
+issuer        = "$pk:hub_issuer"  # emitter substitutes the encoded pubkey
+sub           = "alice@sh4dow.org"
+org           = "$pk:hub_issuer"
+iat           = 1756684800
+exp           = 1759276800
+epoch         = "2026q2"
+idx           = 100
+
+[[fixtures]]
+id   = "credential_alice_revoked"
+kind = "credential"
+out  = "credentials/alice_revoked.jwt"
+[fixtures.spec]
+# Same alice but with rev.idx = 871, which IS set in the hub_2026q2
+# bitstring above — verifiers MUST reject this on status-list check.
+issuer_seed   = "hub_issuer"
+issuer        = "tiergarten-club.example"
+sub           = "alice@sh4dow.org"
+org           = "tiergarten-club.example"
+iat           = 1756684800
+exp           = 1759276800
+epoch         = "2026q2"
+idx           = 871
+
+[[fixtures]]
+id   = "credential_bob_hub"
+kind = "credential"
+out  = "credentials/bob_hub.jwt"
+[fixtures.spec]
+issuer_seed   = "hub_issuer"
+issuer        = "tiergarten-club.example"
+sub           = "bob@example.org"
+org           = "tiergarten-club.example"
+iat           = 1756684800
+exp           = 1759276800
+epoch         = "2026q2"
+idx           = 43
+
+[[fixtures]]
+id   = "credential_peer_hub"
+kind = "credential"
+out  = "credentials/peer_hub.jwt"
+[fixtures.spec]
+issuer_seed   = "hub_issuer"
+issuer        = "tiergarten-club.example"
+sub           = "peer@sh4dow.org"
+org           = "tiergarten-club.example"
+iat           = 1756684800
+exp           = 1759276800
+epoch         = "2026q2"
+idx           = 44
+
+# CSRs — v0.2 `shadownet-csr+jwt`. Idempotent within a ceremony per §6.5.
+
+[[fixtures]]
+id   = "csr_alice_to_hub"
+kind = "csr"
+out  = "csr/alice_to_hub.jose"
+[fixtures.spec]
 subject_seed  = "subject_alice"
-level         = "urn:shadownet:level:L2"
-subject_type  = "person"
+iss           = "alice@sh4dow.org"
+aud           = "tiergarten-club.example"
 iat           = 1756684800
-exp           = 1759276800
-jti           = "urn:uuid:00000000-0000-4000-8000-000000000002"
-[fixtures.spec.status]
-status_list_index      = "12345"
-status_list_credential = "https://sca.sh4dow.org/status/2026-q3"
+exp           = 1756685100        # +5 min, within §6.5's 600s recommended cap
+req_kind      = "org_affiliation"
+req_org       = "tiergarten-club.example"
+
+# AgentCards — Shadowname-mode (provider-signed) + direct-mode (self-signed).
 
 [[fixtures]]
-id   = "credential_acme_o1"
-kind = "credential"
-out  = "credentials/acme_o1.jwt"
+id   = "agentcard_alice_shadowname"
+kind = "agentcard"
+out  = "agentcards/alice_shadowname.json"
 [fixtures.spec]
-issuer            = "did:web:sca.sh4dow.org"
-issuer_seed       = "sca_issuer"
-issuer_kid        = "did:web:sca.sh4dow.org#k1"
-subject_did       = "did:web:acme.example"   # explicit; org subjects are did:web
-level             = "urn:shadownet:level:O1"
-subject_type      = "organization"
-iat               = 1756684800
-exp               = 1759276800
-jti               = "urn:uuid:00000000-0000-4000-8000-000000000003"
+mode             = "shadowname"
+provider_seed    = "provider"
+provider_domain  = "sh4dow.org"
+subject_seed     = "subject_alice"
+local            = "alice"
+shadowname       = "alice@sh4dow.org"
+a2a_url          = "https://shadow.sh4dow.org/v1/a2a/alice"
+name             = "Alice"
+description      = "Alice's Shadow"
+version          = "1.0.0"
 
 [[fixtures]]
-id   = "credential_bob_l1"
-kind = "credential"
-out  = "credentials/bob_l1.jwt"
+id   = "agentcard_bob_direct"
+kind = "agentcard"
+out  = "agentcards/bob_direct.json"
 [fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
+mode          = "direct"
 subject_seed  = "subject_bob"
-level         = "urn:shadownet:level:L1"
-subject_type  = "person"
-iat           = 1756684800
-exp           = 1759276800
-jti           = "urn:uuid:00000000-0000-4000-8000-000000000004"
+a2a_url       = "https://bob-vps.example.com:8443/a2a"
+name          = "Bob"
+description   = "Bob's Shadow (direct mode)"
+version       = "1.0.0"
+
+# Envelopes — `shadownet-env+jwt` carrying a credential, bound to the
+# surrounding A2A message via msgHash.
 
 [[fixtures]]
-id   = "credential_peer_l2"
-kind = "credential"
-out  = "credentials/peer_l2.jwt"
+id   = "envelope_alice_to_bob"
+kind = "envelope"
+out  = "envelopes/alice_to_bob.jws"
 [fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
-subject_seed  = "peer_holder"
-level         = "urn:shadownet:level:L2"
-subject_type  = "person"
-iat           = 1756684800
-exp           = 1759276800
-jti           = "urn:uuid:00000000-0000-4000-8000-000000000005"
-
-# ---------------------------------------------------------------------------
-# Freshness proofs.
-# ---------------------------------------------------------------------------
+sender_seed    = "subject_alice"
+from_id        = "alice@sh4dow.org"
+to_id          = "bob@example.org"
+iat            = 1756684900
+exp            = 1756685100       # +200s, within §8.3's 300s bound
+body_text      = "Hi Bob — want to grab dinner Thursday?"
+message_id     = "01HZ7K3CWAB4D6N5XT0M2EXAMPLE"
+context_id     = "01HZ7K2BV5R2K0DW3FCONTEXT0001"
+creds          = ["credentials/alice_hub.jwt"]
 
 [[fixtures]]
-id   = "freshness_alice_l2_fresh"
-kind = "freshness"
-out  = "freshness/alice_l2_fresh.jwt"
+id   = "envelope_alice_to_bob_direct"
+kind = "envelope"
+out  = "envelopes/alice_to_bob_direct.jws"
 [fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
-credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000002"
-iat           = 1756684860            # 1 minute after credential
-exp           = 1756771260            # +24h
-
-[[fixtures]]
-id   = "freshness_bob_l1_stale"
-kind = "freshness"
-out  = "freshness/bob_l1_stale.jwt"
-[fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
-credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000004"
-iat           = 1756684800            # at credential issuance
-exp           = 1756685100            # +5 min — intentionally stale by now
-
-[[fixtures]]
-id   = "freshness_peer_l2_fresh"
-kind = "freshness"
-out  = "freshness/peer_l2_fresh.jwt"
-[fixtures.spec]
-issuer        = "did:web:sca.sh4dow.org"
-issuer_seed   = "sca_issuer"
-issuer_kid    = "did:web:sca.sh4dow.org#k1"
-credential_jti = "urn:uuid:00000000-0000-4000-8000-000000000005"
-iat           = 1756684860
-exp           = 1756771260
-
-# ---------------------------------------------------------------------------
-# Verifiable Presentations.
-# ---------------------------------------------------------------------------
-
-[[fixtures]]
-id   = "presentation_alice_l2_to_peer"
-kind = "presentation"
-out  = "presentations/alice_l2_to_peer.jwt"
-[fixtures.spec]
-holder_seed       = "subject_alice"
-audience_seed     = "peer_holder"     # audience DID derived from peer's seed
-iat               = 1756684900
-exp               = 1756685020        # +120s, the RFC-0003 max
-nonce             = "0123456789abcdef0123456789abcdef"
-credential_refs   = ["credentials/alice_l2.jwt", "freshness/alice_l2_fresh.jwt"]
-
-[[fixtures]]
-id   = "presentation_bob_l1_to_peer"
-kind = "presentation"
-out  = "presentations/bob_l1_to_peer.jwt"
-[fixtures.spec]
-holder_seed       = "subject_bob"
-audience_seed     = "peer_holder"
-iat               = 1756684900
-exp               = 1756685020
-nonce             = "fedcba9876543210fedcba9876543210"
-credential_refs   = ["credentials/bob_l1.jwt"]
-
-# ---------------------------------------------------------------------------
-# SNS records.
-# ---------------------------------------------------------------------------
-
-[[fixtures]]
-id   = "sns_record_alice"
-kind = "sns_record"
-out  = "sns_records/alice.jwt"
-[fixtures.spec]
-provider_did    = "did:web:sh4dow.org"
-provider_seed   = "sns_provider"
-provider_kid    = "did:web:sh4dow.org#k1"
-shadowname      = "alice@sh4dow.org"
-subject_seed    = "subject_alice"
-endpoint        = "https://shadow.sh4dow.org/u/alice/a2a"
-subject_type    = "person"
-ttl             = 300
-iat             = 1759200000
+# Cross-mode: Shadowname sender, direct-mode recipient (bare pk).
+sender_seed    = "subject_alice"
+from_id        = "alice@sh4dow.org"
+to_id          = "$pk:subject_bob"
+iat            = 1756684900
+exp            = 1756685100
+body_text      = "Hi Bob — want to grab dinner Thursday?"
+message_id     = "01HZ7K3CWAB4D6N5XT0M2EXAMPLE"
+context_id     = "01HZ7K2BV5R2K0DW3FCONTEXT0001"
+creds          = ["credentials/alice_hub.jwt"]

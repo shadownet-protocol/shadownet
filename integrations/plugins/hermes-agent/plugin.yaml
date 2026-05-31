@@ -1,4 +1,4 @@
-# Hermes Agent plugin manifest for the Shadownet protocol.
+# Hermes Agent plugin manifest for the Shadownet protocol (v0.2).
 #
 # Distributed via PyPI (`pip install shadownet-hermes-plugin`) and discovered
 # by Hermes through the `hermes_agent.plugins` entry point declared in
@@ -17,13 +17,14 @@
 # manifest is still authoritative if the install path changes.
 
 name: shadownet
-version: "0.4.1"
+version: "0.5.0"
 description: >-
-  Shadownet protocol integration for Hermes Agent. Adds identity-anchored
-  agent-to-agent messaging via the Shadownet protocol (RFC-0007): outbound
-  MCP tools, four skills, a NAT-free inbound channel via the long-poll
-  social_inbox_wait tool, six slash commands, lifecycle hooks, and a
-  `hermes shadownet` CLI subcommand.
+  Shadownet v0.2 protocol integration for Hermes Agent. Adds identity-
+  anchored agent-to-agent messaging via Shadownet (RFC 0002 MCP control
+  surface): outbound MCP tools (identity, resolve, contacts, send, respond,
+  coordinate, confirm_plan, accept_plan, inbox, inbox_wait), four skills, a
+  NAT-free inbound channel via the long-poll inbox_wait tool, six slash
+  commands, lifecycle hooks, and a `hermes shadownet` CLI subcommand.
 
 kind: platform
 
@@ -54,23 +55,27 @@ provides_skills:
 # surface per the Hermes plugin guide.
 
 # Hermes prompts the user for these during `hermes plugins install` and
-# verifies they are set at startup. SHADOWNET_TOKEN is the only one without
-# a default; the rest can be left blank and the plugin picks sensible values.
+# verifies they are set at startup. SHADOWNET_CONNECT_URL is the canonical
+# one-string bootstrap; SHADOWNET_TOKEN + SHADOWNET_MCP_ENDPOINT is the
+# split form for operators wiring it via env directly.
 requires_env:
-  - name: SHADOWNET_TOKEN
-    prompt: Shadownet account bearer token
-    help: >-
-      Mint at <SHADOWNET_SIDECAR_BASE_URL>/connect/hermes-agent on your sidecar's
-      account page, or paste a shadownet:// connect URL via SHADOWNET_CONNECT_URL
-      instead of this token to bootstrap from one string.
-    required_for: full functionality
-  - name: SHADOWNET_SIDECAR_BASE_URL
-    prompt: Sidecar base URL (https://, or http://localhost for self-hosts)
-    default: https://app.sh4dow.org
-    required_for: full functionality
   - name: SHADOWNET_CONNECT_URL
-    prompt: "(Optional) shadownet:// connect URL — supersedes token + base when set"
-    required_for: alternative one-string bootstrap
+    prompt: shadow://connect URI from your Sidecar's onboarding portal
+    help: >-
+      The single-string bootstrap form. Carries the MCP endpoint and bearer
+      token per RFC 0003 §3. Paste an inline (token=) form here; handoff
+      URIs (handoff=) need a browser flow the plugin doesn't run.
+    required_for: full functionality
+  - name: SHADOWNET_TOKEN
+    prompt: (Optional) Shadownet bearer access token
+    help: >-
+      Use when you'd rather wire token + endpoint via env. SHADOWNET_CONNECT_URL
+      supersedes this when set.
+    required_for: alternative split bootstrap
+  - name: SHADOWNET_MCP_ENDPOINT
+    prompt: (Optional) Shadownet MCP endpoint URL
+    help: Direct MCP endpoint when SHADOWNET_TOKEN is set without a connect URI.
+    required_for: alternative split bootstrap
   - name: SHADOWNET_LONG_POLL_TIMEOUT_SECONDS
     prompt: Long-poll timeout in seconds (per call)
     default: "30"

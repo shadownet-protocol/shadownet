@@ -8,6 +8,57 @@ monorepo.
 
 If you don't depend on any of these, you can stop reading.
 
+## Protocol v0.2 — what disappeared, what came back (`core/v0.3.x`)
+
+The v0.2 RFC cut collapsed the v0.1 nine-RFC set into three RFCs and
+changed the wire materially: DIDs are gone, W3C Verifiable Credentials
+are gone, SNS-as-an-HTTP-service is gone (DNS-TXT replaces it), the SCA
+proof state machine is gone, and a new addressing mode
+(`shadow://key:z6Mk...@host:port` — direct, no DNS, no Provider) is now a
+first-class peer to Shadowname addressing.
+
+The `core/` subtree was rebuilt in lockstep with the spec cut. **The Go
+SDK has been removed.** What `core/v0.3.0` ships:
+
+- `cmd/provider-server` — multi-tenant Shadowname host (RFC 0001 §5.2).
+- `cmd/issuer-server` — `org_affiliation` credential issuer + per-epoch
+  revocation bitstring (RFC 0001 §6.4–§6.5). Supports both domain mode
+  (well-known paths) and keyed-Hub mode (self-served AgentCard at
+  `/.well-known/agent-card.json` declaring `shadownet:issueEndpoint` +
+  `shadownet:statusListBase`).
+- `core/pgstore/v0.3.x` — Postgres backend for both server stores.
+
+What `core/v0.3.0` does **not** ship:
+
+| Removed | Replacement |
+| --- | --- |
+| `pkg/sca`, `pkg/scaserver`, `cmd/sca-server` (SCA) | `cmd/issuer-server` (new role; different wire) |
+| `pkg/sns`, `pkg/snsserver`, `cmd/sns-server` (SNS) | DNS-TXT resolution (no service) + `cmd/provider-server` |
+| `pkg/did`, `pkg/vc`, `pkg/a2a` (DID + VC + A2A client) | python-sdk (`pip install shadownet`) — the canonical client SDK |
+| `cmd/shadownet` (operator CLI subcommands beyond `keygen`/`inspect`) | python-sdk + the new `provider-server admin` / `issuer-server admin` subcommands |
+| Any public `pkg/` API | All shared code is now under `internal/` |
+
+GHCR image rename:
+
+| Before (`core/v0.2.x` and earlier) | After (`core/v0.3.0`+) |
+| --- | --- |
+| `ghcr.io/shadownet-protocol/sca-server[:-pg]` | `ghcr.io/shadownet-protocol/issuer-server[:-pg]` |
+| `ghcr.io/shadownet-protocol/sns-server[:-pg]` | `ghcr.io/shadownet-protocol/provider-server[:-pg]` |
+
+The v0.1 images remain available at their old paths; only new releases
+publish under the new names. Pin explicitly if you operate the v0.1
+servers and aren't ready to migrate.
+
+If you had a Go consumer of `github.com/shadownet-protocol/shadownet/core`
+beyond the binaries: there is no public Go API after `core/v0.3.0`. Move
+to the Python SDK (`pip install shadownet`) or pin to `core/v0.2.x`. The
+in-tree primitives (JCS, AgentCard signing, credential JWT mint) live
+under `internal/` and remain implementation detail.
+
+The remainder of this document covers the v0.1 → consolidation migration
+(repo move, import-path change, PyPI URL updates). Skip it if you're
+already on the monorepo.
+
 ## What changed at the repo level
 
 Three previously-separate code trees have been merged into one monorepo,

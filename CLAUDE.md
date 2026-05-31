@@ -10,7 +10,7 @@ For ecosystem-specific conventions, read the subtree's own `CLAUDE.md`:
 
 | Subtree | Convention guide |
 | --- | --- |
-| `core/` | [`core/CLAUDE.md`](./core/CLAUDE.md) — Go SDK + reference servers + CLI + pgstore submodule |
+| `core/` | [`core/CLAUDE.md`](./core/CLAUDE.md) — Go reference Provider + Issuer servers + pgstore submodule (no public Go SDK) |
 | `python-sdk/` | [`python-sdk/CLAUDE.md`](./python-sdk/CLAUDE.md) — Python SDK (PyPI: `shadownet`) |
 | `conformance/` | [`conformance/CLAUDE.md`](./conformance/CLAUDE.md) — cross-impl wire-level test suite |
 | `integrations/` | — (host-agent plugins; per-plugin READMEs document specifics) |
@@ -18,13 +18,13 @@ For ecosystem-specific conventions, read the subtree's own `CLAUDE.md`:
 ## Spec authority
 
 [`shadownet-protocol/shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs)
-is the protocol's source of truth. Reading order for the v0.1 RFC set:
-0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007.
+is the protocol's source of truth. Reading order for the v0.2 RFC set:
+0001 (core protocol) → 0002 (MCP control surface) → 0003 (host integrations).
 
 - **If code and an RFC disagree, the RFC wins.**
 - **If an RFC is silent or ambiguous, ask** (or open an RFC issue
   upstream). Do not silently invent semantics.
-- Every wire artefact carries `"shadownet:v": "0.1"`; unknown versions
+- Every wire artefact carries `"shadownet:v": "0.2"`; unknown versions
   are rejected at the boundary.
 - Wire-level interop across implementations is owned by
   [`conformance/`](./conformance/). If a conformance test fails, **fix
@@ -35,8 +35,8 @@ is the protocol's source of truth. Reading order for the v0.1 RFC set:
 
 ```
 shadownet/
-├── core/              Go reference implementation: SDK (pkg/) + servers + CLI; Postgres backend in core/pgstore/
-├── python-sdk/        Python SDK (PyPI: shadownet); consumed by shadownet-local and downstream Sidecars
+├── core/              Go reference servers (cmd/provider-server + cmd/issuer-server) — RFC 0001 §5.2 + §6. No public Go SDK. Postgres backend in core/pgstore/.
+├── python-sdk/        Python SDK (PyPI: shadownet); canonical client SDK, consumed by shadownet-local and downstream Sidecars
 ├── conformance/       Cross-impl wire-level test suite (PyPI: shadownet-conformance + GHCR image + GitHub Action)
 ├── integrations/      Host-agent plugins (Claude Code, Hermes Agent, OpenClaw, raw skill bundles)
 ├── examples/          Per-language runnable end-to-end demos
@@ -46,10 +46,10 @@ shadownet/
 └── README.md, CLAUDE.md (this file)
 ```
 
-Subtrees are **not symmetrical**: `core/` is a full reference implementation
-(library + servers + CLI in one Go module); `python-sdk/` is a client SDK
-port only. Naming reflects content, not language. Don't try to force them
-into one shape.
+Subtrees are **not symmetrical**: `core/` ships two operator-role server
+binaries with no public Go API (everything is `internal/`); `python-sdk/`
+is the canonical client SDK. Naming reflects content, not language. Don't
+try to force them into one shape.
 
 ## Cross-subtree dependencies
 
@@ -70,7 +70,8 @@ The two columns are independent.
 - Commit-message style differs slightly per subtree (matches the legacy
   repos those subtrees came from):
   - `core/` and `core/pgstore/`: `scope: imperative summary` —
-    `pkg/sca: add freshness handler`, `pgstore: pin parent module to vX.Y.Z`.
+    `internal/issuer: gate keyed-mode AgentCard on signing key class`,
+    `pgstore: pin parent module to vX.Y.Z`.
   - `python-sdk/`: descriptive sentence-case, often referencing an RFC
     section — `Add kid support to JWT minting for session tokens and
     subject-auth, relax URI constraints for method fields in RFC
@@ -93,8 +94,9 @@ and captures every recovery dance we've learned the hard way.
 
 Tag scheme:
 
-- `core/vX.Y.Z` — Go SDK + reference binaries + multi-arch container images
-  (`ghcr.io/shadownet-protocol/{sca,sns}-server`).
+- `core/vX.Y.Z` — Reference `provider-server` + `issuer-server` binaries +
+  multi-arch container images
+  (`ghcr.io/shadownet-protocol/{provider,issuer}-server`).
 - `core/pgstore/vX.Y.Z` — Postgres backend submodule + `*-pg` images.
 - `python-sdk/vX.Y.Z` — PyPI `shadownet` via Trusted Publishing.
 - `conformance/vX.Y.Z` — `ghcr.io/shadownet-protocol/conformance` image
@@ -158,7 +160,7 @@ reviewers.
 
 - No mocks or placeholder implementations in shipped code anywhere across
   the four subtrees.
-- No backwards-compatibility shims while the protocol is at v0.1.
+- No backwards-compatibility shims while the protocol is at v0.2.
 - No emojis in code, comments, commits, or fixture file names.
 - No banner comments or multi-paragraph docstrings. Per-language guides
   document the exact docstring style.

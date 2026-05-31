@@ -30,7 +30,6 @@ DEFAULT_SPECS_PATH: Final[Path] = _bundled_specs_root().parent
 # at <DEFAULT_SPECS_PATH>/_specs/schemas/... A user override via --specs-path
 # should be a checkout of shadownet-specs whose layout is `<root>/schemas/...`.
 # To keep both forms working, the schema-loading helpers try both layouts.
-DEFAULT_PROOF_METHOD_URI: Final[str] = "instant-approval"
 DEFAULT_HTTP_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
@@ -60,10 +59,21 @@ def resolve_schemas_root(specs_path: Path) -> Path:
 
 
 class Role(StrEnum):
-    """Conformance class a target URL implements."""
+    """Conformance class a target URL implements.
 
-    SCA = "sca"
-    SNS = "sns"
+    Maps to the three deployable surfaces in v0.2:
+
+      * **Provider** — hosts ``_shadownet.<domain>`` DNS TXT and serves the
+        signed AgentCard at ``<ep>/identity/<local>`` (RFC 0001 §4.2, §5.2).
+      * **Issuer** — accepts CSRs at ``/.well-known/shadownet/issue`` and
+        serves status bitstrings at ``/.well-known/shadownet/status/<epoch>``
+        (RFC 0001 §6.4, §6.5).
+      * **Sidecar** — terminates A2A ``message:send`` with the Shadownet
+        envelope extension, runs §8.6 validation + §9 classification.
+    """
+
+    PROVIDER = "provider"
+    ISSUER = "issuer"
     SIDECAR = "sidecar"
 
 
@@ -74,8 +84,7 @@ class Config(BaseModel):
 
     targets: dict[Role, str] = Field(default_factory=dict)
     peer_targets: dict[Role, str] = Field(default_factory=dict)
-    proof_method_uri: str = DEFAULT_PROOF_METHOD_URI
-    sns_test_shadowname: str | None = None
+    test_shadowname: str | None = None
     specs_path: Path = DEFAULT_SPECS_PATH
     http_timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS
     report_junit: Path | None = None
@@ -84,7 +93,6 @@ class Config(BaseModel):
     include_draft: bool = False
     include_network: bool = True
     marker_expr: str | None = None
-    peer_listen_host: str = "127.0.0.1"
 
     @field_validator("targets", "peer_targets")
     @classmethod
@@ -117,9 +125,6 @@ class Config(BaseModel):
         return cls(
             targets=targets,
             peer_targets=peer_targets,
-            proof_method_uri=args.proof_method
-            or _env_str("PROOF_METHOD")
-            or DEFAULT_PROOF_METHOD_URI,
             specs_path=Path(args.specs_path or _env_str("SPECS_PATH") or DEFAULT_SPECS_PATH),
             http_timeout_seconds=float(
                 args.http_timeout
@@ -132,8 +137,7 @@ class Config(BaseModel):
             include_draft=args.include_draft or _env_bool("INCLUDE_DRAFT"),
             include_network=not args.no_network and _env_bool("INCLUDE_NETWORK", default=True),
             marker_expr=args.marker_expr or _env_str("MARKER_EXPR"),
-            peer_listen_host=args.peer_listen_host or _env_str("PEER_LISTEN_HOST") or "127.0.0.1",
-            sns_test_shadowname=args.sns_test_shadowname or _env_str("SNS_TEST_SHADOWNAME"),
+            test_shadowname=args.test_shadowname or _env_str("TEST_SHADOWNAME"),
         )
 
 
@@ -159,14 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="ROLE=URL",
         help="Second URL for the same role; enables round-trip tests.",
-    )
-    parser.add_argument(
-        "--proof-method",
-        metavar="URI",
-        help=(
-            f"Proof-method URI the SCA target exposes for instant-approval issuance "
-            f"(default: {DEFAULT_PROOF_METHOD_URI})."
-        ),
     )
     parser.add_argument(
         "--specs-path",
@@ -209,16 +205,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pytest marker expression (passed through as `-m EXPR`).",
     )
     parser.add_argument(
-        "--peer-listen-host",
-        metavar="HOST",
-        help="Bind host for the in-process A2A test peer (default: 127.0.0.1).",
-    )
-    parser.add_argument(
-        "--sns-test-shadowname",
+        "--test-shadowname",
         metavar="LOCAL@PROVIDER",
         help=(
-            "Shadowname the operator has pre-registered against the SNS target, "
-            "used by the resolve happy-path test. If unset, the test is skipped."
+            "Shadowname the operator has pre-registered against the Provider target "
+            "for AgentCard fetch tests. If unset, those tests are skipped."
         ),
     )
     return parser

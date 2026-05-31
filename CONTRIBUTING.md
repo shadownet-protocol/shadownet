@@ -117,18 +117,16 @@ uv run pytest                     # unit tests only — network tests skip witho
 
 # Live run against the in-repo Go reference servers (separate terminals):
 ( cd ../core
-  go build -o /tmp/sca-server ./cmd/sca-server
-  go build -o /tmp/sns-server ./cmd/sns-server
-  go build -o /tmp/shadownet  ./cmd/shadownet )
+  go build -o /tmp/provider-server ./cmd/provider-server
+  go build -o /tmp/issuer-server   ./cmd/issuer-server )
 mkdir -p /tmp/sn-self
-/tmp/shadownet keygen --out /tmp/sn-self/issuer.jwk
-/tmp/shadownet keygen --out /tmp/sn-self/provider.jwk
-SHADOWNET_ALLOW_INSTANT_APPROVAL=1 /tmp/sca-server -config ci/sca-server.yaml &
-/tmp/sns-server -config ci/sns-server.yaml &
+( cd ../core && go run ./internal/cli keygen --out /tmp/sn-self/provider.jwk )
+( cd ../core && go run ./internal/cli keygen --out /tmp/sn-self/issuer.jwk )
+/tmp/provider-server serve --config ci/provider-server.yaml &
+SHADOWNET_ALLOW_AUTO_APPROVE=1 /tmp/issuer-server serve --config ci/issuer-server.yaml &
 uv run shadownet-conformance \
-  --target sca=http://127.0.0.1:18443 \
-  --target sns=http://127.0.0.1:18444 \
-  --proof-method instant-approval
+  --target provider=http://127.0.0.1:8443 \
+  --target issuer=http://127.0.0.1:8444
 ```
 
 Required toolchain: Python 3.12+, `uv`, Go 1.25+ (only for the fixture
@@ -191,14 +189,14 @@ Maintainers tag from `main`. Tags use the monorepo subtree-prefix scheme:
 
 | Tag pattern | Triggers |
 | --- | --- |
-| `core/vX.Y.Z` | Go SDK release: cross-compiled CLI binaries + container images for `sca-server` / `sns-server` |
-| `core/pgstore/vX.Y.Z` | pgstore submodule release: container images for `sca-server-pg` / `sns-server-pg` |
+| `core/vX.Y.Z` | Reference server release: tarballs + container images for `provider-server` / `issuer-server` |
+| `core/pgstore/vX.Y.Z` | pgstore submodule release: container images for `provider-server-pg` / `issuer-server-pg` |
 | `python-sdk/vX.Y.Z` | PyPI publish (Trusted Publishing) for the `shadownet` distribution |
 | `conformance/vX.Y.Z` | PyPI publish for `shadownet-conformance` + multi-arch image push to `ghcr.io/shadownet-protocol/conformance` (consumed by `shadownet-protocol/conformance-action@v0.X`) |
 
 Bump the matching `CHANGELOG.md`, ensure CI is green on `main`, then push the
 tag. The release workflow handles the rest. Pre-releases use the matching
-PEP-440 / semver suffixes (`python-sdk/v0.2.0-rc.1`, `core/v0.2.0-rc.1`,
+PEP-440 / semver suffixes (`python-sdk/v0.5.0-rc.1`, `core/v0.3.0-rc.1`,
 `conformance/v0.2.0-rc.1`).
 
 Integrations releases (e.g. publishing `@shadownet-protocol/openclaw-plugin` to npm)

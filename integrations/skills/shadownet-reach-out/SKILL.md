@@ -1,30 +1,30 @@
 ---
 name: shadownet-reach-out
 description: Contact another Shadow on the Shadownet network via A2A. Use when the user wants to "message", "reach out to", "check with", "ping", or "ask" another agent or Shadowname.
-version: 0.2.0
+version: 0.5.0
 allowed-tools:
-  - mcp__shadownet__social_resolve
-  - mcp__shadownet__social_add_contact
-  - mcp__shadownet__social_contacts
-  - mcp__shadownet__social_contact_detail
-  - mcp__shadownet__social_send
-  - mcp__shadownet__social_inbox
-  - mcp__shadownet__social_inbox_wait
-  - mcp__shadownet__social_respond
+  - mcp__shadownet__resolve
+  - mcp__shadownet__add_contact
+  - mcp__shadownet__contacts
+  - mcp__shadownet__contact_detail
+  - mcp__shadownet__send
+  - mcp__shadownet__inbox
+  - mcp__shadownet__inbox_wait
+  - mcp__shadownet__respond
 disable-model-invocation: false
 metadata:
   hermes:
     tags: [shadownet, a2a, reach-out, agent-communication]
     related_skills: [shadownet-setup, shadownet-inbox, shadownet-coordinate]
     requires_tools:
-      - mcp_shadownet_social_resolve
-      - mcp_shadownet_social_add_contact
-      - mcp_shadownet_social_contacts
-      - mcp_shadownet_social_contact_detail
-      - mcp_shadownet_social_send
-      - mcp_shadownet_social_inbox
-      - mcp_shadownet_social_inbox_wait
-      - mcp_shadownet_social_respond
+      - mcp_shadownet_resolve
+      - mcp_shadownet_add_contact
+      - mcp_shadownet_contacts
+      - mcp_shadownet_contact_detail
+      - mcp_shadownet_send
+      - mcp_shadownet_inbox
+      - mcp_shadownet_inbox_wait
+      - mcp_shadownet_respond
 ---
 
 # Shadownet — Reach-Out
@@ -45,7 +45,7 @@ acknowledge → resolve+add → send → wait for reply → report.
 ### 1. Acknowledge to the user
 
 Before doing anything, tell the user in plain language:
-- Who you're about to contact (Shadowname + endpoint, once resolved)
+- Who you're about to contact (Shadowname, once resolved)
 - What you'll say
 - That you will be communicating **directly with their agent** over A2A
 
@@ -56,47 +56,55 @@ Example:
 
 ### 2. Resolve and add the contact (if not already known)
 
-First check `social_contacts(query="<name or shadowname>")`. If the contact
+First check `contacts(query="<name or shadowname>")`. If the contact
 already exists, jump to step 3.
 
 Otherwise, resolve:
 ```
-social_resolve(shadowname="<name@host>")
+resolve(name="<name@host>")
 ```
-The response carries the peer's DID, public-key JWK, and A2A endpoint.
+The response carries the peer's Shadowname, multibase Ed25519 public key,
+and A2A endpoint.
 
 Add to contact graph:
 ```
-social_add_contact(
-  shadowname="<name@host>",
+add_contact(
+  name="<name@host>",
   displayName="<optional display name>",
   grants=["messaging"]
 )
 ```
 
+If the response carries a `trustWarning.untrustedIssuers`, mention this to
+the user — it means the contact's credentials are signed by an issuer not
+in your trust store. The contact is still added; the warning is
+informational.
+
 ### 3. Send the message
 
 ```
-social_send(
-  contactId="<id>",
-  payload={"text": "Hey, are you free Friday morning for coffee?", "type": "message"}
+send(
+  to="<name@host>",
+  body={"text": "Hey, are you free Friday morning for coffee?"}
 )
 ```
 
-`social_send` is fire-and-forget over A2A — it returns immediately. The
-reply arrives asynchronously via `social_inbox_wait`.
+`send` is fire-and-forget over A2A — it returns immediately with a
+`messageId` and a `contextId`. The reply (when it arrives) carries the
+same `contextId`, which is how you'll match it to this conversation.
 
 ### 4. Wait for reply
 
-The `social_inbox_wait` long-poll will deliver the reply when it arrives.
-End your session — a new session will start when the event fires.
+The `inbox_wait` long-poll will deliver the reply when it arrives. End
+your session — a new session will start when the event fires.
 
 If the user explicitly asks you to wait in this session, you may call:
 ```
-social_inbox_wait(timeout_seconds=30)
+inbox_wait(timeout_seconds=30)
 ```
 
-But prefer ending the session and letting the event-driven delivery handle it.
+But prefer ending the session and letting the event-driven delivery handle
+it.
 
 ### 5. Report back to the user
 
@@ -107,11 +115,13 @@ Once the reply arrives (new session from inbox event), summarise:
 
 ## Pitfalls
 
-- **Do not skip the acknowledgement.** Never fire `social_send` without first
+- **Do not skip the acknowledgement.** Never fire `send` without first
   telling the user you're doing so.
-- **`payload` must be a dict (or JSON string).** Include a `type` field to
-  help the receiver route the message.
-- **Check grants** if the contact has restricted access. `social_contact_detail`
-  shows the grants. A denied grant means the message will be rejected.
-- **Prefer event-driven delivery.** Don't poll `social_inbox` in a loop —
-  end the session and let `social_inbox_wait` deliver the reply.
+- **`body` is an object with `text` / `intent` / `data`.** For a free-form
+  message just include `text`. Typed flows (coordinate / confirm_plan /
+  accept_plan) use the dedicated tools — do not hand-roll an `intent` URI.
+- **Check grants** if the contact has restricted access.
+  `contact_detail(name=...)` shows the grants. A denied grant means
+  `send` will return a `rejected` status with a `policy` error.
+- **Prefer event-driven delivery.** Don't poll `inbox` in a loop —
+  end the session and let `inbox_wait` deliver the reply.

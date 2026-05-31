@@ -32,7 +32,8 @@ const schemaLockTimeout = 30 * time.Second
 //	postgres://user:pass@host:5432/db?sslmode=require&pool_max_conns=20
 //
 // Caller is responsible for Close() on the returned *pgxpool.Pool. A typical
-// binary defers it after handing the pool to the SCA/SNS store constructors.
+// binary defers it after handing the pool to NewProviderStore /
+// NewIssuerStore.
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -49,12 +50,12 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// applySchema runs schemaSQL inside a transaction guarded by a session-level
-// advisory lock. Postgres CREATE TABLE IF NOT EXISTS is not a synchronization
-// primitive — concurrent callers can both pass the existence check and one
-// will fail on pg_type_typname_nsp_index. The advisory lock serializes the
-// DDL across backends; pg_advisory_xact_lock releases automatically at
-// COMMIT/ROLLBACK so there is no leak risk.
+// applySchema runs schemaSQL inside a transaction guarded by a session-
+// level advisory lock. Postgres CREATE TABLE IF NOT EXISTS is not a
+// synchronization primitive — concurrent callers can both pass the
+// existence check and race on pg_type_typname_nsp_index. The advisory
+// lock serializes the DDL across backends; pg_advisory_xact_lock releases
+// automatically at COMMIT/ROLLBACK so there's no leak risk.
 func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
 	ctx, cancel := context.WithTimeout(ctx, schemaLockTimeout)
 	defer cancel()

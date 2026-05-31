@@ -27,8 +27,8 @@ Security fixes target the latest released minor of each subtree:
 
 | Subtree | Currently supported |
 | --- | --- |
-| `core/` (Go SDK + reference servers) | `v0.2.x` |
-| `core/pgstore/` (Postgres backend) | `v0.2.x` |
+| `core/` (Go reference Provider + Issuer servers) | `v0.3.x` |
+| `core/pgstore/` (Postgres backend) | `v0.3.x` |
 | `python-sdk/` (Python SDK, PyPI `shadownet`) | `0.2.x` |
 | `conformance/` (PyPI `shadownet-conformance`, image `ghcr.io/shadownet-protocol/conformance`) | `0.2.x` |
 | `integrations/plugins/openclaw/` (npm `@shadownet-protocol/openclaw-plugin`) | latest only |
@@ -45,13 +45,14 @@ repos — receive critical fixes only at maintainer discretion.
 
 - Code in this repository (`core/`, `python-sdk/`, `conformance/`, `integrations/`, top-level configs).
 - Cryptographic correctness against the
-  [v0.1 RFCs](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
-- Issues that allow forging Verifiable Credentials, bypassing freshness or
-  revocation checks, or impersonating peers in the A2A handshake.
+  [v0.2 RFCs](https://github.com/shadownet-protocol/shadownet-specs/tree/main/rfcs).
+- Issues that allow forging `shadownet-cred+jwt` or `shadownet-env+jwt`,
+  bypassing freshness or revocation checks, or impersonating peers in
+  the A2A handshake.
 - Issues that leak private keys, secrets, or unintended PII through logs,
-  error messages, SNS records, or callback payloads.
-- Vulnerabilities in the published container images for `sca-server` /
-  `sns-server` / `sca-server-pg` / `sns-server-pg`.
+  error messages, Provider records, or ceremony-callback payloads.
+- Vulnerabilities in the published container images for `provider-server`
+  / `issuer-server` / `provider-server-pg` / `issuer-server-pg`.
 
 **Out of scope:**
 
@@ -60,8 +61,8 @@ repos — receive critical fixes only at maintainer discretion.
   repos directly.
 - Issues against the protocol spec itself — file with
   [`shadownet-protocol/shadownet-specs`](https://github.com/shadownet-protocol/shadownet-specs).
-- Theoretical attacks on `did:web` resolution that require pre-existing
-  TLS-CA compromise.
+- Theoretical attacks on DNS-TXT Shadowname resolution that require a
+  pre-existing DNSSEC- or TLS-CA-level compromise.
 - Issues already in their public CVE pipeline upstream — we pick those up
   via Dependabot and `govulncheck`.
 

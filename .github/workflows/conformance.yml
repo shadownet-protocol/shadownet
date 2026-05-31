@@ -1,18 +1,13 @@
 name: Conformance
 
-# Cross-implementation wire-level conformance. Two jobs:
-#
-#   * `py-schemas` — runs the Python SDK's own JSON-Schema conformance tests
-#     against a pinned ref of shadownet-specs. Exists separately from
-#     py.yml's pytest run because that one relies on a sibling clone (or
-#     skips when absent); this one checks out the spec at a known ref so
-#     the gate is deterministic.
-#
-#   * `wire` — boots the in-tree Go reference SCA + SNS, runs the in-tree
-#     conformance suite (`conformance/`) against them. Replaces the
-#     external GH Action invocation that this workflow used before the
-#     suite came in-tree. Required check on PRs that touch wire-visible
-#     surfaces.
+# Wire-level conformance for Shadownet v0.2. Runs the in-tree conformance
+# suite (conformance/) against a pinned ref of shadownet-specs. The suite's
+# schema-level tests exercise every v0.2 wire artifact (credential, csr,
+# envelope, agentcard for both addressing modes) plus URI grammar and
+# receiver-pipeline invariants. No live binaries are required at this stage;
+# the v0.2 cross-impl wire job (boot core/'s provider-server + issuer-server
+# and run live tests against them) returns when the conformance suite ships
+# provider/issuer-specific test files in a follow-up release.
 
 on:
   push:
@@ -36,14 +31,14 @@ concurrency:
   group: conformance-${{ github.ref }}
   cancel-in-progress: true
 
-# Pin shadownet-specs at a tagged ref. Bump alongside spec releases; CI is
+# Pin shadownet-specs at a known ref. Bump alongside spec releases; CI is
 # the source of truth for which spec we claim to implement.
 env:
-  SPECS_REF: main
+  SPECS_REF: feat/shadow1
 
 jobs:
-  py-schemas:
-    name: Python SDK — schema conformance
+  schemas:
+    name: Schema + wire-shape conformance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,104 +54,26 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-          cache-dependency-glob: "python-sdk/uv.lock"
-
-      - name: Sync Python SDK
-        working-directory: python-sdk
-        run: uv sync --all-extras
-
-      - name: Run Python SDK schema-conformance tests
-        working-directory: python-sdk
-        env:
-          SHADOWNET_SPECS_PATH: ${{ github.workspace }}/shadownet-specs
-        run: uv run pytest tests/conformance/ -v
-
-  wire:
-    name: Wire-level — Go reference vs in-tree conformance suite
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          check-latest: true
-          cache-dependency-path: core/go.sum
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
           cache-dependency-glob: "conformance/uv.lock"
-
-      - name: Build in-tree reference servers + CLI
-        working-directory: core
-        run: |
-          go build -o /tmp/sca-server ./cmd/sca-server
-          go build -o /tmp/sns-server ./cmd/sns-server
-          go build -o /tmp/shadownet  ./cmd/shadownet
 
       - name: Sync conformance suite
         working-directory: conformance
         run: uv sync --all-extras
 
-      - name: Provision keys + configs
-        run: |
-          mkdir -p /tmp/sn-self
-          /tmp/shadownet keygen --out /tmp/sn-self/issuer.jwk
-          /tmp/shadownet keygen --out /tmp/sn-self/provider.jwk
-          # The pre-baked configs in conformance/ci/ pin loopback ports
-          # 18443 (SCA) / 18444 (SNS) and use did:web:127.0.0.1%3A<port>
-          # so the conformance suite's resolver can reach the loopback
-          # /.well-known/did.json without DNS or TLS.
-
-      - name: Boot reference servers
+      - name: Verify fixtures are byte-stable
         working-directory: conformance
-        run: |
-          SHADOWNET_ALLOW_INSTANT_APPROVAL=1 \
-            /tmp/sca-server -config ci/sca-server.yaml > /tmp/sca.log 2>&1 &
-          echo $! > /tmp/sca.pid
-          /tmp/sns-server -config ci/sns-server.yaml > /tmp/sns.log 2>&1 &
-          echo $! > /tmp/sns.pid
+        run: uv run shadownet-conformance-fixtures regen --check
 
-          for url in http://127.0.0.1:18443/.well-known/did.json http://127.0.0.1:18444/.well-known/did.json; do
-            for _ in $(seq 1 30); do
-              if curl -fsS "$url" >/dev/null; then
-                echo "ready: $url"
-                break
-              fi
-              sleep 0.5
-            done
-          done
-
-      - name: Run conformance suite
-        id: conformance
-        continue-on-error: true
+      - name: Run conformance suite (schema + wire-shape tests)
         working-directory: conformance
+        env:
+          SHADOWNET_CONFORMANCE_SPECS_PATH: ${{ github.workspace }}/shadownet-specs
         run: |
           uv run shadownet-conformance \
-            --target sca=http://127.0.0.1:18443 \
-            --target sns=http://127.0.0.1:18444 \
-            --proof-method instant-approval \
+            --specs-path "$SHADOWNET_CONFORMANCE_SPECS_PATH" \
             --report-junit=conformance.xml \
             --report-json=conformance.json \
             --gha-summary=auto
-
-      - name: Tail server logs on failure
-        if: always()
-        run: |
-          echo '::group::sca-server log'; tail -200 /tmp/sca.log || true; echo '::endgroup::'
-          echo '::group::sns-server log'; tail -200 /tmp/sns.log || true; echo '::endgroup::'
-
-      - name: Stop background servers
-        if: always()
-        run: |
-          for pidfile in /tmp/sca.pid /tmp/sns.pid; do
-            if [ -f "$pidfile" ]; then
-              kill "$(cat "$pidfile")" 2>/dev/null || true
-            fi
-          done
 
       - name: Upload reports
         if: always()
@@ -168,9 +85,3 @@ jobs:
             conformance/conformance.json
           if-no-files-found: warn
           retention-days: 7
-
-      - name: Fail the job if conformance failed
-        if: steps.conformance.outcome == 'failure'
-        run: |
-          echo "::error::shadownet-conformance reported failures; see suite output and server logs above."
-          exit 1

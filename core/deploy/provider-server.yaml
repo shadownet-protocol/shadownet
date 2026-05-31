@@ -1,0 +1,52 @@
+# Shadownet provider-server example config (RFC 0001 §5.2).
+#
+# Generates one signed AgentCard per registered Shadowname at
+# <listen>/identity/<local>. Operators MUST publish the matching
+# _shadownet.<domain> DNS TXT record (use `provider-server dns-record
+# --config <this-file>` to print the literal record body).
+
+# host:port the HTTP server binds to.
+# - 127.0.0.1:8443  (loopback only; pair with a reverse proxy for TLS)
+# - 0.0.0.0:8443    (public listener; TLS REQUIRED — set tls.cert/key below)
+listen: 127.0.0.1:8443
+
+# Apex domain this Provider operates as. MUST match the domain whose
+# _shadownet.<domain> DNS TXT record is configured below.
+domain: sh4dow.org
+
+# Cache-Control max-age (seconds) on AgentCard responses.
+# RFC 0001 §5.5 RECOMMENDED value is 3600.
+cacheMaxAge: 3600
+
+# Endpoint base URL printed into the DNS TXT record by `dns-record`.
+# Set this even if you don't use the subcommand — it documents the URL
+# AgentCard fetches resolve against.
+dnsEndpoint: https://shadow.sh4dow.org/v1
+
+# Set to true when this domain ALSO operates an Issuer; appended to the
+# DNS TXT record by `dns-record` so verifiers know to consult the issuer
+# delegate= entries here.
+issuer: false
+
+# Provider signing key. Generate with `shadownet keygen --out <path>`.
+# Mode 0600. NEVER commit the keyfile.
+signing:
+  keyfile: ./provider.jwk
+
+storage:
+  # "sqlite" (default) or "postgres" (requires a pgstore-aware build).
+  driver: sqlite
+  # SQLite: filesystem path, ":memory:", or "file:<path>?<query>".
+  # Postgres: the libpq DSN (postgres://user:pass@host:5432/db?sslmode=require&pool_max_conns=20).
+  dsn: ./provider.db
+
+# Optional TLS material. Omit both fields to run plaintext on loopback.
+# Production deployments either terminate TLS upstream (reverse proxy) or
+# point cert/key at PEM files.
+tls:
+  cert: ""
+  key:  ""
+
+# Graceful shutdown deadline. 15s matches the binary's default; raise if
+# your reverse proxy uses longer keep-alives.
+shutdownTimeout: 15s
