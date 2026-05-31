@@ -49,11 +49,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-          check-latest: true
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -70,11 +65,13 @@ jobs:
           uv run mypy
           uv run pytest
 
-      - name: Build go-emit binary
-        working-directory: conformance/fixtures/_regen/go-emit
-        run: go build -o go-emit .
-
-      - name: Cross-SDK fixture verification
+      # Fixture regeneration check — re-derives every fixture from
+      # fixtures/_regen/manifest.toml via the Python emitter and diffs the
+      # result against the committed bytes. The legacy v0.1 cross-SDK
+      # check that also invoked a Go emitter is gone with the Go SDK; the
+      # py_emit run is the only one we have, but it still protects
+      # against the regen pipeline drifting from the committed fixtures.
+      - name: Fixture regeneration check
         run: uv run shadownet-conformance-fixtures regen --check
 
       - name: Verify tag matches package version
