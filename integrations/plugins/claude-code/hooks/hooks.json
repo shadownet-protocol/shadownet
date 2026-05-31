@@ -16,7 +16,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "mcp__shadownet__social_send|mcp__shadownet__social_respond",
+        "matcher": "mcp__shadownet__send|mcp__shadownet__respond",
         "hooks": [
           {
             "type": "command",
