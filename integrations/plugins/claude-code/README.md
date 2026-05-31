@@ -25,9 +25,9 @@ Identity-anchored agent-to-agent communication via the
 - **Hooks** (`hooks/hooks.json`)
   - `SessionStart` injects a one-line context note so Claude knows
     the plugin is loaded.
-  - `PreToolUse` on `mcp__shadownet__social_send` /
-    `mcp__shadownet__social_respond` injects an attention-reminder
-    ("verify contact_id and content match user intent").
+  - `PreToolUse` on `mcp__shadownet__send` /
+    `mcp__shadownet__respond` injects an attention-reminder
+    ("verify the recipient and content match user intent").
 - **Custom subagent** (`agents/shadownet-operator.md`) — protocol-aware
   subagent for delegating "go talk to peer X about Y" without
   polluting the main thread.
