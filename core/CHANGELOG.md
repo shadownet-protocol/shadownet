@@ -12,6 +12,8 @@ sub-module subtrees. The main module is tagged `core/vX.Y.Z`.
 
 ## [Unreleased]
 
+## [v0.3.0] — 2026-05-31
+
 ### Changed — v0.2 protocol rebuild
 
 `core/` is now **two Go reference HTTP server binaries** plus the Postgres
