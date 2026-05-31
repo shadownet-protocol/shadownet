@@ -1,0 +1,11 @@
+# Seeded into /opt/data/config.yaml (writable — the plugin's register() appends
+# its mcp_servers block). Enables the third-party shadownet platform plugin
+# (entry-point plugins are opt-in via plugins.enabled) and points the model at
+# the stub so no real provider is ever contacted.
+plugins:
+  enabled:
+    - shadownet
+
+model:
+  provider: custom
+  base_url: http://stub-llm:9000/v1
