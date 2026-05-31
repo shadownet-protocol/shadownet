@@ -179,7 +179,12 @@ class TestPromptBuilders:
         assert "context_id: ctx-001" in text
         assert "message_id: msg-001" in text
         assert "Coffee at The Daily Grind on 2026-05-15T10:00:00Z" in text
-        assert "mcp_shadownet_confirm_plan" in text
+        # Per RFC 0002 §3 the surface is content-agnostic — the LLM sends
+        # accept_plan_v1 via the generic `respond` tool with the intent
+        # URI in body, not via a dedicated confirm_plan tool.
+        assert "mcp_shadownet_respond" in text
+        assert ACCEPT_PLAN_V1_URI in text
+        assert '"acceptsMessageId":"msg-001"' in text
 
     def test_initiator_inject_for_accept_plan(self) -> None:
         text = _build_initiator_inject(

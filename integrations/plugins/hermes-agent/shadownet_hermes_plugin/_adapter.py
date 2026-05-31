@@ -645,7 +645,14 @@ def _build_initiator_inject(
     body_text: str,
     body_data: dict[str, Any],
 ) -> str:
-    """Build the text injected into the user's chat session for plan events."""
+    """Build the text injected into the user's chat session for plan events.
+
+    Per RFC 0002 §1 + §3 the MCP surface is content-agnostic — intent
+    profile payloads ride opaquely in ``body.intent`` / ``body.data`` on
+    the generic ``send`` / ``respond`` tools. There are no dedicated
+    ``confirm_plan`` / ``accept_plan`` MCP tools; this prompt instructs
+    the host LLM to send the intent-tagged envelope via ``respond``.
+    """
     if intent == CONFIRM_PLAN_V1_URI:
         plan_summary = _summarize_plan(body_data, fallback=body_text)
         return (
@@ -655,11 +662,11 @@ def _build_initiator_inject(
             f"Plan: {plan_summary}\n\n"
             f"INSTRUCTIONS: Present this plan to the user concisely and ask them "
             f"to confirm. When they say yes/confirm/ok, call "
-            f"mcp_shadownet_confirm_plan with:\n"
-            f'  name="{sender}"\n'
+            f"mcp_shadownet_respond with:\n"
             f'  contextId="{context_id}"\n'
-            f"  plan=<the PlanObject above>\n"
-            f"If they decline, just say you'll let {sender} know."
+            f'  body={{"text":"accepted","intent":"{ACCEPT_PLAN_V1_URI}",'
+            f'"data":{{"acceptsMessageId":"{message_id}"}}}}\n'
+            f"If they decline, just say you'll let {sender} know — no tool call."
         )
 
     if intent == ACCEPT_PLAN_V1_URI:
