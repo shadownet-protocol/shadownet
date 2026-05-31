@@ -1,9 +1,18 @@
 """MCP control surface — RFC 0002 client-side primitives.
 
-Typed pydantic models for every tool's input / output shape, the three v0.2
-intent payload models, ContactProfile, PlanObject, and a thin streamable-HTTP
-MCP client wrapper. Server-side tool registration (``mcp.server.fastmcp``
-decorators) is the Sidecar's concern; shadownet-local owns that surface.
+Typed pydantic models for every tool's input / output shape, the v0.2 intent
+payload models (``body.intent`` / ``body.data`` shapes that ride opaquely
+through the control surface), ``ContactProfile``, ``PlanObject``, and a
+thin streamable-HTTP MCP client wrapper. Server-side tool registration
+(``mcp.server.fastmcp`` decorators) is the Sidecar's concern.
+
+Per RFC 0002 §1 + §3, the control surface is content-agnostic: ``body.intent``
+and ``body.data`` are opaque slots on ``send`` / ``inbox``. Intent profile
+payload models (:class:`CoordinateV1Data`, :class:`ConfirmPlanV1Data`,
+:class:`AcceptPlanV1Data`, :class:`PlanObject`) remain in :mod:`shadownet.mcp.intents`
+as application-layer helpers, but the SDK no longer exposes dedicated
+``coordinate`` / ``confirm_plan`` / ``accept_plan`` MCP tools — callers
+use :class:`SendInput` with ``body.intent`` set to the URI.
 """
 
 from __future__ import annotations
@@ -24,21 +33,15 @@ from shadownet.mcp.notifications import (
     TaskUpdateEvent,
 )
 from shadownet.mcp.tools import (
-    AcceptPlanInput,
-    AcceptPlanOutput,
     AddContactInput,
     AddContactOutput,
     BodySlot,
-    ConfirmPlanInput,
-    ConfirmPlanOutput,
     ContactDetailInput,
     ContactDetailOutput,
     ContactProfile,
     ContactsInput,
     ContactsOutput,
     ContactSummary,
-    CoordinateInput,
-    CoordinateOutput,
     CredentialSummary,
     GrantInput,
     GrantOutput,
@@ -60,14 +63,10 @@ from shadownet.mcp.tools import (
 
 __all__ = [
     "NOTIFICATION_NAMESPACE",
-    "AcceptPlanInput",
-    "AcceptPlanOutput",
     "AcceptPlanV1Data",
     "AddContactInput",
     "AddContactOutput",
     "BodySlot",
-    "ConfirmPlanInput",
-    "ConfirmPlanOutput",
     "ConfirmPlanV1Data",
     "ContactDetailInput",
     "ContactDetailOutput",
@@ -75,8 +74,6 @@ __all__ = [
     "ContactSummary",
     "ContactsInput",
     "ContactsOutput",
-    "CoordinateInput",
-    "CoordinateOutput",
     "CoordinateV1Data",
     "CredentialSummary",
     "GeoCoordinate",

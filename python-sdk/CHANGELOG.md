@@ -10,6 +10,46 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+Track RFC 0002 PR #8 — the MCP control surface is now declared
+**content-agnostic**: intent profile payloads ride opaquely in
+`body.intent` / `body.data` on the generic `send` / `respond` tools.
+
+- **Removed** the dedicated `coordinate` / `confirm_plan` / `accept_plan`
+  MCP tools and their typed input / output models. Callers now use
+  `SendInput` / `RespondInput` with `body.intent` set to the intent URI
+  (`COORDINATE_V1_URI` / `CONFIRM_PLAN_V1_URI` / `ACCEPT_PLAN_V1_URI`)
+  and the relevant payload in `body.data`. The intent URIs and
+  payload models in `shadownet.mcp.intents` (`CoordinateV1Data`,
+  `ConfirmPlanV1Data`, `AcceptPlanV1Data`, `PlanObject`, `PlanWhere`,
+  `GeoCoordinate`) remain as application-layer helpers — the Sidecar
+  no longer interprets them.
+- `IdentityOutput`: `shadowname` is now optional (`str | None`); new
+  `direct_uri: str | None` (wire alias `directUri`). At least one of
+  the two MUST be present (model validator). Supports Shadows that
+  carry both addressing forms (RFC 0001 §3.3).
+- `ContactDetailOutput`: new `tls_pin: str | None` (wire alias
+  `tlsPin`). Present iff the contact is a direct-mode Shadow whose
+  connection URI carried a `#sha256:` pin.
+
+### Migration
+
+```python
+# v0.5
+from shadownet.mcp import CoordinateInput
+await client.coordinate(CoordinateInput(name="bob@x", activity="coffee"))
+
+# v0.6 — same wire envelope, generic surface
+from shadownet.mcp import SendInput, BodySlot
+from shadownet.mcp.intents import COORDINATE_V1_URI
+await client.send(SendInput(
+    to="bob@x",
+    body=BodySlot(text=None, intent=COORDINATE_V1_URI,
+                  data={"activity": "coffee"}),
+))
+```
+
 ## [0.5.0] — 2026-05-31
 
 This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec

@@ -8,24 +8,18 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
-    "AcceptPlanInput",
-    "AcceptPlanOutput",
     "AddContactInput",
     "AddContactOutput",
     "BodySlot",
-    "ConfirmPlanInput",
-    "ConfirmPlanOutput",
     "ContactDetailInput",
     "ContactDetailOutput",
     "ContactProfile",
     "ContactSummary",
     "ContactsInput",
     "ContactsOutput",
-    "CoordinateInput",
-    "CoordinateOutput",
     "CredentialSummary",
     "GrantInput",
     "GrantOutput",
@@ -90,11 +84,23 @@ class ContactSummary(BaseModel):
 
 
 class IdentityOutput(BaseModel):
+    """RFC 0002 §4 ``identity``. At least one of ``shadowname`` or
+    ``directUri`` MUST be present; a Subject MAY have one or both
+    addressing forms (e.g., a keyed Shadow that later registered a
+    Shadowname carries both)."""
+
     model_config = _BaseConfig
 
-    shadowname: str
+    shadowname: str | None = None
+    direct_uri: str | None = Field(default=None, alias="directUri")
     pk: str
     credentials: tuple[CredentialSummary, ...] = ()
+
+    @model_validator(mode="after")
+    def _at_least_one_addressing_form(self) -> IdentityOutput:
+        if self.shadowname is None and self.direct_uri is None:
+            raise ValueError("identity output MUST carry at least one of shadowname or directUri")
+        return self
 
 
 class ResolveInput(BaseModel):
@@ -135,6 +141,10 @@ class ContactDetailOutput(BaseModel):
     profile: ContactProfile | None = None
     added_at: str = Field(alias="addedAt")
     last_seen: str | None = Field(default=None, alias="lastSeen")
+    # SHA-256 fingerprint of the direct-mode TLS cert (RFC 0002 §4
+    # contact_detail). Present iff the contact is a direct-mode Shadow
+    # whose connection URI carried a `#sha256:` pin.
+    tls_pin: str | None = Field(default=None, alias="tlsPin")
 
 
 class AddContactInput(BaseModel):
@@ -205,43 +215,6 @@ class RespondOutput(BaseModel):
     message_id: str = Field(alias="messageId")
     status: Literal["accepted", "rejected"]
     error: str | None = None
-
-
-class CoordinateInput(BaseModel):
-    model_config = _BaseConfig
-    name: str
-    activity: str
-    details: str | None = None
-
-
-class CoordinateOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
-    context_id: str = Field(alias="contextId")
-
-
-class ConfirmPlanInput(BaseModel):
-    model_config = _BaseConfigOpen
-    name: str
-    context_id: str = Field(alias="contextId")
-    plan: dict[str, Any]
-
-
-class ConfirmPlanOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
-
-
-class AcceptPlanInput(BaseModel):
-    model_config = _BaseConfig
-    name: str
-    context_id: str = Field(alias="contextId")
-    accepts_message_id: str = Field(alias="acceptsMessageId")
-
-
-class AcceptPlanOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
 
 
 class InboxInput(BaseModel):
