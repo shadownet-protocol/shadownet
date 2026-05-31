@@ -1,0 +1,17 @@
+# Node toolchain for the OpenClaw plugin's containerized lint/build/test.
+#
+# No app code is baked in: the plugin source is bind-mounted at runtime and
+# node_modules/dist live in named volumes, so running lint/build/test never
+# writes dependencies onto the host. pnpm is pinned to the 9.x line CI uses
+# (.github/workflows/integrations.yml). The `openclaw` peer is never installed
+# here — the plugin's .npmrc sets auto-install-peers=false.
+FROM node:20-bookworm-slim
+
+RUN npm install -g pnpm@9 && npm cache clean --force
+
+# Keep pnpm's content-addressable store OFF the bind-mounted project root (it
+# would otherwise land on the host via ..:/app). compose.openclaw.yml backs this
+# path with a named volume so the store is cached but never touches the host.
+ENV npm_config_store_dir=/pnpm-store
+
+WORKDIR /app
