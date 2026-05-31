@@ -10,6 +10,20 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-31
+
+This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec
+(`shadownet-specs/feat/shadow1`) replacing v0.1's nine RFCs with three:
+`rfcs/0001-shadownet.md` (wire), `rfcs/0002-shadownet-mcp.md` (MCP control
+surface), `rfcs/0003-shadownet-onboarding.md` (onboarding URI). Direct
+addressing (`shadow://key:z6Mk...@host:port`) is first-class peer to
+Shadownames. The protocol extension URN moves to `urn:shadownet:0.2`.
+
+**This is a breaking change. There are no v0.1 shims.** v0.1 users
+should pin `shadownet<0.5`; downstream consumers (sidecars, plugins,
+conformance) migrate at their own cadence. The v0.4.x series remains
+on PyPI as the v0.1 release line.
+
 ### Fixed
 
 - **RFC 0001 §11 agent-opacity leak in ``a2a.problem_response``**. The
@@ -69,23 +83,6 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
     `AsyncInMemoryCredentialCache`).
   All `a*` siblings accept an injected `httpx.AsyncClient` (own one
   when `None`) and mirror the sync error mapping verbatim.
-
-## [0.5.0] — 2026-05-30
-
-This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec
-(`shadownet-specs/feat/shadow1`) replacing v0.1's nine RFCs with three:
-`rfcs/0001-shadownet.md` (wire), `rfcs/0002-shadownet-mcp.md` (MCP control
-surface), `rfcs/0003-shadownet-onboarding.md` (onboarding URI). Direct
-addressing (`shadow://key:z6Mk...@host:port`) is first-class peer to
-Shadownames. The protocol extension URN moves to `urn:shadownet:0.2`.
-
-**This is a breaking change. There are no v0.1 shims.** v0.1 users
-should pin `shadownet<0.5`; downstream consumers (sidecars, plugins,
-conformance) migrate at their own cadence. The v0.4.x series remains
-on PyPI as the v0.1 release line.
-
-### Added
-
 - New module `shadownet.identifiers` exposing `Identifier`,
   `IssuerIdentifier`, `Shadowname`, `Domain`, `MultibasePublicKey`
   pydantic types plus discriminators (`is_shadowname`,
