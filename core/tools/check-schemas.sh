@@ -16,12 +16,14 @@ if [[ ! -d "$SPECS_REPO" ]]; then
   exit 0
 fi
 
-declare -a pairs=(
-  "api/messages/envelope.schema.json schemas/messages/envelope.schema.json"
-)
+declare -a pairs=()
+# v0.1 mirrored api/messages/envelope.schema.json from the upstream spec; the
+# Phase 1 cut removed that mirror. Phase 6 will re-introduce mirrors here if
+# any of the v0.2 wire artefacts end up duplicated in core/ for build-time
+# validation. Until then this loop is intentionally empty.
 
 fail=0
-for pair in "${pairs[@]}"; do
+for pair in "${pairs[@]+"${pairs[@]}"}"; do
   local_path="${pair%% *}"
   upstream_path="${pair##* }"
   if ! diff -u \

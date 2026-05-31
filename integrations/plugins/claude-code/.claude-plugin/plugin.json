@@ -1,7 +1,7 @@
 {
   "name": "shadownet",
   "description": "Identity-anchored agent-to-agent communication via the Shadownet protocol.",
-  "version": "0.3.4",
+  "version": "0.5.0",
   "author": {
     "name": "Shadownet",
     "email": "hello@sh4dow.org"
@@ -14,14 +14,14 @@
     "connect_url": {
       "type": "string",
       "title": "Shadownet connect URL",
-      "description": "Paste the shadownet://connect?base=...&token=... URL from your sidecar's account page. The hosted Sidecar serves a pre-filled snippet at https://app.sh4dow.org/connect/claude-code; self-hosts serve the same at https://<your-sidecar>/connect/claude-code (RFC-0008).",
+      "description": "Paste the shadow://connect?mcp=...&token=... URL from your sidecar's account page. The hosted Sidecar serves a pre-filled snippet at https://app.sh4dow.org/connect/claude-code; self-hosts serve the same at https://<your-sidecar>/connect/claude-code (RFC 0003).",
       "sensitive": true,
       "required": true
     },
     "inbound_enabled": {
       "type": "boolean",
       "title": "Enable real-time inbound monitor",
-      "description": "Run a background long-poll worker so inbound A2A messages surface as Claude notifications + OS toasts. Requires the sidecar to advertise the inbox-wait capability (RFC-0007). Enabled by default; degrades to a silent no-op if `uv` is missing or the sidecar lacks the capability.",
+      "description": "Run a background long-poll worker so inbound A2A messages surface as Claude notifications + OS toasts. Uses the v0.2 MCP inbox_wait tool (RFC 0002 §4). Enabled by default; degrades to a silent no-op if `uv` is missing.",
       "default": true
     }
   },
@@ -30,7 +30,7 @@
       {
         "name": "shadownet-inbound",
         "command": "${CLAUDE_PLUGIN_ROOT}/monitors/inbound.py",
-        "description": "Long-polls the Shadownet sidecar's social_inbox_wait MCP tool for inbound A2A messages. Emits one structured notification line per inbound message and (by default) fires an OS-level toast. Enabled by default; flip the 'inbound_enabled' userConfig option to false to disable."
+        "description": "Long-polls the Shadownet sidecar's inbox_wait MCP tool for inbound A2A messages. Emits one structured notification line per inbound message and (by default) fires an OS-level toast. Enabled by default; flip the 'inbound_enabled' userConfig option to false to disable."
       }
     ]
   }

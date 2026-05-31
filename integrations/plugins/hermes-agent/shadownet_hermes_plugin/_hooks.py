@@ -8,6 +8,7 @@ it from ``pre_llm_call_callback`` on the first turn.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -31,53 +32,61 @@ _pending_inbox: dict[str, int] = {}
 _SUPPRESSED_PLATFORMS = frozenset({"shadownet"})
 
 
+def _resolve_mcp_target() -> tuple[str, str] | None:
+    """Resolve ``(mcp_endpoint, bearer_token)`` from the configured connect URI.
+
+    Returns ``None`` on any failure (URI missing, handoff form, SDK absent,
+    parse error). The hook is best-effort UX, not a correctness boundary.
+    """
+    connect_uri = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
+    if not connect_uri:
+        return None
+    try:
+        from shadownet.onboarding import parse_connect_uri
+    except ImportError:
+        return None
+    try:
+        parsed = parse_connect_uri(connect_uri)
+    except Exception:  # noqa: BLE001
+        return None
+    if not parsed.is_inline:
+        # Handoff URIs require an out-of-band redemption step; we don't run
+        # that from this hook. Skip silently.
+        return None
+    if not parsed.mcp_endpoint or not parsed.access_token:
+        return None
+    return parsed.mcp_endpoint, parsed.access_token
+
+
+async def _fetch_inbox_count_async(endpoint: str, token: str) -> int:
+    """Open a brief MCP session and call ``inbox`` to get a pending count."""
+    try:
+        from shadownet.mcp import InboxInput, ShadownetMCPClient
+    except ImportError:
+        return 0
+    try:
+        async with ShadownetMCPClient.connect(endpoint=endpoint, access_token=token) as client:
+            result = await client.inbox(InboxInput(limit=50))
+    except Exception:  # noqa: BLE001
+        return 0
+    return len(result.items)
+
+
 def _fetch_pending_inbox_count() -> int:
     """Best-effort, non-blocking count of pending shadownet inbox items.
 
     Returns 0 on any error — the hook is a UX nicety, not a correctness
-    boundary. Reads ``SHADOWNET_CONNECT_URL`` to resolve the sidecar.
+    boundary. Runs the async MCP call on a private event loop so the host
+    LLM's own asyncio.run isn't shadowed.
     """
-    connect_url = os.environ.get("SHADOWNET_CONNECT_URL", "").strip()
-    if not connect_url:
+    target = _resolve_mcp_target()
+    if target is None:
         return 0
+    endpoint, token = target
     try:
-        from shadownet.connect.url import parse_connect_url
-    except ImportError:
-        return 0
-    try:
-        parsed = parse_connect_url(connect_url)
+        return asyncio.run(_fetch_inbox_count_async(endpoint, token))
     except Exception:  # noqa: BLE001
         return 0
-    if not getattr(parsed, "is_inline", False):
-        return 0
-    base_url = (parsed.base_url or "").rstrip("/")
-    token = parsed.token
-    if not base_url or not token:
-        return 0
-
-    try:
-        import httpx
-    except ImportError:
-        return 0
-
-    try:
-        with httpx.Client(timeout=3.0) as client:
-            resp = client.get(
-                f"{base_url}/v1/account/me/social/inbox",
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            )
-            resp.raise_for_status()
-            body = resp.json()
-    except Exception:  # noqa: BLE001
-        return 0
-
-    items = body.get("items") if isinstance(body, dict) else None
-    if isinstance(items, list):
-        return len(items)
-    count = body.get("count") if isinstance(body, dict) else None
-    if isinstance(count, int):
-        return count
-    return 0
 
 
 def on_session_start_callback(
@@ -89,8 +98,8 @@ def on_session_start_callback(
     """Populate ``_pending_inbox[session_id]`` so the first ``pre_llm_call`` injects.
 
     The guide states this hook's return value is ignored, so injection
-    has to happen from ``pre_llm_call``. We do the cheap HTTP fetch here
-    once per session and stash the result.
+    has to happen from ``pre_llm_call``. We do the MCP call here once per
+    session and stash the result.
     """
     if platform in _SUPPRESSED_PLATFORMS:
         return
@@ -135,7 +144,7 @@ def pre_llm_call_callback(
     return {
         "context": (
             f"[shadownet] You have {count} pending shadownet {plural}. "
-            "Use mcp_shadownet_social_inbox_wait to triage when the user has a moment."
+            "Use mcp_shadownet_inbox_wait to triage when the user has a moment."
         )
     }
 

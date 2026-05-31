@@ -12,7 +12,7 @@ import (
 // Distinct from the build version (passed in via Run): the protocol version
 // changes only when the spec major bumps; the build version moves with every
 // tagged release.
-const ProtocolVersion = "0.1"
+const ProtocolVersion = "0.2"
 
 // Run dispatches argv to a subcommand. argv[0] is the program name; build is
 // the build version stamped at link time (see cmd/shadownet/main.go).
@@ -36,14 +36,8 @@ func Run(args []string, stdout, stderr io.Writer, build string) int {
 	switch cmd {
 	case "keygen":
 		err = Keygen(rest, stdout, stderr)
-	case "resolve":
-		err = Resolve(rest, stdout, stderr)
 	case "inspect":
 		err = Inspect(rest, stdout, stderr)
-	case "handshake":
-		err = Handshake(rest, stdout, stderr)
-	case "doctor":
-		err = Doctor(rest, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "shadownet: unknown subcommand %q\n", cmd)
 		printUsage(stderr)
@@ -64,11 +58,8 @@ Usage:
   shadownet --version
 
 Commands:
-  keygen         generate an Ed25519 keypair (did:key)
-  resolve        resolve a Shadowname via its SNS provider
-  inspect        decode and validate a Shadownet JWT (VC, VP, freshness, SNS record, session token)
-  handshake      run an end-to-end A2A handshake against a peer
-  doctor         sanity-check local config and remote endpoints
+  keygen         generate an Ed25519 keypair (writes a JWK file)
+  inspect        decode an unverified Shadownet JWT (env, cred, csr)
   version        print version info`)
 }
 

@@ -6,6 +6,58 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-30
+
+This is the **Shadownet v0.2 release** of the Hermes plugin. Tracks
+`shadownet>=0.5.0,<0.6` and the consolidated v0.2 spec set
+(`shadownet-specs/feat/shadow1`). **Breaking change**; users staying on
+v0.1 should pin `shadownet-hermes-plugin<0.5`.
+
+### Added
+
+- v0.2 MCP control surface — all tool calls go through the typed
+  `shadownet.mcp.ShadownetMCPClient` async wrapper. RFC 0002 intent
+  URIs (`coordinate_v1`, `confirm_plan_v1`, `accept_plan_v1`) drive
+  dispatch in place of v0.1's `data_type` strings.
+- New env path: `SHADOWNET_CONNECT_URL` carries the MCP endpoint and
+  bearer token directly per RFC 0003 §3 (no separate
+  `integration-bundle` fetch). Split form
+  `SHADOWNET_TOKEN` + `SHADOWNET_MCP_ENDPOINT` also supported.
+- `_hooks.py` pending-inbox check now opens a brief MCP session and
+  calls the `inbox` tool — replaces the v0.1 cloud
+  `/v1/account/me/social/inbox` REST endpoint that's gone in v0.2.
+
+### Changed
+
+- SDK pin: `shadownet>=0.4.1,<0.5` → `shadownet>=0.5.0,<0.6`. Loading
+  v0.5.x of the plugin against a v0.4.x SDK will fail.
+- Tool name strings drop the `social_` prefix everywhere
+  (`mcp_shadownet_social_send` → `mcp_shadownet_send`, etc.) per
+  RFC 0002 §4.
+- Event taxonomy:
+  - `inbox.message` now branches on `body.intent` rather than
+    `data_type`. The receiver-side coordination dance maps cleanly
+    onto the three RFC 0002 intent URIs.
+  - `task.update` carries `contextId` instead of `intentId`. The
+    dedup key keys on `(contextId, status)`.
+- `send()` uses the typed `SendInput(to=..., body=BodySlot(text=...))`
+  instead of the v0.1 `social_send(contactId, interaction, payload)`
+  shape.
+
+### Removed
+
+- `IntegrationBundle` / `fetch_integration_bundle` — RFC 0003 has no
+  bundle endpoint; the connect URI carries the MCP endpoint directly.
+- `ShadownetMCPSession` — replaced by `ShadownetMCPClient` (the v0.2
+  typed async wrapper around the upstream MCP streamable-HTTP client).
+- `interaction` URIs — v0.1 concept replaced by `body.intent`.
+- v0.1 `data_type` strings (`coordination_request`, `response`,
+  `confirmation`, `confirmed`) — replaced by intent URIs.
+- `SHADOWNET_SIDECAR_BASE_URL` env var — the connect URI is the
+  bootstrap, not the sidecar base URL.
+
+[0.5.0]: https://github.com/shadownet-protocol/shadownet/releases/tag/hermes-plugin%2Fv0.5.0
+
 ## [0.4.1] — 2026-05-28
 
 ### Fixed

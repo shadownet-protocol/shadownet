@@ -1,41 +1,31 @@
 # Examples
 
 Runnable end-to-end demonstrations of the Shadownet protocol using the
-SDKs in this repo. Each example is self-contained — no network, no DNS,
-no servers, no Docker — and runs in well under a second.
+Python SDK. Each example is self-contained — no network, no DNS, no
+servers, no Docker — and runs in well under a second.
 
-| Directory | Language | What it does |
-| --- | --- | --- |
-| [`birthday-credential-py/`](./birthday-credential-py/) | Python 3.12+ | Issues a credential, mints a Verifiable Presentation, verifies it end-to-end. |
-| [`birthday-credential-go/`](./birthday-credential-go/) | Go 1.25+ | Same flow as the Python example, using the Go SDK. |
+| Directory | Language | Status | What it does |
+| --- | --- | --- | --- |
+| [`birthday-credential-py/`](./birthday-credential-py/) | Python 3.12+ | v0.2 | Runs the full §8 envelope flow Alice → Bob with an `org_affiliation` credential. |
 
-Both examples model the
-[birthday-flow walkthrough](https://github.com/shadownet-protocol/shadownet-specs/blob/main/examples/birthday-flow.md)
-in the spec repo: a Shadow Certificate Authority issues a Verifiable Credential
-attesting that a holder is at level **L2** ("verified human"), the holder mints
-a Verifiable Presentation audienced at a peer verifier, and the verifier
-checks the chain end-to-end against a trust store.
+The Python example models the worked transaction in
+[`shadownet-specs/rfcs/0001-shadownet.md` Appendix B](https://github.com/shadownet-protocol/shadownet-specs/blob/main/rfcs/0001-shadownet.md#appendix-b--example-transaction):
+the provider signs Alice's AgentCard, the hub issues her an `org_affiliation`
+credential, Alice mints an envelope JWS bound to her A2A message via
+`msgHash`, and Bob's receiver runs the §8.6 validation pipeline + §9
+classification. The Shadowname-mode DNS lookups and AgentCard fetch are
+injected so the script needs zero networking.
 
-The flows use `did:key` (deterministic from the public key, no network needed)
-to keep each example a single self-contained process. Real deployments use
-`did:web` for the SCA / SNS so multiple keys and rotation can be expressed via
-the published DID document — see the relevant SDK READMEs.
-
-## Why two examples?
-
-The protocol is language-agnostic. A senior engineer landing on the repo
-should be able to read either example, recognize what their language ships,
-and start integrating. Both examples are intentionally line-comparable so the
-mapping between the Python and Go APIs is obvious.
+The legacy `birthday-credential-go/` example demonstrated the v0.1
+SCA / SNS / VC flow against the now-removed Go SDK; it has been deleted as
+part of the v0.2 cut. The canonical client SDK is Python.
 
 ## Going further
 
-- **Talk to a real reference SCA / SNS.** Boot the Go reference servers
-  via [`core/deploy/docker-compose.yml`](../core/deploy/docker-compose.yml) and
-  point an SCA client at `http://127.0.0.1:8443`. The
-  [`core/README.md`](../core/README.md#as-an-operator--run-the-reference-servers)
-  walkthrough has the operator path.
+- **Talk to a real reference Provider / Issuer.** The v0.2 reference Provider
+  and Issuer servers in `core/` ship as standalone binaries (separate from
+  the SDK). See [`core/README.md`](../core/README.md) for the operator path.
 - **Cross-implementation interop.** The
-  [`shadownet-conformance`](https://github.com/shadownet-protocol/shadownet-conformance)
-  suite runs the same wire-level checks across every SDK — that's what CI
-  on this repo invokes via `.github/workflows/conformance.yml`.
+  [`conformance/`](../conformance/) suite runs the same wire-level checks
+  across every SDK — that's what CI on this repo invokes via
+  `.github/workflows/conformance.yml`.

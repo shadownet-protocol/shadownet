@@ -8,11 +8,12 @@ body:
       label: Affected area
       description: Which part of the repo does this bug live in?
       options:
-        - "core (Go reference impl: SDK + servers + CLI)"
+        - "core (Go reference Provider + Issuer servers)"
         - "core/pgstore (Postgres backend)"
-        - "core/cmd/sca-server (reference SCA binary)"
-        - "core/cmd/sns-server (reference SNS binary)"
-        - "core/cmd/shadownet (CLI)"
+        - "core/cmd/provider-server (reference Provider binary)"
+        - "core/cmd/issuer-server (reference Issuer binary)"
+        - "core/pgstore/cmd/provider-server-pg (Postgres-backed Provider)"
+        - "core/pgstore/cmd/issuer-server-pg (Postgres-backed Issuer)"
         - "python-sdk (Python SDK)"
         - "conformance (interop test suite)"
         - "integrations/plugins/claude-code"
@@ -30,7 +31,7 @@ body:
     attributes:
       label: Version
       description: SDK version, container tag, or commit SHA you reproduced against.
-      placeholder: "core/v0.2.0  /  shadownet 0.2.0  /  ghcr.io/.../sca-server:v0.2.0"
+      placeholder: "core/v0.3.0  /  shadownet 0.5.0  /  ghcr.io/.../provider-server:v0.3.0"
     validations:
       required: true
 

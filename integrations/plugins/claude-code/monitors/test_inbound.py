@@ -1,9 +1,9 @@
-"""Unit tests for the Claude Code inbound monitor.
+"""Unit tests for the Claude Code inbound monitor (v0.2).
 
 These cover the pure helpers — config resolution, output formatting,
-escape rules — without spinning up a real MCP session. The full
-inbox_loop is exercised by python-sdk's test_connect_session.py against
-the real MCP in-memory transport, so we don't duplicate that here.
+escape rules — without spinning up a real MCP session. The full inbox
+loop is exercised by python-sdk's MCP client tests against the in-memory
+transport, so we don't duplicate that here.
 
 Run with::
 
@@ -16,9 +16,8 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from urllib.parse import quote
 
-import httpx
 import pytest
 
 # Load the monitor as a module without executing main().
@@ -26,197 +25,182 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import inbound  # type: ignore[import-not-found]  # noqa: E402
 
-
-def _patch_redeem_to_inline(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make `redeem_connect_url` skip the network by returning the URL's
-    inline token. Keeps these tests fast and offline."""
-
-    from shadownet.connect.url import parse_connect_url
-
-    async def _fake(http: httpx.AsyncClient, url: str, *, store: Any = None) -> tuple[str, str]:
-        parsed = parse_connect_url(url)
-        assert parsed.token is not None, "test URL must be inline"
-        return parsed.base_url, parsed.token
-
-    monkeypatch.setattr(inbound, "redeem_connect_url", _fake)
+MCP_ENDPOINT = "https://acme.example/mcp"
+INLINE_URI = f"shadow://connect?mcp={quote(MCP_ENDPOINT, safe='')}&token=t-from-url"
+HANDOFF_URI = f"shadow://connect?mcp={quote(MCP_ENDPOINT, safe='')}&handoff=ABCDEFGHIJ12345678"
 
 
-async def test_resolve_config_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
-    monkeypatch.delenv("SHADOWNET_SIDECAR_BASE_URL", raising=False)
+def test_resolve_config_from_shell_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHADOWNET_TOKEN", "shell-tok")
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     monkeypatch.delenv("SHADOWNET_LONG_POLL_TIMEOUT", raising=False)
     monkeypatch.delenv("SHADOWNET_OS_NOTIFICATIONS", raising=False)
 
-    token, base_url, timeout, os_notif = await inbound._resolve_config()
-    assert token == "tok"
-    assert base_url == inbound.DEFAULT_BASE_URL
+    endpoint, token, timeout, os_notif = inbound._resolve_endpoint_and_token()
+    assert endpoint == MCP_ENDPOINT
+    assert token == "shell-tok"
     assert timeout == 30
     assert os_notif is True
 
 
-async def test_resolve_config_strips_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
-    monkeypatch.setenv("SHADOWNET_SIDECAR_BASE_URL", "https://acme.example/")
-    _, base_url, _, _ = await inbound._resolve_config()
-    assert base_url == "https://acme.example"
-
-
-async def test_resolve_config_inline_connect_url_overrides(
+def test_resolve_config_inline_connect_url_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_redeem_to_inline(monkeypatch)
     monkeypatch.setenv("SHADOWNET_TOKEN", "should-be-ignored")
-    monkeypatch.setenv("SHADOWNET_SIDECAR_BASE_URL", "https://ignored.example")
-    monkeypatch.setenv(
-        "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=https://acme.example&token=t-from-url",
-    )
-    token, base_url, _, _ = await inbound._resolve_config()
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", "https://ignored.example/mcp")
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", INLINE_URI)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+
+    endpoint, token, _, _ = inbound._resolve_endpoint_and_token()
+    assert endpoint == MCP_ENDPOINT
     assert token == "t-from-url"
-    assert base_url == "https://acme.example"
 
 
-async def test_resolve_config_handoff_url_redeems_through_sdk(
+def test_resolve_config_handoff_uses_keyring_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """RFC-0008 handoff: redeem the single-use code, get a long-lived token."""
+    """v0.2 monitor does NOT redeem handoff codes itself — the proxy does
+    that and caches via keyring. The monitor reads the cached token; if
+    it's missing, it errors with a clear pointer to open Claude Code."""
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", HANDOFF_URI)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
 
-    captured: dict[str, Any] = {}
-
-    async def _fake(http: httpx.AsyncClient, url: str, *, store: Any = None) -> tuple[str, str]:
-        captured["url"] = url
-        captured["store"] = store
-        return "https://x.example", "tok-redeemed"
-
-    monkeypatch.setattr(inbound, "redeem_connect_url", _fake)
-    monkeypatch.setenv(
-        "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=https://x.example&handoff=ABCDEFGH-1234567",
-    )
-    token, base_url, _, _ = await inbound._resolve_config()
-    assert token == "tok-redeemed"
-    assert base_url == "https://x.example"
-    assert captured["store"] is not None, "must pass a token store for caching"
+    monkeypatch.setattr(inbound, "_cached_access_token", lambda _code: "cached-token")
+    endpoint, token, _, _ = inbound._resolve_endpoint_and_token()
+    assert endpoint == MCP_ENDPOINT
+    assert token == "cached-token"
 
 
-async def test_resolve_config_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_config_handoff_without_cache_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", HANDOFF_URI)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    monkeypatch.setattr(inbound, "_cached_access_token", lambda _code: None)
+    with pytest.raises(RuntimeError, match="no cached access token"):
+        inbound._resolve_endpoint_and_token()
+
+
+def test_resolve_config_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
-    with pytest.raises(RuntimeError, match="Token not configured"):
-        await inbound._resolve_config()
+    monkeypatch.delenv("SHADOWNET_MCP_ENDPOINT", raising=False)
+    with pytest.raises(RuntimeError, match="No access token"):
+        inbound._resolve_endpoint_and_token()
 
 
-async def test_resolve_config_prefers_claude_plugin_connect_url(
+def test_resolve_config_missing_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
+    monkeypatch.delenv("SHADOWNET_MCP_ENDPOINT", raising=False)
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    with pytest.raises(RuntimeError, match="No MCP endpoint"):
+        inbound._resolve_endpoint_and_token()
+
+
+def test_resolve_config_prefers_claude_plugin_connect_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Plugin userConfig sets CLAUDE_PLUGIN_OPTION_CONNECT_URL; that wins
-    over a manually-exported SHADOWNET_CONNECT_URL."""
-    _patch_redeem_to_inline(monkeypatch)
-    monkeypatch.setenv(
-        "CLAUDE_PLUGIN_OPTION_CONNECT_URL",
-        "shadownet://connect?base=https://plugin-cfg.example&token=from-plugin",
-    )
-    monkeypatch.setenv(
-        "SHADOWNET_CONNECT_URL",
-        "shadownet://connect?base=https://shell-env.example&token=from-shell",
-    )
-    token, base_url, _, _ = await inbound._resolve_config()
-    assert token == "from-plugin"
-    assert base_url == "https://plugin-cfg.example"
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", INLINE_URI)
+    monkeypatch.setenv("SHADOWNET_CONNECT_URL", "shadow://connect?mcp=https://shell.example/m&token=shell")
+
+    endpoint, token, _, _ = inbound._resolve_endpoint_and_token()
+    assert endpoint == MCP_ENDPOINT
+    assert token == "t-from-url"
 
 
-async def test_resolve_config_bad_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SHADOWNET_TOKEN", "t")
-    monkeypatch.setenv("SHADOWNET_LONG_POLL_TIMEOUT", "abc")
+def test_resolve_config_bad_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
+    monkeypatch.setenv("SHADOWNET_LONG_POLL_TIMEOUT", "not-a-number")
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
     with pytest.raises(RuntimeError, match="must be an integer"):
-        await inbound._resolve_config()
+        inbound._resolve_endpoint_and_token()
 
 
-async def test_resolve_config_negative_timeout_clamped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("SHADOWNET_TOKEN", "t")
+def test_resolve_config_negative_timeout_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
     monkeypatch.setenv("SHADOWNET_LONG_POLL_TIMEOUT", "-5")
-    _, _, timeout, _ = await inbound._resolve_config()
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    _, _, timeout, _ = inbound._resolve_endpoint_and_token()
     assert timeout == 1
 
 
-async def test_resolve_config_os_notifications_opt_out(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("SHADOWNET_TOKEN", "t")
+def test_resolve_config_os_notifications_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
     monkeypatch.setenv("SHADOWNET_OS_NOTIFICATIONS", "0")
-    _, _, _, os_notif = await inbound._resolve_config()
+    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    _, _, _, os_notif = inbound._resolve_endpoint_and_token()
     assert os_notif is False
 
 
 def test_truncate_short_passthrough() -> None:
-    assert inbound._truncate("hi", 200) == "hi"
+    assert inbound._truncate("hello", 200) == "hello"
 
 
 def test_truncate_long_replaces_tail_with_ellipsis() -> None:
-    truncated = inbound._truncate("x" * 500, 200)
-    assert len(truncated) == 200
-    assert truncated.endswith("…")
+    out = inbound._truncate("a" * 250, 200)
+    assert len(out) == 200
+    assert out.endswith("…")
 
 
 def test_emit_claude_notification_is_one_json_line(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    inbound._emit_claude_notification("evt-1", "alice@x", "hello world")
-    out = capsys.readouterr().out
-    lines = out.strip().splitlines()
-    assert len(lines) == 1
-    payload = json.loads(lines[0])
-    assert payload["type"] == "shadownet.inbox.message"
-    assert payload["event_id"] == "evt-1"
-    assert payload["from"] == "alice@x"
-    assert payload["summary"] == "hello world"
+    inbound._emit_claude_notification("evt-1", "alice@sh4dow.org", "hi there")
+    captured = capsys.readouterr().out.strip().split("\n")
+    assert len(captured) == 1
+    parsed = json.loads(captured[0])
+    assert parsed["type"] == "shadownet.inbox.message"
+    assert parsed["event_id"] == "evt-1"
+    assert parsed["from"] == "alice@sh4dow.org"
+    assert parsed["summary"] == "hi there"
 
 
 def test_emit_claude_notification_truncates_long_body(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    inbound._emit_claude_notification("evt-1", "alice@x", "x" * 500)
-    payload = json.loads(capsys.readouterr().out.strip())
-    assert len(payload["summary"]) == 200
-    assert payload["summary"].endswith("…")
+    inbound._emit_claude_notification("evt-2", "alice@sh4dow.org", "x" * 500)
+    parsed = json.loads(capsys.readouterr().out.strip())
+    assert len(parsed["summary"]) == 200
 
 
 def test_emit_claude_notification_handles_unicode(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    inbound._emit_claude_notification("evt-1", "alice@x", "héllo 你好")
-    payload = json.loads(capsys.readouterr().out.strip())
-    assert payload["summary"] == "héllo 你好"
+    inbound._emit_claude_notification("evt-3", "alice@sh4dow.org", "héllo 🐈")
+    parsed = json.loads(capsys.readouterr().out.strip())
+    assert parsed["summary"] == "héllo 🐈"
 
 
 def test_applescript_escape_handles_quotes_and_backslashes() -> None:
-    out = inbound._escape_for_applescript('say "hi" \\path')
-    assert out == 'say \\"hi\\" \\\\path'
+    assert inbound._escape_for_applescript(r'a"b\c') == r'a\"b\\c'
 
 
 def test_powershell_escape_handles_backticks_and_quotes() -> None:
-    out = inbound._escape_for_powershell('say "hi" `back')
-    assert out == 'say `"hi`" ``back'
+    assert inbound._escape_for_powershell('a"b`c') == 'a`"b``c'
 
 
 def test_main_runs_by_default_when_no_override_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Default behavior: with no inbound override, the monitor runs.
-
-    Token is also unset so config resolution fails fast at exit 1 — what
-    matters here is that we got past the inbound-gate (which would have
-    returned 0 silently) and into the run loop.
-    """
-    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
+    """When no falsy override is set, the monitor proceeds to _resolve_and_run.
+    With no credentials, _resolve_and_run returns exit 1 (config error). We
+    use that as a proxy for "the monitor actually tried to run"."""
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
+    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
     monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
+    monkeypatch.delenv("SHADOWNET_MCP_ENDPOINT", raising=False)
     assert inbound.main() == 1
 
 
@@ -231,50 +215,32 @@ def test_main_exits_silently_when_explicitly_disabled_via_plugin_option(
 def test_main_exits_silently_when_explicitly_disabled_via_shell_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
     monkeypatch.setenv("SHADOWNET_INBOUND", "0")
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
     assert inbound.main() == 0
-
-
-def test_main_propagates_config_error_to_exit_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When inbound is enabled (default) but token resolution fails, exit 1."""
-    monkeypatch.delenv("SHADOWNET_INBOUND", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
-    monkeypatch.delenv("SHADOWNET_TOKEN", raising=False)
-    monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
-    assert inbound.main() == 1
 
 
 def test_inbound_enabled_helper_accepts_various_falsy_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """All standard truthy/falsy spellings disable when given as override."""
-    for falsy in ("0", "false", "False", "FALSE", "no", "off"):
+    for falsy in ("0", "false", "FALSE", "no", "off"):
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_INBOUND_ENABLED", raising=False)
         monkeypatch.setenv("SHADOWNET_INBOUND", falsy)
-        assert inbound._inbound_enabled() is False, f"{falsy!r} should disable"
-    monkeypatch.delenv("SHADOWNET_INBOUND")
-    assert inbound._inbound_enabled() is True
-    # Non-empty non-falsy value (the historic "1") also enables, since we
-    # only disable on explicit falsy strings.
-    for truthy in ("1", "true", "yes", ""):
+        assert inbound._inbound_enabled() is False
+
+    for truthy in ("", "true", "1", "yes", "on"):
         monkeypatch.setenv("SHADOWNET_INBOUND", truthy)
-        assert inbound._inbound_enabled() is True, (
-            f"{truthy!r} should leave inbound enabled (no falsy override)"
-        )
+        assert inbound._inbound_enabled() is True
 
 
-async def test_resolve_config_falls_back_to_shadownet_env_when_userconfig_unset(
+def test_resolve_config_falls_back_to_shadownet_env_when_userconfig_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Power-user path: shell env vars still work without Claude Code."""
     monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", raising=False)
-    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_ENDPOINT", raising=False)
     monkeypatch.setenv("SHADOWNET_TOKEN", "shell-tok")
-    monkeypatch.setenv("SHADOWNET_SIDECAR_BASE_URL", "https://shell.example/")
+    monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", "https://shell.example/mcp")
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
-    token, base_url, _, _ = await inbound._resolve_config()
+
+    endpoint, token, _, _ = inbound._resolve_endpoint_and_token()
+    assert endpoint == "https://shell.example/mcp"
     assert token == "shell-tok"
-    assert base_url == "https://shell.example"

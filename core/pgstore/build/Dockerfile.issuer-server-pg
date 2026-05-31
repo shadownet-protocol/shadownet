@@ -1,0 +1,35 @@
+# Shadownet issuer-server-pg (RFC 0001 §6, Postgres backend).
+#
+# Same build conventions as Dockerfile.provider-server-pg. The build
+# context is the repository root.
+
+ARG GO_VERSION=1.25.0
+
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+
+COPY core/go.mod core/go.sum ./core/
+COPY core/pgstore/go.mod core/pgstore/go.sum ./core/pgstore/
+COPY core/ ./core/
+
+WORKDIR /src/core/pgstore
+RUN go mod download
+
+ARG VERSION="dev"
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath" \
+    go build -ldflags "-s -w -X main.version=${VERSION}" \
+    -o /out/issuer-server-pg ./cmd/issuer-server-pg
+
+# ── runtime ────────────────────────────────────────────────────────────
+
+FROM alpine:3 AS final
+RUN addgroup -S shadownet && adduser -S -G shadownet shadownet && \
+    apk add --no-cache ca-certificates wget && \
+    mkdir -p /var/lib/shadownet && \
+    chown shadownet:shadownet /var/lib/shadownet
+USER shadownet
+WORKDIR /var/lib/shadownet
+COPY --from=build /out/issuer-server-pg /usr/local/bin/issuer-server-pg
+EXPOSE 8444
+ENTRYPOINT ["/usr/local/bin/issuer-server-pg"]
+CMD ["serve", "--config", "/etc/shadownet/issuer.yaml"]

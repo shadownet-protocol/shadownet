@@ -1,272 +1,287 @@
+"""MCP tool input / output models — RFC 0002 §4, §6.
+
+One pair of pydantic models per tool. Wire keys follow the spec (camelCase
+where stated); Python attributes are snake_case with aliases otherwise.
+"""
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# RFC-0007 §Required tools — input/output models for every tool.
-
 __all__ = [
+    "AcceptPlanInput",
+    "AcceptPlanOutput",
     "AddContactInput",
     "AddContactOutput",
-    "AuditOutput",
-    "Contact",
-    "ContactDetail",
+    "BodySlot",
+    "ConfirmPlanInput",
+    "ConfirmPlanOutput",
+    "ContactDetailInput",
+    "ContactDetailOutput",
+    "ContactProfile",
+    "ContactSummary",
     "ContactsInput",
     "ContactsOutput",
+    "CoordinateInput",
+    "CoordinateOutput",
+    "CredentialSummary",
     "GrantInput",
     "GrantOutput",
     "IdentityOutput",
     "InboxInput",
     "InboxItem",
     "InboxOutput",
-    "InboxWaitEvent",
     "InboxWaitInput",
     "InboxWaitOutput",
-    "PresentInput",
-    "PresentOutput",
     "ResolveInput",
     "ResolveOutput",
     "RespondInput",
     "RespondOutput",
     "SendInput",
     "SendOutput",
+    "SetContactProfileInput",
+    "SetContactProfileOutput",
 ]
 
 
-# --- social_contacts ---------------------------------------------------------
+_BaseConfig = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+_BaseConfigOpen = ConfigDict(extra="allow", frozen=True, populate_by_name=True)
 
 
-class ContactsInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    query: str | None = Field(default=None, description="Substring match on name or shadowname.")
+class BodySlot(BaseModel):
+    """Envelope ``body`` slot — RFC 0001 §8.5."""
+
+    model_config = _BaseConfigOpen
+
+    text: str | None = None
+    intent: str | None = None
+    data: dict[str, Any] | None = None
 
 
-class Contact(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class CredentialSummary(BaseModel):
+    model_config = _BaseConfig
 
-    id: str
+    kind: Literal["org_affiliation"] = "org_affiliation"
+    issuer: str
+    org: str
+    expires_at: str = Field(alias="expiresAt")
+
+
+class ContactProfile(BaseModel):
+    """RFC 0002 §6 — local-only metadata. Never serialized over the wire."""
+
+    model_config = _BaseConfig
+
+    notes: Annotated[str | None, Field(max_length=4096)] = None
+    priority: Literal["low", "normal", "high"] | None = None
+    tags: tuple[str, ...] = ()
+    expires_at: str | None = Field(default=None, alias="expiresAt")
+
+
+class ContactSummary(BaseModel):
+    model_config = _BaseConfig
+
     shadowname: str
-    did: str
     display_name: str | None = Field(default=None, alias="displayName")
-    level: str | None = None
-    last_seen: int | None = Field(default=None, alias="lastSeen")
+    grants: tuple[str, ...] = ()
+    last_seen: str | None = Field(default=None, alias="lastSeen")
 
 
-class ContactsOutput(BaseModel):
-    contacts: list[Contact]
+class IdentityOutput(BaseModel):
+    model_config = _BaseConfig
 
-
-# --- social_contact_detail ---------------------------------------------------
-
-
-class ContactDetail(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    id: str
     shadowname: str
-    did: str
-    endpoint: str
-    public_key: dict[str, str] = Field(alias="publicKey")
-    credentials: list[str] = Field(default_factory=list)
-    grants: list[str] = Field(default_factory=list)
-    notes: str | None = None
-
-
-# --- social_resolve ----------------------------------------------------------
+    pk: str
+    credentials: tuple[CredentialSummary, ...] = ()
 
 
 class ResolveInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    shadowname: str
+    model_config = _BaseConfig
+    name: str
 
 
 class ResolveOutput(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    did: str
+    model_config = _BaseConfig
+    shadowname: str
+    pk: str
     endpoint: str
-    public_key: dict[str, str] = Field(alias="publicKey")
-    subject_type: str = Field(alias="subjectType")
-    ttl: int
 
 
-# --- social_add_contact ------------------------------------------------------
+class ContactsInput(BaseModel):
+    model_config = _BaseConfig
+    query: str | None = None
+
+
+class ContactsOutput(BaseModel):
+    model_config = _BaseConfig
+    contacts: tuple[ContactSummary, ...] = ()
+
+
+class ContactDetailInput(BaseModel):
+    model_config = _BaseConfig
+    name: str
+
+
+class ContactDetailOutput(BaseModel):
+    model_config = _BaseConfig
+    shadowname: str
+    display_name: str | None = Field(default=None, alias="displayName")
+    pk: str
+    endpoint: str
+    grants: tuple[str, ...] = ()
+    credentials: tuple[CredentialSummary, ...] = ()
+    profile: ContactProfile | None = None
+    added_at: str = Field(alias="addedAt")
+    last_seen: str | None = Field(default=None, alias="lastSeen")
 
 
 class AddContactInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = _BaseConfig
 
-    shadowname: str
+    name: str
     display_name: str | None = Field(default=None, alias="displayName")
-    grants: list[str] = Field(default_factory=list)
+    grants: tuple[str, ...] = ("messaging",)
+    profile: ContactProfile | None = None
 
 
 class AddContactOutput(BaseModel):
-    id: str
+    model_config = _BaseConfig
+
     shadowname: str
-    did: str
-
-
-# --- social_send -------------------------------------------------------------
-
-
-class SendInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    contact_id: str = Field(alias="contactId")
-    # RFC-0006 / RFC-0007: `interaction` is OPTIONAL. Default envelope is
-    # free-form text (payload = {"text": "...", "hints"?: {...}}); typed
-    # Interaction Profiles become an opt-in for cases where structure
-    # prevents ambiguity. When present, the value MUST be a URN per
-    # RFC-0006 § Interaction Profiles.
-    interaction: str | None = Field(default=None, pattern=r"^urn:")
-    intent_id: str | None = Field(default=None, alias="intentId")
-    payload: dict[str, Any]
-
-
-class SendOutput(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    intent_id: str = Field(alias="intentId")
-    task_id: str = Field(alias="taskId")
-
-
-# --- social_inbox ------------------------------------------------------------
-
-
-class InboxInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    since: int | None = Field(default=None, ge=0)
-    interaction: str | None = None
-    contact_id: str | None = Field(default=None, alias="contactId")
-    limit: int | None = Field(default=None, ge=1, le=1000)
-
-
-class InboxItem(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    id: str
-    contact_id: str = Field(alias="contactId")
-    intent_id: str = Field(alias="intentId")
-    interaction: str
-    payload: dict[str, Any]
-    received_at: int = Field(alias="receivedAt", ge=0)
-
-
-class InboxOutput(BaseModel):
-    items: list[InboxItem]
-
-
-# --- social_inbox_wait (RFC-0007 amendment D) -------------------------------
-
-
-# Server-side maximum hold time. RFC-0007 amendment D requires the sidecar
-# to clamp the client-supplied ``timeout_seconds`` to ≤90 seconds — beyond
-# that, idle-kill behaviour of TCP middleboxes becomes unreliable.
-INBOX_WAIT_MAX_TIMEOUT_SECONDS = 90
-INBOX_WAIT_DEFAULT_TIMEOUT_SECONDS = 30
-
-
-class InboxWaitInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    timeout_seconds: int = Field(default=INBOX_WAIT_DEFAULT_TIMEOUT_SECONDS, ge=0)
-    last_event_id: str | None = None
-
-
-class InboxWaitEvent(BaseModel):
-    """A single event delivered through the long-poll channel.
-
-    Payload shape mirrors the event schema defined in RFC-0007 § Events.
-    """
-
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    event_id: str = Field(min_length=1)
-    event: str = Field(min_length=1)
-    occurred_at: int = Field(ge=0, alias="occurredAt")
-    data: dict[str, Any]
-
-
-class InboxWaitOutput(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    events: list[InboxWaitEvent] = Field(default_factory=list)
-    next_event_id: str | None = None
-
-
-# --- social_respond ----------------------------------------------------------
-
-
-class RespondInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    intent_id: str = Field(alias="intentId")
-    payload: dict[str, Any]
-
-
-class RespondOutput(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    task_id: str = Field(alias="taskId")
-
-
-# --- social_grant ------------------------------------------------------------
+    trust_warning: dict[str, tuple[str, ...]] | None = Field(default=None, alias="trustWarning")
 
 
 class GrantInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    contact_id: str = Field(alias="contactId")
+    model_config = _BaseConfig
+    name: str
     grant: str
     allowed: bool
 
 
 class GrantOutput(BaseModel):
-    ok: bool = True
+    model_config = _BaseConfig
+    ok: Literal[True] = True
 
 
-# --- social_identity ---------------------------------------------------------
+class SetContactProfileInput(BaseModel):
+    model_config = _BaseConfig
+    name: str
+    profile: ContactProfile
 
 
-class IdentityOutput(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    did: str
-    shadowname: str | None = None
-    public_key: dict[str, str] = Field(alias="publicKey")
-    credentials: list[str] = Field(default_factory=list)
+class SetContactProfileOutput(BaseModel):
+    model_config = _BaseConfig
+    ok: Literal[True] = True
 
 
-# --- optional tools ----------------------------------------------------------
+class SendInput(BaseModel):
+    model_config = _BaseConfig
+
+    to: str
+    body: BodySlot
+    context_id: str | None = Field(default=None, alias="contextId")
 
 
-class PresentInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+class SendOutput(BaseModel):
+    model_config = _BaseConfig
 
-    contact_id: str = Field(alias="contactId")
-    nonce: str | None = None
-
-
-class PresentOutput(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    presentation_jwt: str = Field(alias="presentationJwt")
+    message_id: str = Field(alias="messageId")
+    context_id: str = Field(alias="contextId")
+    status: Literal["accepted", "rejected"]
+    error: str | None = None
 
 
-class AuditEntry(BaseModel):
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-
-    timestamp: int = Field(ge=0)
-    tool: str
-    input: dict[str, Any]
-    success: bool
+class RespondInput(BaseModel):
+    model_config = _BaseConfig
+    context_id: str = Field(alias="contextId")
+    body: BodySlot
 
 
-class AuditOutput(BaseModel):
-    entries: list[AuditEntry]
+class RespondOutput(BaseModel):
+    model_config = _BaseConfig
+
+    message_id: str = Field(alias="messageId")
+    status: Literal["accepted", "rejected"]
+    error: str | None = None
 
 
-__all__.append("AuditEntry")
+class CoordinateInput(BaseModel):
+    model_config = _BaseConfig
+    name: str
+    activity: str
+    details: str | None = None
+
+
+class CoordinateOutput(BaseModel):
+    model_config = _BaseConfig
+    message_id: str = Field(alias="messageId")
+    context_id: str = Field(alias="contextId")
+
+
+class ConfirmPlanInput(BaseModel):
+    model_config = _BaseConfigOpen
+    name: str
+    context_id: str = Field(alias="contextId")
+    plan: dict[str, Any]
+
+
+class ConfirmPlanOutput(BaseModel):
+    model_config = _BaseConfig
+    message_id: str = Field(alias="messageId")
+
+
+class AcceptPlanInput(BaseModel):
+    model_config = _BaseConfig
+    name: str
+    context_id: str = Field(alias="contextId")
+    accepts_message_id: str = Field(alias="acceptsMessageId")
+
+
+class AcceptPlanOutput(BaseModel):
+    model_config = _BaseConfig
+    message_id: str = Field(alias="messageId")
+
+
+class InboxInput(BaseModel):
+    model_config = _BaseConfig
+
+    since: str | None = None
+    contact: str | None = None
+    intent: str | None = None
+    include_review: bool = Field(default=False, alias="includeReview")
+    limit: int = 50
+
+
+class InboxItem(BaseModel):
+    model_config = _BaseConfigOpen
+
+    message_id: str = Field(alias="messageId")
+    context_id: str = Field(alias="contextId")
+    sender: str = Field(alias="from")
+    received_at: str = Field(alias="receivedAt")
+    status: Literal["inbox", "stranger_review"]
+    body: BodySlot
+
+
+class InboxOutput(BaseModel):
+    model_config = _BaseConfig
+    items: tuple[InboxItem, ...] = ()
+    next_since: str | None = Field(default=None, alias="nextSince")
+
+
+class InboxWaitInput(BaseModel):
+    """Wire field names use snake_case here per RFC 0002 §4."""
+
+    model_config = _BaseConfig
+
+    timeout_seconds: int | None = None
+    last_event_id: str | None = None
+
+
+class InboxWaitOutput(BaseModel):
+    model_config = _BaseConfigOpen
+
+    events: tuple[dict[str, Any], ...] = ()
+    next_event_id: str | None = None

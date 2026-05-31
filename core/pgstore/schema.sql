@@ -1,69 +1,72 @@
--- pgstore schema for the Shadownet reference SCA + SNS servers.
+-- SPDX-License-Identifier: MIT
+-- pgstore schema for Shadownet v0.2 Provider + Issuer reference servers.
 --
--- Apply automatically on Open(); also kept here as a human-readable reference
--- (e.g. for ops setting up read replicas, reviewing migrations, etc.).
---
--- All identifiers (table and column names) are unprefixed beyond `sca_` /
--- `sns_` so a single Postgres schema can host both servers without collision.
+-- All DDL is idempotent (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT
+-- EXISTS) so applySchema is safe to run on every Open. Migrations are
+-- forward-only; breaking schema changes ship in a new pgstore minor with a
+-- migration script.
 
-CREATE TABLE IF NOT EXISTS sca_sessions (
-  id           TEXT        PRIMARY KEY,
-  subject      TEXT        NOT NULL,
-  level        TEXT        NOT NULL,
-  method       TEXT        NOT NULL,
-  state        TEXT        NOT NULL CHECK (state IN ('pending','ready','consumed','failed','expired')),
-  next_kind    TEXT,
-  next_url     TEXT,
-  next_ttl     INTEGER,
-  callback_url TEXT,
-  created_at   TIMESTAMPTZ NOT NULL,
-  ready_at     TIMESTAMPTZ,
-  expires_at   TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS sca_sessions_subject ON sca_sessions(subject);
+-- ── Provider ──────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS sca_credentials (
-  jti               TEXT        PRIMARY KEY,
-  issuer            TEXT        NOT NULL,
-  subject           TEXT        NOT NULL,
-  level             TEXT        NOT NULL,
-  subject_type      TEXT        NOT NULL,
-  jwt               TEXT        NOT NULL,
-  status_list_id    TEXT        NOT NULL,
-  status_list_index BIGINT      NOT NULL,
-  issued_at         TIMESTAMPTZ NOT NULL,
-  expires           TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS sca_credentials_subject ON sca_credentials(subject);
-CREATE UNIQUE INDEX IF NOT EXISTS sca_credentials_status_loc
-  ON sca_credentials(status_list_id, status_list_index);
-
--- One row per status-list shard. The active shard is the one with the lowest
--- creation order whose next_index < size; rotation appends a fresh shard.
-CREATE TABLE IF NOT EXISTS sca_status_lists (
-  list_id    TEXT        PRIMARY KEY,
-  size       BIGINT      NOT NULL,
-  next_index BIGINT      NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS provider_records (
+    local           TEXT        PRIMARY KEY,
+    shadow_pk       TEXT        NOT NULL,
+    a2a_url         TEXT        NOT NULL,
+    display_name    TEXT        NOT NULL DEFAULT '',
+    description     TEXT        NOT NULL DEFAULT '',
+    version         TEXT        NOT NULL DEFAULT '1.0.0',
+    created_at      TIMESTAMPTZ NOT NULL,
+    updated_at      TIMESTAMPTZ NOT NULL
 );
 
--- Sparse representation: only revoked indices appear. Snapshot reconstructs
--- the bitstring; inserting twice for the same (list_id, idx) is a no-op
--- (idempotent revocation).
-CREATE TABLE IF NOT EXISTS sca_revoked (
-  list_id TEXT   NOT NULL REFERENCES sca_status_lists(list_id) ON DELETE CASCADE,
-  idx     BIGINT NOT NULL,
-  PRIMARY KEY (list_id, idx)
+-- ── Issuer: credentials ───────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS issuer_credentials (
+    idempotency_key  TEXT        PRIMARY KEY,
+    jws              TEXT        NOT NULL,
+    iss              TEXT        NOT NULL,
+    sub              TEXT        NOT NULL,
+    org              TEXT        NOT NULL,
+    epoch            BIGINT      NOT NULL,
+    idx              BIGINT      NOT NULL,
+    issued_at        TIMESTAMPTZ NOT NULL,
+    expires_at       TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_issuer_credentials_sub ON issuer_credentials(sub);
+
+-- ── Issuer: pending ceremonies ────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS issuer_pendings (
+    handle_id          TEXT        PRIMARY KEY,
+    idempotency_key    TEXT        NOT NULL UNIQUE,
+    iss                TEXT        NOT NULL,
+    aud                TEXT        NOT NULL,
+    kind               TEXT        NOT NULL,
+    org                TEXT        NOT NULL,
+    subject_pub        TEXT        NOT NULL,
+    status             SMALLINT    NOT NULL,
+    next_url           TEXT        NOT NULL DEFAULT '',
+    reason             TEXT        NOT NULL DEFAULT '',
+    created_at         TIMESTAMPTZ NOT NULL,
+    updated_at         TIMESTAMPTZ NOT NULL,
+    ceremony_expiry    TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_issuer_pendings_status ON issuer_pendings(status);
+
+-- ── Issuer: status epochs + revocations ───────────────────────────────
+
+CREATE TABLE IF NOT EXISTS issuer_epochs (
+    number                    BIGINT      PRIMARY KEY,
+    max_indices               BIGINT      NOT NULL,
+    next_idx                  BIGINT      NOT NULL,
+    opened_at                 TIMESTAMPTZ NOT NULL,
+    closed_at                 TIMESTAMPTZ,
+    last_issued_expires_at    TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS sns_records (
-  local         TEXT        PRIMARY KEY,
-  shadowname    TEXT        NOT NULL,
-  did           TEXT        NOT NULL,
-  endpoint      TEXT        NOT NULL,
-  public_key    JSONB       NOT NULL,
-  subject_type  TEXT        NOT NULL,
-  ttl           INTEGER     NOT NULL,
-  issued_at     TIMESTAMPTZ NOT NULL,
-  tombstone     BOOLEAN     NOT NULL DEFAULT FALSE
+CREATE TABLE IF NOT EXISTS issuer_revocations (
+    epoch       BIGINT      NOT NULL,
+    idx         BIGINT      NOT NULL,
+    revoked_at  TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (epoch, idx)
 );

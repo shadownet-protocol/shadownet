@@ -1,0 +1,70 @@
+# Shadownet issuer-server example config (RFC 0001 §6).
+#
+# Issues org_affiliation credentials in response to CSRs and serves the
+# per-epoch revocation bitstring.
+
+# host:port the HTTP server binds to.
+listen: 127.0.0.1:8444
+
+# Addressing mode the Issuer runs under:
+#   "domain" — routes at /.well-known/shadownet/issue + /status/<epoch>;
+#              issuerIdentifier MUST be a domain (RFC 0001 §6.4–§6.5).
+#   "keyed"  — self-serves an AgentCard at /.well-known/agent-card.json
+#              with shadownet:issueEndpoint + shadownet:statusListBase
+#              pointing at the routes you configure under keyedAgentCard
+#              below. issuerIdentifier MUST be the multibase Ed25519
+#              pubkey ("z6Mk...") of the signing key.
+mode: domain
+
+# Identifier the Issuer signs credentials under. Becomes the `iss` claim
+# on every shadownet-cred+jwt.
+#
+# - domain mode: the apex domain, e.g. "acme.example".
+# - keyed mode:  the multibase Ed25519 pubkey of signing.keyfile,
+#   e.g. "z6MkExampleHubPubKey...".
+issuerIdentifier: acme.example
+
+# Cache-Control max-age on the status-bitstring responses (seconds).
+# RFC 0001 §6.4 RECOMMENDS 300.
+cacheMaxAge: 300
+
+signing:
+  keyfile: ./issuer.jwk
+
+storage:
+  driver: sqlite
+  dsn: ./issuer.db
+  # Ceiling on credential indices per epoch. Default 131072 (2^17 ≈ 16 KiB
+  # raw bitstring). Auto-rotation kicks in once next_idx hits this value.
+  maxIndicesPerEpoch: 131072
+
+# Optional TLS — see provider-server.yaml comments. Keyed mode usually
+# pairs with self-signed certificates pinned via the `#sha256:` URI
+# fragment on the consumer side.
+tls:
+  cert: ""
+  key:  ""
+
+hook:
+  # Ceremony decision driver:
+  #   "queue" — default. Park every CSR; admin CLI advances state. The
+  #             `nextURL` is what the 409 ceremony_pending response
+  #             surfaces to the Subject (the Issuer's own issue endpoint,
+  #             typically).
+  #   "dev"   — auto-approve every CSR. SUITABLE ONLY FOR DEVELOPMENT.
+  #             Refuses to start on non-loopback listeners unless
+  #             SHADOWNET_ALLOW_AUTO_APPROVE=1 is set.
+  driver: queue
+  nextURL: https://acme.example/.well-known/shadownet/issue
+
+# Required only when mode == "keyed". Populates the self-served
+# AgentCard.
+keyedAgentCard:
+  name: "Acme Hub"
+  description: "Membership credentials for acme.example"
+  version: "1.0.0"
+  a2aURL:         https://hub.acme.example/a2a
+  issueURL:       https://hub.acme.example/issue
+  statusListBase: https://hub.acme.example/status
+
+shutdownTimeout: 15s

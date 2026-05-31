@@ -1,0 +1,39 @@
+# Shadownet provider-server (RFC 0001 §5.2).
+#
+# Build context is the repository root (the parent of core/). The
+# release-core workflow uses `--target final` and `--build-arg
+# VERSION=core/vX.Y.Z` to stamp the resulting binary.
+
+ARG GO_VERSION=1.25.0
+
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+
+# Pull module deps once. The core module has its own go.mod under core/.
+COPY core/go.mod core/go.sum ./core/
+WORKDIR /src/core
+RUN go mod download
+
+# Then bring in the source.
+WORKDIR /src
+COPY core/ ./core/
+WORKDIR /src/core
+
+ARG VERSION="dev"
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath" \
+    go build -ldflags "-s -w -X main.version=${VERSION}" \
+    -o /out/provider-server ./cmd/provider-server
+
+# ── runtime ────────────────────────────────────────────────────────────
+
+FROM alpine:3 AS final
+RUN addgroup -S shadownet && adduser -S -G shadownet shadownet && \
+    apk add --no-cache ca-certificates wget && \
+    mkdir -p /var/lib/shadownet && \
+    chown shadownet:shadownet /var/lib/shadownet
+USER shadownet
+WORKDIR /var/lib/shadownet
+COPY --from=build /out/provider-server /usr/local/bin/provider-server
+EXPOSE 8443
+ENTRYPOINT ["/usr/local/bin/provider-server"]
+CMD ["serve", "--config", "/etc/shadownet/provider.yaml"]
