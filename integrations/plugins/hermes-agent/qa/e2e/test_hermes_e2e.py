@@ -56,8 +56,13 @@ def test_adapter_loads_and_connects() -> None:
     ), f"adapter never long-polled inbox_wait; trace={calls}"
 
 
-def test_inbound_event_is_consumed() -> None:
+def test_inbound_event_delivered_during_held_long_poll() -> None:
+    # The adapter is parked in a held inbox_wait long-poll (the mock holds the
+    # connection open for the full timeout). Enqueue an event; the in-flight poll
+    # must return it promptly, the adapter must consume it and advance its cursor
+    # — proving the session stays open and delivers mid-poll, not on a fast loop.
     _reset()
+    t0 = time.time()
     _enqueue(
         {
             "event": "inbox.message",
@@ -72,5 +77,19 @@ def test_inbound_event_is_consumed() -> None:
             for c in cs
         )
 
-    calls = _wait(advanced, timeout=60)
-    assert advanced(calls), f"adapter did not advance its poll cursor after the event; trace={calls}"
+    calls = _wait(advanced, timeout=20)
+    assert advanced(calls), f"adapter did not consume/advance after the event; trace={calls}"
+    elapsed = time.time() - t0
+    assert elapsed < 10, f"event not delivered promptly during the held long-poll ({elapsed:.1f}s)"
+
+
+def test_polling_loop_is_persistent() -> None:
+    # The held long-poll returns ~every timeout; confirm the adapter keeps
+    # re-polling on the same session (≥2 inbox_wait calls), not a one-shot.
+    _reset()
+    calls = _wait(
+        lambda cs: sum(1 for c in cs if c["name"] == "inbox_wait" and c["transport"] == "mcp") >= 2,
+        timeout=20,
+    )
+    n = sum(1 for c in calls if c["name"] == "inbox_wait" and c["transport"] == "mcp")
+    assert n >= 2, f"adapter did not keep polling on a persistent session (saw {n} inbox_wait); trace={calls}"

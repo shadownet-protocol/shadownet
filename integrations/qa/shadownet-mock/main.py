@@ -111,12 +111,18 @@ async def inbox_wait(
     timeout_seconds: int | None = None, last_event_id: str | None = None
 ) -> InboxWait:
     _record("mcp", "inbox_wait", {"timeout_seconds": timeout_seconds, "last_event_id": last_event_id})
-    if _events:
-        batch = list(_events)
-        _events.clear()
-        next_id = batch[-1].get("event_id") or last_event_id
-        return InboxWait(events=batch, next_event_id=next_id)
-    await asyncio.sleep(min(2, timeout_seconds or 2))
+    # Real long-poll: hold the connection open until an event is enqueued or the
+    # client's timeout elapses (capped so the mock never hangs indefinitely).
+    # This exercises the adapter's held-session polling, not a fast return.
+    budget = timeout_seconds if (timeout_seconds and timeout_seconds > 0) else 30
+    deadline = time.monotonic() + min(budget, 30)
+    while time.monotonic() < deadline:
+        if _events:
+            batch = list(_events)
+            _events.clear()
+            next_id = batch[-1].get("event_id") or last_event_id
+            return InboxWait(events=batch, next_event_id=next_id)
+        await asyncio.sleep(0.1)
     return InboxWait(events=[], next_event_id=last_event_id)
 
 

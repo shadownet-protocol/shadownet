@@ -12,3 +12,12 @@ trap cleanup EXIT
 "${COMPOSE[@]}" build
 "${COMPOSE[@]}" up -d --wait --wait-timeout 300 seed shadownet-mock stub-llm gateway
 "${COMPOSE[@]}" run --rm driver
+
+# Verify register()'s other surface landed: all four skills materialized into
+# Hermes's own skills dir (accessible to the agent), not just the MCP adapter.
+gw=$("${COMPOSE[@]}" ps -q gateway)
+for s in shadownet-setup shadownet-inbox shadownet-reach-out shadownet-coordinate; do
+  docker exec "$gw" test -f "/opt/data/skills/shadownet/${s}/SKILL.md" \
+    || { echo "MISSING materialized skill: ${s}" >&2; exit 1; }
+done
+echo "verified: 4 shadownet skills materialized under /opt/data/skills/shadownet/"
