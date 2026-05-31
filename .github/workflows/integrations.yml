@@ -51,15 +51,15 @@ jobs:
         run: pnpm run build
 
       - name: Test
-        # The webhook test imports `openclaw/plugin-sdk/webhook-ingress`
-        # at module-load time, which requires the `openclaw` peer
-        # dependency to be resolvable on disk. The plugin's .npmrc
-        # explicitly disables auto-install-peers because openclaw drags
-        # in ~500MB of transitive deps that the author doesn't want on
-        # developer machines or in the lockfile. The right fix is for
-        # the plugin to mock that import in tests; until that lands we
-        # exclude this test in CI so the rest of the suite stays gated.
-        run: pnpm exec vitest run --exclude 'tests/webhook.test.ts'
+        # The full suite runs in CI, including tests/webhook.test.ts. That
+        # test's only blocker was the module-load import of
+        # `openclaw/plugin-sdk/webhook-ingress`, which would otherwise need the
+        # ~500MB `openclaw` peer on disk (the plugin's .npmrc keeps it off dev
+        # machines + the lockfile via auto-install-peers=false). vitest.config.ts
+        # aliases that one subpath to a local fake (tests/fakes/), so the
+        # handler logic is exercised without the gateway runtime. The real
+        # ingress plumbing is covered by the Tier-1 e2e harness.
+        run: pnpm run test
 
   hermes-plugin:
     name: Hermes Agent plugin (Python)

@@ -1,0 +1,45 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "lan",
+    "auth": { "mode": "token", "token": "harness-gateway-token-1234567890" }
+  },
+  "models": {
+    "providers": {
+      "stub-llm": {
+        "api": "openai-completions",
+        "baseUrl": "http://stub-llm:9000/v1",
+        "apiKey": "sk-stub-harness",
+        "models": [
+          {
+            "id": "stub-model",
+            "name": "Stub LLM",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 8192,
+            "maxTokens": 4096
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": { "model": "stub-llm/stub-model" }
+  },
+  "plugins": {
+    "load": { "paths": ["/home/node/.openclaw/extensions/shadownet"] }
+  },
+  "channels": {
+    "shadownet": {
+      "enabled": true,
+      "endpoint": "http://shadownet-mock:8000/u/alice/mcp",
+      "token": "sk-stub-bearer-token-1234567890",
+      "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "webhookPath": "/shadownet/inbox",
+      "dmPolicy": "open",
+      "rateLimitPerMinute": 600
+    }
+  }
+}
