@@ -1,0 +1,107 @@
+# Containerized integration harness for the Shadownet Hermes plugin.
+#
+# Everything runs in Docker — nothing is installed on the host. The digest-
+# pinned official Hermes image gets one thin layer (our local SDK + plugin) and
+# runs on an internal, ZERO-EGRESS network with no Docker socket, no host
+# mounts, no added privileges, and stub credentials only. The adapter's inbound
+# path is real MCP (streamable-HTTP) against the shared mock Sidecar.
+#
+# Driven via the root Makefile (make hermes-e2e / hermes-demo / hermes-clean).
+
+name: shadownet-hermes
+
+services:
+  # Seed config.yaml into the writable data volume (the plugin appends to it).
+  seed:
+    image: python:3.12-slim
+    profiles: ["e2e", "demo"]
+    networks: ["egress"]
+    volumes:
+      - ./config.yaml:/seed/config.yaml:ro
+      - hermes-data:/opt/data
+    command:
+      - sh
+      - -c
+      - mkdir -p /opt/data && cp /seed/config.yaml /opt/data/config.yaml && chmod 666 /opt/data/config.yaml && echo seeded
+
+  shadownet-mock:
+    profiles: ["e2e", "demo"]
+    build:
+      context: ../../../qa/shadownet-mock
+    networks: ["harness"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  stub-llm:
+    profiles: ["e2e", "demo"]
+    build:
+      context: ../../openclaw/qa/stub-llm
+    networks: ["harness"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  gateway:
+    profiles: ["e2e", "demo"]
+    build:
+      context: ../../../../
+      dockerfile: integrations/plugins/hermes-agent/deploy/Dockerfile.plugin
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      shadownet-mock:
+        condition: service_healthy
+      stub-llm:
+        condition: service_healthy
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_UID: "10000"
+      HERMES_GID: "10000"
+      # The container must not pip-install anything at runtime (zero egress).
+      HERMES_DISABLE_LAZY_INSTALLS: "1"
+      # Stub model — no real provider is ever contacted.
+      OPENAI_BASE_URL: http://stub-llm:9000/v1
+      OPENAI_API_KEY: stub-key-do-not-use
+      # Split connect form (bypasses the connect-URI https/loopback check so we
+      # can point at the mock by service name).
+      SHADOWNET_MCP_ENDPOINT: http://shadownet-mock:8000/mcp
+      SHADOWNET_TOKEN: stub-token
+      SHADOWNET_LONG_POLL_TIMEOUT_SECONDS: "5"
+    volumes:
+      - hermes-data:/opt/data
+    networks: ["harness"]
+    # Isolation: no Docker socket, no host mounts, no added privileges. We keep
+    # Docker's default (restricted) capability set rather than cap_drop:ALL
+    # because the image's s6-overlay init remaps the runtime uid and chowns the
+    # data volume on boot, and the security rule forbids re-adding caps.
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 1024
+    mem_limit: 2g
+    command: ["gateway", "run"]
+
+  driver:
+    profiles: ["e2e"]
+    build:
+      context: ../qa/e2e
+    depends_on:
+      gateway:
+        condition: service_started
+      shadownet-mock:
+        condition: service_healthy
+    environment:
+      MOCK_URL: http://shadownet-mock:8000
+    networks: ["harness"]
+
+networks:
+  harness:
+    internal: true
+  egress:
+    driver: bridge
+
+volumes:
+  hermes-data:
