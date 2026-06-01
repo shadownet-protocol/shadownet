@@ -73,8 +73,20 @@ services:
         mkdir -p /out/extensions/shadownet
         cp -r dist /out/extensions/shadownet/dist
         cp openclaw.plugin.json package.json /out/extensions/shadownet/
+        # Ship the plugin's only runtime dep — tsup keeps `dependencies`
+        # external, and the gateway loads dist/ from a bare dir with no
+        # node_modules. A published plugin gets this via `openclaw plugins
+        # install` running npm install; the harness seeds it directly.
+        mkdir -p /out/extensions/shadownet/node_modules
+        # -L dereferences pnpm's symlinks (node_modules/@sinclair/* points into
+        # .pnpm/), copying the real typebox files rather than a broken link.
+        cp -rL node_modules/@sinclair /out/extensions/shadownet/node_modules/
         cp deploy/openclaw.config.json /out/openclaw.json
-        chmod -R a+rwX /out
+        # Own the data dir as the gateway's node user (uid 1000) and strip
+        # group/other write. OpenClaw BLOCKS plugins loaded from world-writable
+        # (mode 777) dirs, so a+rwX would make the channel silently fail to load.
+        chown -R 1000:1000 /out
+        chmod -R go-w /out
         echo "seed complete: $(ls -R /out | head -40)"
 
   stub-llm:
@@ -91,7 +103,10 @@ services:
   shadownet-mock:
     profiles: ["e2e", "demo"]
     build:
-      context: ../qa/openclaw-shadownet-mock
+      # Shared canonical fake Sidecar (integrations/qa/shadownet-mock): serves the
+      # raw JSON-RPC /u/<shadow>/mcp compat + signed webhook the current OpenClaw
+      # plugin uses, alongside the real MCP surface other hosts use.
+      context: ../../../qa/shadownet-mock
     networks: ["harness"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]

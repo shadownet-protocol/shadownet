@@ -47,10 +47,13 @@ async def main() -> None:
         )
         assert jr.json()["result"]["items"], jr.text
 
+        # webhook surface: the trigger signs + posts an envelope and records it.
+        await http.post("/trigger-inbox-event", json={"target_url": f"{BASE}/healthz", "secret": "x" * 32})
+
         calls = (await http.get("/_calls")).json()
         transports = {c["transport"] for c in calls}
         names = {c["name"] for c in calls}
-        assert {"mcp", "jsonrpc"} <= transports, calls
+        assert {"mcp", "jsonrpc", "webhook"} <= transports, calls
         assert {"identity", "inbox_wait", "social_inbox"} <= names, calls
 
     print("SHARED MOCK OK")
