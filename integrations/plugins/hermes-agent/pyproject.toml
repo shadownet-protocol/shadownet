@@ -55,7 +55,12 @@ packages = ["shadownet_hermes_plugin"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "plugin.yaml" = "share/hermes-plugins/shadownet/plugin.yaml"
-"skills" = "share/hermes-plugins/shadownet/skills"
+# Source the four skills from the canonical single-source tree
+# (integrations/skills) rather than a committed per-plugin copy. hatchling
+# resolves this relative to the project root, so the wheel must be built from
+# source (`uv build --wheel`), not from an sdist (which can't contain files
+# outside the project) — see release-hermes-plugin.yml.
+"../../skills" = "share/hermes-plugins/shadownet/skills"
 
 # Local-only dev dep group; not surfaced to runtime users.
 [dependency-groups]
