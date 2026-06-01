@@ -272,9 +272,21 @@ def build_adapter_class() -> type:
                     body_text=body_text,
                     notify_target=notify_target,
                 )
+            elif body_text:
+                # No SHADOWNET_NOTIFY_CHAT bridge: surface the message as a
+                # Shadownet chat (a DM from the sender) so the user always sees
+                # it. Suppressing here is what dropped plain inbound A2A messages.
+                await self._surface_inbound_message(
+                    sender=sender,
+                    sender_name=sender_name,
+                    context_id=context_id,
+                    message_id=message_id,
+                    body_text=body_text,
+                    event_id=event_id,
+                )
             else:
                 _log.debug(
-                    "Suppressed free-form inbox.message from %s (no notify target)",
+                    "inbox.message from %s carried no body text; nothing to surface",
                     sender,
                 )
 
@@ -420,6 +432,58 @@ def build_adapter_class() -> type:
                     target_platform.value,
                     chat_id,
                 )
+
+        async def _surface_inbound_message(
+            self,
+            *,
+            sender: str,
+            sender_name: str,
+            context_id: str,
+            message_id: str,
+            body_text: str,
+            event_id: str,
+        ) -> None:
+            """Surface a plain inbound A2A message as a Shadownet chat.
+
+            With no SHADOWNET_NOTIFY_CHAT bridge, route the message through the
+            platform-adapter pipeline (``handle_message``) so Hermes opens a
+            session bound to the sender — the channel the plugin advertises — and
+            auto-loads the ``shadownet-inbox`` skill so the agent has the
+            context-id and the respond instructions. Without this a plain inbound
+            message is silently dropped and never reaches the user.
+            """
+            source = self.build_source(
+                chat_id=sender,
+                chat_type="dm",
+                user_id=sender,
+                user_name=sender_name or sender,
+            )
+            text = (
+                f"[SHADOWNET MESSAGE from {sender}]\n"
+                f"context_id: {context_id}\n"
+                f"message_id: {message_id}\n\n"
+                f"{body_text}"
+            )
+            try:
+                synth_event = message_event_cls(
+                    text=text,
+                    source=source,
+                    raw_message={
+                        "event_id": event_id,
+                        "context_id": context_id,
+                        "message_id": message_id,
+                    },
+                    auto_skill="shadownet-inbox",
+                )
+                await self.handle_message(synth_event)
+                _log.info(
+                    "shadownet: surfaced inbox.message from %s (context=%s, message=%s) as a shadownet chat",
+                    sender,
+                    context_id,
+                    message_id,
+                )
+            except Exception:
+                _log.exception("failed to surface inbox.message from %s", sender)
 
         async def _inject_task_update(
             self, data: dict[str, Any], event_id: str, notify_target: str

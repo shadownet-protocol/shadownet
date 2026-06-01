@@ -243,6 +243,41 @@ class TestOnEventDispatch:
         assert "context_id: ctx-1" in msg.text
         assert msg.auto_skill == "shadownet-coordinate"
 
+    async def test_free_form_message_surfaces_in_sender_session_with_inbox_skill(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Regression for the real cloud bug: a plain inbound message (no intent,
+        # no SHADOWNET_NOTIFY_CHAT) must SURFACE — reach the agent through the
+        # platform pipeline, in a session bound to the sender, carrying the
+        # context/message ids and the body, with the shadownet-inbox skill
+        # auto-loaded. It must NOT be silently suppressed.
+        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        adapter = self._setup(monkeypatch)
+        event = {
+            "event": "inbox.message",
+            "eventId": "evt-1",
+            "data": {
+                "from": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "messageId": "msg-1",
+                "status": "inbox",
+            },
+        }
+        await adapter._on_event(event)
+
+        assert len(adapter.handled) == 1, "free-form inbound was suppressed, not surfaced"
+        msg = adapter.handled[0]
+        # Proper injected instructions: the inbox skill is auto-loaded on the turn.
+        assert msg.auto_skill == "shadownet-inbox"
+        # Proper context: the agent prompt carries the correlation ids + body.
+        assert "context_id: ctx-1" in msg.text
+        assert "message_id: msg-1" in msg.text
+        assert "alice@sh4dow.org" in msg.text
+        assert "Hi" in msg.text
+        # Proper session: bound to the sender's DM, not a stray/global chat.
+        assert msg.source.chat_id == "alice@sh4dow.org"
+        assert msg.source.user_id == "alice@sh4dow.org"
+
     async def test_confirm_plan_v1_no_notify_target_is_silent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
