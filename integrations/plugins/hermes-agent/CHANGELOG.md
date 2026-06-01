@@ -6,6 +6,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-02
+
+Tracks `shadownet>=0.6.0,<0.7`.
+
+### Fixed
+
+- **Inbound free-form messages now surface to the user.** A plain inbound
+  `inbox.message` with no recognized intent and no `SHADOWNET_NOTIFY_CHAT`
+  bridge was silently suppressed in `_on_event`. It now routes through the
+  platform-adapter pipeline (`handle_message`) by default — opening a session
+  bound to the sender and auto-loading the `shadownet-inbox` skill — so the
+  user always sees it. `SHADOWNET_NOTIFY_CHAT` remains an opt-in bridge into an
+  existing chat.
+- **`creds_required` guidance.** The `shadownet-reach-out` skill no longer
+  sends the agent down a credential-minting dead end on a `creds_required`
+  rejection; it explains the contact-based remedy (the recipient adds you /
+  grants messaging), with credential minting only where the network runs an
+  issuer.
+- **Skills are bundled into the wheel again.** They are sourced from the
+  canonical `integrations/skills/` tree (no committed per-plugin copy); the
+  release builds the wheel from source so they land under
+  `share/hermes-plugins/shadownet/skills/` as before.
+
+### Changed
+
+- Adapter migrated onto the stabilized v0.2 MCP surface; coordination intents
+  use the unified `send`/`respond` flow and the new `propose_plan_v1` intent.
+
 ## [0.5.0] — 2026-05-30
 
 This is the **Shadownet v0.2 release** of the Hermes plugin. Tracks
