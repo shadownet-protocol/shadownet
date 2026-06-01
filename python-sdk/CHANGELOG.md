@@ -10,6 +10,25 @@ SDK ships as `0.x.y`. In the monorepo, tags use the
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-02
+
+Stabilization of the v0.2 MCP control surface (RFC 0002).
+
+### Added
+
+- `propose_plan_v1` coordination intent — `PROPOSE_PLAN_V1_URI`
+  (`urn:shadownet:intent:propose_plan_v1`) and the `ProposePlanV1Data`
+  model, so an initiator can propose a plan before the confirm/accept
+  exchange.
+
+### Changed
+
+- **Breaking:** the MCP tool surface no longer exposes the per-intent
+  `CoordinateInput`/`CoordinateOutput`, `ConfirmPlanInput`/`ConfirmPlanOutput`,
+  and `AcceptPlanInput`/`AcceptPlanOutput` typed models. Coordination intents
+  are carried by their intent URI and payload on the existing tools per RFC
+  0002. Consumers on 0.5.0 that imported those classes must migrate.
+
 ## [0.5.0] — 2026-05-31
 
 This is the **Shadownet v0.2 release**. Tracks the consolidated wire spec
