@@ -1,12 +1,16 @@
-"""Intent payload models — RFC 0002 §5.
+"""Intent payload models for the coordination intent profile.
 
-The three v0.2 intent URIs and their ``body.data`` schemas:
+The four coordination intent URIs and their ``body.data`` schemas:
 
-  - ``urn:shadownet:intent:coordinate_v1``    — propose an activity.
-  - ``urn:shadownet:intent:confirm_plan_v1``  — confirm a specific plan.
-  - ``urn:shadownet:intent:accept_plan_v1``   — accept a peer's plan.
+  - ``coordinate_v1``     — initiator proposes an activity.
+  - ``propose_plan_v1``   — receiver proposes a concrete plan.
+  - ``confirm_plan_v1``   — initiator confirms the proposed plan.
+  - ``accept_plan_v1``    — receiver acknowledges confirmation.
 
-PlanObject and GeoCoordinate are the shared types referenced by the above.
+These are application-level intents transported via the generic
+``send`` / ``respond`` / ``inbox`` MCP tools. The sidecar treats
+``body.intent`` and ``body.data`` as opaque; these models are for
+host agents and plugins that implement the coordination flow.
 """
 
 from __future__ import annotations
@@ -19,16 +23,19 @@ __all__ = [
     "ACCEPT_PLAN_V1_URI",
     "CONFIRM_PLAN_V1_URI",
     "COORDINATE_V1_URI",
+    "PROPOSE_PLAN_V1_URI",
     "AcceptPlanV1Data",
     "ConfirmPlanV1Data",
     "CoordinateV1Data",
     "GeoCoordinate",
     "PlanObject",
     "PlanWhere",
+    "ProposePlanV1Data",
 ]
 
 
 COORDINATE_V1_URI: Final = "urn:shadownet:intent:coordinate_v1"
+PROPOSE_PLAN_V1_URI: Final = "urn:shadownet:intent:propose_plan_v1"
 CONFIRM_PLAN_V1_URI: Final = "urn:shadownet:intent:confirm_plan_v1"
 ACCEPT_PLAN_V1_URI: Final = "urn:shadownet:intent:accept_plan_v1"
 
@@ -72,12 +79,16 @@ class CoordinateV1Data(BaseModel):
     details: str | None = None
 
 
+class ProposePlanV1Data(PlanObject):
+    """``body.data`` for ``propose_plan_v1`` — receiver's concrete proposal."""
+
+
 class ConfirmPlanV1Data(PlanObject):
-    """``body.data`` for ``urn:shadownet:intent:confirm_plan_v1``."""
+    """``body.data`` for ``confirm_plan_v1`` — initiator confirms the proposal."""
 
 
 class AcceptPlanV1Data(BaseModel):
-    """``body.data`` for ``urn:shadownet:intent:accept_plan_v1``."""
+    """``body.data`` for ``accept_plan_v1`` — receiver acknowledges."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

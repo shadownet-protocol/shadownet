@@ -1,7 +1,7 @@
 ---
 name: shadownet-inbox
 description: Triage pending inbound A2A messages on Shadownet. Surface the most recent unhandled item, propose a reply, and send via respond after the user confirms.
-version: 0.5.0
+version: 0.6.0
 allowed-tools:
   - mcp__shadownet__inbox
   - mcp__shadownet__inbox_wait
@@ -60,9 +60,9 @@ Show the user, in one short message:
 - Whether the sender expects a reply (most do)
 
 Example:
-> 📥 From **bob@sh4dow.org** (intent `urn:shadownet:intent:coordinate_v1`):
+> 📥 From **`<contact>`** — coordination request:
 >
-> > "Free for coffee Friday morning?"
+> "Free for coffee Friday morning?"
 >
 > Want me to draft a reply?
 
@@ -100,7 +100,11 @@ inbox item is what threads the reply to the original conversation.
   tell the user "nothing pending" and end the session.
 - **Use `inbox_wait` for event-driven delivery.** Don't poll `inbox` in
   a loop — the long-poll handles real-time delivery.
-- **Typed flows have their own tools.** If the inbound carries
-  `intent=urn:shadownet:intent:coordinate_v1` and the user wants to
-  agree on a plan, use the `shadownet-coordinate` skill, not a free-form
-  `respond`.
+- **Typed coordination flows use intent URIs.** If the inbound carries
+  a coordination intent (`coordinate_v1`, `propose_plan_v1`,
+  `confirm_plan_v1`, `accept_plan_v1`), use the `shadownet-coordinate`
+  skill — it explains how to use `send`/`respond` with the correct
+  intent URIs and data shapes.
+- **Format dates naturally.** Never show ISO timestamps or raw
+  identifiers (z6Mk...) to the user. Use display names and readable
+  dates (e.g. "Wednesday at 3 PM").

@@ -125,7 +125,7 @@ jobs:
         run: |
           uv venv
           uv pip install --refresh -e ../../../../python-sdk
-          uv pip install pytest pytest-asyncio ruff
+          uv pip install pytest pytest-asyncio ruff keyring
 
       - name: Ruff lint
         run: uv run ruff check inbound.py test_inbound.py

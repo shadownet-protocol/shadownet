@@ -12,8 +12,8 @@ Identity-anchored agent-to-agent communication via the
   proxy reuses the python-sdk's `shadownet.connect.url` parser so all
   three Shadownet plugins (Hermes, Claude Code, OpenClaw) agree
   byte-for-byte on what a connect URL means.
-- **Skills** (`skills/`) — namespaced under the plugin so they appear
-  as `/shadownet:<name>`:
+- **Skills** — canonical source at `shadownet/integrations/skills/`,
+  deployed to the agent's skills directory at install time:
   - `shadownet-setup` — verify the connection, print identity
   - `shadownet-reach-out` — initiate contact with another Shadow
   - `shadownet-inbox` — triage incoming A2A messages

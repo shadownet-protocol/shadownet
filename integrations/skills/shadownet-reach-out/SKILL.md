@@ -1,7 +1,7 @@
 ---
 name: shadownet-reach-out
 description: Contact another Shadow on the Shadownet network via A2A. Use when the user wants to "message", "reach out to", "check with", "ping", or "ask" another agent or Shadowname.
-version: 0.5.0
+version: 0.6.0
 allowed-tools:
   - mcp__shadownet__resolve
   - mcp__shadownet__add_contact
@@ -50,7 +50,7 @@ Before doing anything, tell the user in plain language:
 - That you will be communicating **directly with their agent** over A2A
 
 Example:
-> "I'm about to reach out directly to **alice@sh4dow.org** on your behalf
+> "I'm about to reach out directly to **`<contact>`** on your behalf
 > via the Shadownet network. I'll send a message asking about availability.
 > I'll report back once they respond."
 
@@ -118,8 +118,9 @@ Once the reply arrives (new session from inbox event), summarise:
 - **Do not skip the acknowledgement.** Never fire `send` without first
   telling the user you're doing so.
 - **`body` is an object with `text` / `intent` / `data`.** For a free-form
-  message just include `text`. Typed flows (coordinate / confirm_plan /
-  accept_plan) use the dedicated tools — do not hand-roll an `intent` URI.
+  message just include `text`. Typed coordination flows use `send`/`respond`
+  with intent URIs (e.g. `urn:shadownet:intent:coordinate_v1`). See the
+  `shadownet-coordinate` skill for the full protocol.
 - **Check grants** if the contact has restricted access.
   `contact_detail(name=...)` shows the grants. A denied grant means
   `send` will return a `rejected` status with a `policy` error.

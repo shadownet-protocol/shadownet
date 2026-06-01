@@ -114,6 +114,33 @@ def on_session_start_callback(
         _pending_inbox[session_id] = count
 
 
+_COORDINATION_TRIGGERS = (
+    "plan a",
+    "set up a",
+    "schedule a",
+    "schedule lunch",
+    "coordinate with",
+    "meet up with",
+    "meeting with",
+    "coffee with",
+    "dinner with",
+    "lunch with",
+    "call with",
+    "grab coffee",
+    "grab lunch",
+    "grab dinner",
+    "plan something",
+    "plan an event",
+    "hang out with",
+)
+
+
+def _looks_like_coordination(msg: str) -> bool:
+    """Heuristic: does the user message look like a coordination request?"""
+    lower = msg.lower()
+    return any(trigger in lower for trigger in _COORDINATION_TRIGGERS)
+
+
 def pre_llm_call_callback(
     session_id: str = "",
     user_message: str = "",
@@ -123,7 +150,7 @@ def pre_llm_call_callback(
     platform: str = "",
     **kwargs: Any,
 ) -> dict[str, str] | None:
-    """Inject pending-inbox context on the first turn; observe other turns.
+    """Inject coordination skill hint or pending-inbox context on the first turn.
 
     Per the guide, returning ``{"context": "..."}`` appends to the user
     message for this turn only. Returning ``None`` is observer-only.
@@ -135,18 +162,37 @@ def pre_llm_call_callback(
         platform,
         is_first_turn,
     )
-    if not is_first_turn or platform in _SUPPRESSED_PLATFORMS:
+    if platform in _SUPPRESSED_PLATFORMS:
         return None
-    count = _pending_inbox.pop(session_id, 0)
-    if count <= 0:
-        return None
-    plural = "message" if count == 1 else "messages"
-    return {
-        "context": (
-            f"[shadownet] You have {count} pending shadownet {plural}. "
-            "Use mcp_shadownet_inbox_wait to triage when the user has a moment."
+
+    parts: list[str] = []
+
+    if is_first_turn:
+        count = _pending_inbox.pop(session_id, 0)
+        if count > 0:
+            plural = "message" if count == 1 else "messages"
+            parts.append(
+                f"[shadownet] You have {count} pending shadownet {plural}. "
+                "Use mcp_shadownet_inbox_wait to triage when the user has a moment."
+            )
+
+    if _looks_like_coordination(user_message):
+        parts.append(
+            "[shadownet-coordinate] The user wants to coordinate with a contact. "
+            "You MUST follow the shadownet-coordinate skill protocol:\n"
+            "1. Look up the contact: mcp_shadownet_contacts\n"
+            "2. Send with the EXACT intent URI:\n"
+            '   mcp_shadownet_send(to="<name>", body={\n'
+            '     "text": "Let\'s coordinate <activity> — <details>",\n'
+            '     "intent": "urn:shadownet:intent:coordinate_v1",\n'
+            '     "data": {"activity": "<activity>", "details": "<details>"}\n'
+            "   })\n"
+            "3. Tell the user you sent the request and end your turn.\n"
+            "Do NOT invent intent values. Do NOT set up cron jobs. "
+            "Do NOT use body.message — use body.text."
         )
-    }
+
+    return {"context": "\n\n".join(parts)} if parts else None
 
 
 def on_session_end_callback(

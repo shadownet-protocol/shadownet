@@ -11,21 +11,15 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
-    "AcceptPlanInput",
-    "AcceptPlanOutput",
     "AddContactInput",
     "AddContactOutput",
     "BodySlot",
-    "ConfirmPlanInput",
-    "ConfirmPlanOutput",
     "ContactDetailInput",
     "ContactDetailOutput",
     "ContactProfile",
     "ContactSummary",
     "ContactsInput",
     "ContactsOutput",
-    "CoordinateInput",
-    "CoordinateOutput",
     "CredentialSummary",
     "GrantInput",
     "GrantOutput",
@@ -205,43 +199,6 @@ class RespondOutput(BaseModel):
     message_id: str = Field(alias="messageId")
     status: Literal["accepted", "rejected"]
     error: str | None = None
-
-
-class CoordinateInput(BaseModel):
-    model_config = _BaseConfig
-    name: str
-    activity: str
-    details: str | None = None
-
-
-class CoordinateOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
-    context_id: str = Field(alias="contextId")
-
-
-class ConfirmPlanInput(BaseModel):
-    model_config = _BaseConfigOpen
-    name: str
-    context_id: str = Field(alias="contextId")
-    plan: dict[str, Any]
-
-
-class ConfirmPlanOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
-
-
-class AcceptPlanInput(BaseModel):
-    model_config = _BaseConfig
-    name: str
-    context_id: str = Field(alias="contextId")
-    accepts_message_id: str = Field(alias="acceptsMessageId")
-
-
-class AcceptPlanOutput(BaseModel):
-    model_config = _BaseConfig
-    message_id: str = Field(alias="messageId")
 
 
 class InboxInput(BaseModel):

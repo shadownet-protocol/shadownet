@@ -44,11 +44,16 @@ SKILL_NAMES = (
 def skill_root_candidates() -> tuple[Path, ...]:
     """Candidate roots containing ``<name>/SKILL.md``, in priority order.
 
-    1. Sibling to the package — git-clone layout and editable installs.
-    2. ``<sys.prefix>/share/hermes-plugins/shadownet/skills/`` — where wheel
+    1. Already materialized in the data dir (deployed at container build /
+       deploy time via ``docker cp`` or similar).  This is the primary
+       path in production — skills are deployed independently of the
+       plugin wheel.
+    2. Sibling to the package — legacy bundled layout (editable installs).
+    3. ``<sys.prefix>/share/hermes-plugins/shadownet/skills/`` — where wheel
        installs land the shared-data tree per ``pyproject.toml``.
     """
     return (
+        hermes_data_dir() / "skills" / SHADOWNET_CATEGORY,
         Path(__file__).resolve().parent.parent / "skills",
         Path(sys.prefix) / "share" / "hermes-plugins" / "shadownet" / "skills",
     )

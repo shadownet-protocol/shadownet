@@ -4,15 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from shadownet.mcp import (
-    AcceptPlanInput,
     AcceptPlanV1Data,
     AddContactInput,
     AddContactOutput,
     BodySlot,
-    ConfirmPlanInput,
     ConfirmPlanV1Data,
     ContactProfile,
-    CoordinateInput,
     CoordinateV1Data,
     GeoCoordinate,
     InboxItem,
@@ -163,22 +160,3 @@ class TestNotifications:
             }
         )
         assert ev.sender == "alice@sh4dow.org"
-
-
-class TestCoordinateConfirmAcceptInputs:
-    def test_coordinate_input(self) -> None:
-        ci = CoordinateInput(name="bob@example.org", activity="coffee", details="downtown")
-        assert ci.activity == "coffee"
-
-    def test_confirm_plan_input_wire(self) -> None:
-        ci = ConfirmPlanInput.model_validate(
-            {"name": "bob@example.org", "contextId": "ctx-1", "plan": {"activity": "x"}}
-        )
-        assert ci.context_id == "ctx-1"
-
-    def test_accept_plan_input_wire(self) -> None:
-        ai = AcceptPlanInput.model_validate(
-            {"name": "bob@example.org", "contextId": "ctx-1", "acceptsMessageId": "m1"}
-        )
-        assert ai.accepts_message_id == "m1"
-        assert ai.model_dump(by_alias=True)["acceptsMessageId"] == "m1"

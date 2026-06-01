@@ -1,195 +1,242 @@
 ---
 name: shadownet-coordinate
-description: Coordinate a meetup, call, or task between two Shadows via fully autonomous agent-to-agent negotiation. Both Shadows use their users' calendars and preferences to agree on a plan, then present it for one-tap user confirmation.
-version: 0.5.0
+description: >
+  Plan a meeting, coffee, dinner, lunch, call, or any activity with a contact.
+  Use when the user says "plan a meeting with", "set up a coffee with",
+  "schedule lunch with", "coordinate with", "meet up with", or asks to do
+  something with another person/contact/friend. Agents negotiate autonomously —
+  humans only confirm the final plan.
+version: 1.1.0
 allowed-tools:
   - mcp__shadownet__contacts
   - mcp__shadownet__contact_detail
-  - mcp__shadownet__coordinate
-  - mcp__shadownet__confirm_plan
-  - mcp__shadownet__accept_plan
+  - mcp__shadownet__send
   - mcp__shadownet__respond
+  - mcp__shadownet__inbox
   - mcp__shadownet__inbox_wait
-disable-model-invocation: true
+  - web_search
+  - brave_search
+  - google_search
+disable-model-invocation: false
 metadata:
   hermes:
-    tags: [shadownet, coordination, meetups, scheduling, a2a]
+    tags: [shadownet, coordination, meetups, scheduling, a2a, plan, meeting, coffee, dinner, lunch, call]
+    activation_phrases:
+      - plan a meeting with
+      - set up a coffee with
+      - schedule lunch with
+      - coordinate with
+      - meet up with
+      - plan something with
+      - grab coffee with
+      - have dinner with
     related_skills: [shadownet-setup, shadownet-reach-out, shadownet-inbox]
     requires_tools:
       - mcp_shadownet_contacts
-      - mcp_shadownet_coordinate
-      - mcp_shadownet_confirm_plan
-      - mcp_shadownet_accept_plan
+      - mcp_shadownet_send
       - mcp_shadownet_respond
       - mcp_shadownet_inbox_wait
 ---
 
-# Shadownet — Autonomous Coordination
+# Shadownet Coordination
 
-Coordinate plans (coffee, dinner, meetings, joint tasks) with another
-person's Shadow. Agents negotiate **fully autonomously** using each user's
-calendar, preferences, and local knowledge. Users only see the final
-agreed plan and confirm.
+Coordinate plans (coffee, dinner, meetings, tasks) with another Shadow.
+Agents negotiate autonomously using each user's calendar, preferences,
+and local knowledge. Humans only confirm or reject the final agreed plan.
 
-This skill is **user-invocable only** (`disable-model-invocation: true`) —
-the model should not auto-trigger autonomous coordination on its own
-inference of intent.
+## Protocol
 
-## Intent flow
+All coordination messages use the primitive `send` and `respond` tools
+with `body.intent` set to the appropriate intent URI. The sidecar is
+content-agnostic — it transports any intent.
 
-The three RFC 0002 §5 intent URIs map to the three steps of this
-coordination dance:
+### Intent URIs
 
-| Intent | Sent by | Wraps |
-| --- | --- | --- |
-| `urn:shadownet:intent:coordinate_v1` | Initiator | `{activity, details?}` |
-| `urn:shadownet:intent:confirm_plan_v1` | Initiator (after agreement) | `PlanObject` (activity, when, where, participants) |
-| `urn:shadownet:intent:accept_plan_v1` | Receiver | `{acceptsMessageId}` |
+| Step | Intent URI | Direction | Tool |
+| --- | --- | --- | --- |
+| 1 | `urn:shadownet:intent:coordinate_v1` | Initiator sends | `send` |
+| 2 | `urn:shadownet:intent:propose_plan_v1` | Receiver replies | `respond` |
+| 3 | `urn:shadownet:intent:confirm_plan_v1` | Initiator sends | `send` |
+| 4 | `urn:shadownet:intent:accept_plan_v1` | Receiver replies | `respond` |
 
-## Roles
+### Data shapes
 
-Every coordination has an **initiator** and a **receiver**.
+**coordinate_v1** `body.data`:
+```json
+{"activity": "Coffee", "details": "Wednesday afternoon downtown"}
+```
 
-## INITIATOR FLOW (your user asked to plan something)
+**propose_plan_v1 / confirm_plan_v1** `body.data` (PlanObject):
+```json
+{
+  "activity": "Coffee",
+  "when": "2026-06-04T15:00:00+02:00",
+  "where": {"name": "Barn Roastery", "city": "Berlin"},
+  "participants": []
+}
+```
 
-### Step 1 — Start coordination
+**accept_plan_v1** `body.data`:
+```json
+{"acceptsMessageId": "<messageId of the confirm_plan message>"}
+```
 
-Look up the contact, then call `coordinate`:
+## INITIATOR FLOW (your user wants to plan something)
+
+### Step 1 — Start the coordination
+
+Look up the contact, then send a coordination request:
 
 ```
 contacts(query="<name>")
-coordinate(name="bob@sh4dow.org", activity="coffee", details="Friday morning in Mitte")
-```
 
-The sidecar sends a `coordinate_v1` envelope to the receiver's Shadow.
-The response carries `messageId` and `contextId`; remember the
-`contextId` — every subsequent message in this coordination uses it.
-
-### Step 2 — End the session
-
-> Sent a coordination request to **bob@sh4dow.org**. I'll let you know
-> when we've agreed on a plan.
-
-DONE. Do NOT poll. The `inbox_wait` long-poll handles delivery.
-
-### Step 3 — Response arrives (new session via inbox event)
-
-When the receiver's Shadow responds (via free-form `respond` or another
-intent), it carries an **agreed plan** in the body. Present ONE clean
-message to your user:
-
-> ☕ Agreed with **bob@sh4dow.org**: Coffee at The Daily Grind,
-> Friday at 10am. Confirm?
-
-### Step 4 — User confirms
-
-```
-confirm_plan(
-  name="bob@sh4dow.org",
-  contextId="<same contextId from the original coordinate call>",
-  plan={
-    "activity": "Coffee",
-    "when": "2026-05-15T10:00:00+02:00",
-    "where": {"city": "Berlin", "name": "The Daily Grind", "type": "cafe"},
-    "participants": ["alice@sh4dow.org", "bob@sh4dow.org"]
+send(
+  to="<contact>",
+  body={
+    "text": "Let's coordinate Coffee — Wednesday afternoon downtown",
+    "intent": "urn:shadownet:intent:coordinate_v1",
+    "data": {"activity": "Coffee", "details": "Wednesday afternoon downtown"}
   }
 )
 ```
 
-The `plan` is a typed `PlanObject` (RFC 0002 §5.0) carrying activity,
-when (ISO 8601), where, and the full participant list. Do not omit
-fields — receivers may validate against the schema and reject with
-`payload_invalid`. End session.
+Tell the user:
 
-### Step 5 — Final acceptance arrives (new session via inbox event)
+> Sent a coordination request to `<contact>` for coffee. I'll let you
+> know when they propose a plan.
 
-When the receiver sends `accept_plan_v1`, the plan is committed on both
-sides:
+DONE for now. End your turn. Do NOT poll.
 
-> All set! Coffee Friday 10am at The Daily Grind.
+### Step 2 — Proposal arrives (injected as a new event)
 
-DONE.
+The receiver's agent sends back a proposal with a PlanObject.
+Present it to your user in natural language:
+
+> `<contact>` proposes coffee at Barn Roastery on Wednesday at 3 PM.
+> Would you like to confirm?
+
+Never show raw JSON, ISO timestamps, or identifiers to the user.
+Format dates naturally (e.g. "Wednesday at 3 PM").
+
+### Step 3 — User confirms
+
+When the user says yes, send a confirmation with the plan:
+
+```
+send(
+  to="<contact>",
+  contextId="<contextId from the original send>",
+  body={
+    "text": "Confirmed.",
+    "intent": "urn:shadownet:intent:confirm_plan_v1",
+    "data": <the PlanObject from the proposal>
+  }
+)
+```
+
+Tell the user:
+
+> Sent confirmation to `<contact>` — waiting for them to accept.
+
+Do NOT say "confirmed" or "finalized" — the plan is not done until
+the receiver sends `accept_plan_v1`. End your turn.
+
+### Step 4 — Acceptance arrives
+
+When `accept_plan_v1` arrives, the coordination is fully complete:
+
+> All set! Coffee at Barn Roastery, Wednesday at 3 PM.
+
+NOW the plan is confirmed. DONE. No further tool calls.
 
 ## RECEIVER FLOW (another Shadow sent you a coordination request)
 
-**THIS IS THE CRITICAL PART. You must negotiate AUTONOMOUSLY.**
+When a `coordinate_v1` arrives, YOU must propose a concrete plan
+AUTONOMOUSLY — do NOT ask your user for input. The user's only role
+is to accept or reject the final agreed plan.
 
-### Step 1 — Read the request and YOUR user's data
+### Step 1 — Research and propose a plan
 
-The inbound `coordinate_v1` body carries `{activity, details?}`. Load
-YOUR user's calendar / preferences from local memory or profile skills.
+Use everything available to build a great proposal:
 
-### Step 2 — Find the best match AUTONOMOUSLY
+1. **Check calendar/availability.** If you have access to a calendar
+   tool, check your user's schedule. If not, assume they are free.
+2. **Know the user's city/area.** Use your memory, user profile, or
+   any available context to determine where your user lives.
+3. **Search the web for venues.** Use web search to find a real,
+   specific venue that fits the activity. For coffee, find a popular
+   specialty cafe. For dinner, a well-reviewed restaurant. For a
+   meeting, a coworking space or cafe with wifi. Pick a real place
+   with a real name — never use "TBD" or generic placeholders.
+4. **Pick a concrete date and time.** Interpret the request details
+   (e.g. "Sunday morning" means next Sunday at 10:00 AM). If no time
+   is specified, pick a reasonable default for the activity.
 
-Compare both users' data and pick the best option:
-- Overlapping free time slots
-- Shared interests both enjoy
-- A specific venue that fits (use your local knowledge)
-- A concrete date, time, and place
-
-DO NOT ask your user for input. YOU decide based on what you know.
-
-### Step 3 — Respond with the agreed plan
+Then respond with a proposal:
 
 ```
 respond(
-  contextId="<contextId from the inbound coordinate envelope>",
+  contextId="<contextId from the inbound coordinate>",
   body={
-    "text": "Coffee at The Daily Grind, Friday 10am — great spot in Mitte.",
-    "intent": "urn:shadownet:intent:confirm_plan_v1",
+    "text": "Coffee at Barn Roastery on Wednesday at 3 PM",
+    "intent": "urn:shadownet:intent:propose_plan_v1",
     "data": {
       "activity": "Coffee",
-      "when": "2026-05-15T10:00:00+02:00",
-      "where": {"city": "Berlin", "name": "The Daily Grind", "type": "cafe"},
-      "participants": ["alice@sh4dow.org", "bob@sh4dow.org"]
+      "when": "2026-06-04T15:00:00+02:00",
+      "where": {"name": "Barn Roastery", "city": "Berlin"},
+      "participants": []
     }
   }
 )
 ```
 
-**CRITICAL: Do NOT write ANY text to the user during this phase.**
-Your only output is the `respond` tool call. Say nothing.
-End the session immediately after the tool call.
+After calling `respond`, say only: "Replying to `<contact>`'s agent."
+Do not reveal proposal details — this step is autonomous.
+Do not propose more than once.
 
-### Step 4 — Confirmation arrives (new session via inbox event)
+### Step 2 — Confirmation arrives
 
-When the initiator's Shadow sends `confirm_plan_v1`, NOW notify your user:
+When the initiator sends `confirm_plan_v1`, present the plan details
+to your user and ask if they want to accept:
 
-> ☕ **alice@sh4dow.org** confirmed: Coffee at The Daily Grind, Friday 10am.
-> Accept?
+> `<contact>` wants to have coffee with you at Barn Roastery, Wednesday
+> at 3 PM. Would you like to accept?
 
-### Step 5 — User accepts
+Do NOT call respond with accept_plan yet — wait for the user.
+
+### Step 3 — User accepts
+
+When the user says yes:
 
 ```
-accept_plan(
-  name="alice@sh4dow.org",
-  contextId="<contextId from the confirm_plan inbox item>",
-  acceptsMessageId="<messageId of the confirm_plan envelope>"
+respond(
+  contextId="<contextId>",
+  body={
+    "text": "Accepted.",
+    "intent": "urn:shadownet:intent:accept_plan_v1",
+    "data": {"acceptsMessageId": "<messageId of the confirm_plan message>"}
+  }
 )
 ```
 
-After this returns, the coordination is **complete on both sides** (RFC
-0002 §4 `accept_plan`). The sidecar will typically write the plan into
-the user's calendar at this point.
+If the user declines, let them know you'll inform the other party.
 
-## Output Rules
+DONE. The coordination is complete on both sides.
 
-- **ONE message per step.** Never multiple bot messages.
-- **No narration.** Don't say "Loading skill...", "Checking inbox...". Just do it.
-- **Be concise.** "Coffee at X, Friday 10am. Confirm?" — that's it.
-- **Use the typed intent URIs.** `confirm_plan_v1` and `accept_plan_v1`
-  let the peer's sidecar validate the shape and the user's calendar to
-  auto-populate. Don't fall back to free-form text mid-flow.
+## Output rules
 
-## Pitfalls
-
-- **DO NOT ask the receiver's user during negotiation.** This is the #1
-  rule. You have their preferences and calendar — use them.
-- **DO NOT poll with `inbox`.** The `inbox_wait` long-poll handles all
-  inbound delivery.
-- **Reuse the contextId across the whole flow.** Every step
-  (`coordinate`, `respond` with `confirm_plan_v1`, `accept_plan`) uses
-  the SAME `contextId`. That's how the sidecar threads the conversation.
-- **STOP after `accept_plan_v1`.** The flow is terminal — do not respond
-  to the acceptance.
-- **One tool call per session** for coordination flows.
+- **One message per step.** No narration, no "Loading...", no "Checking...".
+- **Natural language only.** Never show JSON, ISO timestamps, URIs, or
+  raw identifiers (z6Mk...) to the user. Use display names and readable dates.
+- **Receiver proposes autonomously.** When you receive `coordinate_v1`,
+  research a real venue, pick a time, and propose immediately. Do NOT
+  ask the user for input — use their calendar, preferences, and web
+  search to make the best proposal you can.
+- **Humans only confirm/accept.** The user's role is to approve or
+  reject the plan, not to provide input during negotiation.
+- **Thread by contextId.** Every step in the same coordination uses the
+  same contextId. Use `send` with `contextId` for initiator follow-ups,
+  `respond` with `contextId` for receiver replies.
+- **Do not poll.** The inbox_wait long-poll handles delivery. End your
+  turn after each tool call.
+- **Stop after accept_plan_v1.** The flow is terminal.
