@@ -92,7 +92,7 @@ services:
   stub-llm:
     profiles: ["e2e", "demo"]
     build:
-      context: ../qa/stub-llm
+      context: ../../../harness/stub-llm
     networks: ["harness"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/healthz', timeout=2).status==200 else 1)"]
@@ -103,10 +103,10 @@ services:
   shadownet-mock:
     profiles: ["e2e", "demo"]
     build:
-      # Shared canonical fake Sidecar (integrations/qa/shadownet-mock): serves the
-      # raw JSON-RPC /u/<shadow>/mcp compat + signed webhook the current OpenClaw
+      # Shared canonical fake Sidecar (integrations/harness/shadownet-mock): serves
+      # the raw JSON-RPC /u/<shadow>/mcp compat + signed webhook the current OpenClaw
       # plugin uses, alongside the real MCP surface other hosts use.
-      context: ../../../qa/shadownet-mock
+      context: ../../../harness/shadownet-mock
     networks: ["harness"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
@@ -148,7 +148,7 @@ services:
   driver:
     profiles: ["e2e"]
     build:
-      context: ../qa/e2e
+      context: ./e2e
     depends_on:
       gateway:
         condition: service_healthy

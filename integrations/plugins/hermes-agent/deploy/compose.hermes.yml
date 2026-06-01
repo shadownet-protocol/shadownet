@@ -27,7 +27,7 @@ services:
   shadownet-mock:
     profiles: ["e2e", "demo"]
     build:
-      context: ../../../qa/shadownet-mock
+      context: ../../../harness/shadownet-mock
     networks: ["harness"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
@@ -38,7 +38,7 @@ services:
   stub-llm:
     profiles: ["e2e", "demo"]
     build:
-      context: ../../openclaw/qa/stub-llm
+      context: ../../../harness/stub-llm
     networks: ["harness"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/healthz', timeout=2).status==200 else 1)"]
@@ -90,7 +90,7 @@ services:
   driver:
     profiles: ["e2e"]
     build:
-      context: ../qa/e2e
+      context: ./e2e
     depends_on:
       gateway:
         condition: service_started

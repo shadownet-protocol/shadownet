@@ -10,7 +10,7 @@ OPENCLAW_DIR := integrations/plugins/openclaw/deploy
 OPENCLAW_COMPOSE := $(OPENCLAW_DIR)/compose.openclaw.yml
 HERMES_DIR := integrations/plugins/hermes-agent/deploy
 HERMES_COMPOSE := $(HERMES_DIR)/compose.hermes.yml
-MOCK_DIR := integrations/qa/shadownet-mock
+MOCK_DIR := integrations/harness/shadownet-mock
 
 .PHONY: openclaw-unit
 openclaw-unit: ## Lint + build + test the OpenClaw plugin in a Node container (no host installs).
