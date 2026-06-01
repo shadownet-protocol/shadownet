@@ -124,5 +124,20 @@ Once the reply arrives (new session from inbox event), summarise:
 - **Check grants** if the contact has restricted access.
   `contact_detail(name=...)` shows the grants. A denied grant means
   `send` will return a `rejected` status with a `policy` error.
+- **`creds_required` means the recipient doesn't trust you yet — it does NOT
+  mean you must mint credentials.** If `send` returns
+  `{status: "rejected", error: "creds_required"}`, the recipient classified you
+  as a stranger who presented no accepted affiliation credential. The remedy
+  depends on the network:
+  - **Contact-based (no issuer):** most deployments have no credential issuer.
+    Tell the user the recipient needs to **add them as a contact** (or grant
+    `messaging`) on the recipient's side; the same `send` then goes through.
+    Example: "mahdi@sh4dow.org hasn't added you yet — ask them to add you as a
+    Shadownet contact, then I can deliver this."
+  - **Credential-based:** only if the network actually runs an issuer should you
+    suggest attaching/minting an `org_affiliation` credential.
+  Do NOT default to a "re-mint your affiliation credentials" flow — in a
+  no-issuer deployment there is nothing to mint and that advice is a dead end.
+  When unsure which applies, propose the contact-based remedy first.
 - **Prefer event-driven delivery.** Don't poll `inbox` in a loop —
   end the session and let `inbox_wait` deliver the reply.
