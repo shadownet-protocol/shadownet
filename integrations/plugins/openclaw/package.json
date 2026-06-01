@@ -42,17 +42,16 @@
     "extensions": [
       "./dist/index.js"
     ],
-    "channelPlugin": {
-      "specifier": "./dist/channel-plugin-api.js",
-      "exportName": "shadownetPlugin"
+    "channel": {
+      "id": "shadownet",
+      "label": "Shadownet",
+      "selectionLabel": "Shadownet (A2A)",
+      "detailLabel": "Shadownet protocol",
+      "blurb": "Identity-anchored agent-to-agent messaging via the Shadownet protocol.",
+      "order": 90
     },
-    "runtime": {
-      "specifier": "./dist/runtime-setter-api.js",
-      "exportName": "setShadownetRuntime"
-    },
-    "setupEntry": "./dist/setup-entry.js",
     "compat": {
-      "pluginApi": "^1"
+      "pluginApi": ">=2026.5.0"
     },
     "build": {
       "openclawVersion": "*"

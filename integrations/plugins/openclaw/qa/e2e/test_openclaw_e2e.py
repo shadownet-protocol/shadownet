@@ -56,10 +56,10 @@ def test_valid_inbound_triggers_social_inbox() -> None:
     calls: list[dict] = []
     while time.time() < deadline:
         calls = _calls()
-        if any(c["tool"] == "social_inbox" for c in calls):
+        if any(c["name"] == "social_inbox" for c in calls):
             break
         time.sleep(0.3)
-    assert any(c["tool"] == "social_inbox" for c in calls), f"social_inbox not called; calls={calls}"
+    assert any(c["name"] == "social_inbox" for c in calls), f"social_inbox not called; calls={calls}"
 
 
 def test_bad_signature_rejected() -> None:
