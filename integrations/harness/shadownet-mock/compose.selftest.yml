@@ -1,0 +1,22 @@
+# Standalone self-test of the shared mock, independent of any host.
+# Run: docker compose -f compose.selftest.yml up --build --abort-on-container-exit --exit-code-from selftest
+name: shadownet-mock-selftest
+
+services:
+  mock:
+    build:
+      context: .
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  selftest:
+    build:
+      context: ./selftest
+    depends_on:
+      mock:
+        condition: service_healthy
+    environment:
+      MOCK_BASE: http://mock:8000

@@ -225,12 +225,12 @@ clawhub package tag shadownet latest 0.X.Y
 ### Smoke-testing post-publish
 
 The Docker e2e harness validates the published artifact end-to-end without
-needing OpenClaw on the developer's machine. Once the OpenClaw container
-in `integrations/plugins/openclaw/deploy/compose.openclaw-test.yml` is wired
-against a known-good image (currently a placeholder pending verification):
+needing OpenClaw on the developer's machine. The OpenClaw container in
+`integrations/plugins/openclaw/deploy/compose.openclaw.yml` runs the
+digest-pinned `ghcr.io/openclaw/openclaw` image against the shared mock Sidecar:
 
 ```sh
-make test-openclaw-e2e                   # brings stack up, runs pytest, tears down
+make openclaw-e2e                        # brings stack up, runs pytest, tears down
 ```
 
 ## Versioning

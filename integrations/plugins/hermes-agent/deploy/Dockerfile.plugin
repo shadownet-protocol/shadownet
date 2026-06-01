@@ -1,0 +1,19 @@
+# Hermes gateway with the local shadownet plugin + python-sdk pre-installed.
+#
+# We PULL the official image (digest-pinned) and add one thin layer: our
+# working-tree SDK + plugin installed editable into the image venv. We never
+# build Hermes from source. Build context is the repo root (so both trees are
+# reachable); the worktree has no node_modules/.venv so the context is small.
+FROM nousresearch/hermes-agent@sha256:b6e41c155d6bfce5ad83c5d0fec670086db8a43250e4511c9474134be5482d33
+
+# Preserve the repo-relative layout so the plugin pyproject's
+# `[tool.uv.sources] shadownet = { path = "../../../python-sdk" }` resolves to
+# the editable working-tree SDK (uv pip honors that table). The plugin pulls
+# mcp + httpx + pydantic; uv ships in the image; venv is /opt/hermes/.venv.
+WORKDIR /work
+COPY python-sdk /work/python-sdk
+COPY integrations/plugins/hermes-agent /work/integrations/plugins/hermes-agent
+
+RUN uv pip install --python /opt/hermes/.venv -e /work/python-sdk \
+ && uv pip install --python /opt/hermes/.venv -e /work/integrations/plugins/hermes-agent \
+ && /opt/hermes/.venv/bin/python -c "import shadownet, shadownet_hermes_plugin; print('shadownet + plugin importable')"

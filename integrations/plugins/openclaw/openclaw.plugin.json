@@ -1,21 +1,47 @@
 {
   "id": "shadownet",
+  "name": "Shadownet",
+  "description": "Identity-anchored agent-to-agent messaging via the Shadownet protocol.",
+  "channels": ["shadownet"],
+  "channelConfigs": {
+    "shadownet": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["endpoint", "token", "secret"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Per-tenant MCP endpoint (e.g. https://<your-sidecar>/u/<your-shadowname>/mcp)."
+          },
+          "token": {
+            "type": "string",
+            "minLength": 16,
+            "writeOnly": true,
+            "description": "Bearer token for the MCP endpoint."
+          },
+          "secret": {
+            "type": "string",
+            "minLength": 32,
+            "writeOnly": true,
+            "description": "Shared secret for HMAC verification of inbound webhook deliveries."
+          },
+          "webhookPath": {
+            "type": "string",
+            "description": "Gateway path the Sidecar posts inbound events to (default /shadownet/inbox)."
+          },
+          "dmPolicy": { "enum": ["allowlist", "open"] },
+          "allowedShadownames": { "type": "array", "items": { "type": "string" } },
+          "rateLimitPerMinute": { "type": "integer", "minimum": 1, "maximum": 1000 }
+        }
+      }
+    }
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["endpoint", "token"],
-    "properties": {
-      "endpoint": {
-        "type": "string",
-        "format": "uri",
-        "description": "Per-tenant MCP endpoint (e.g. https://<your-sidecar>/u/<your-shadowname>/mcp). RFC-0008-compliant Sidecars serve a pre-filled snippet at https://<your-sidecar>/connect/openclaw."
-      },
-      "token": {
-        "type": "string",
-        "minLength": 16,
-        "writeOnly": true,
-        "description": "Bearer token for the MCP endpoint. Mint on your sidecar's connect page."
-      }
-    }
+    "properties": {}
   }
 }

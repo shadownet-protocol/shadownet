@@ -1,0 +1,175 @@
+# Containerized dev + integration harness for the Shadownet OpenClaw plugin.
+#
+# Everything runs in Docker — nothing is installed on the host. Profiles:
+#
+#   unit   Node toolchain (pnpm lint/build/test). node_modules + dist live in
+#          named volumes so the host filesystem stays clean. Needs egress
+#          (pnpm install) — runs on the `egress` network.
+#
+#   e2e    Real ghcr.io/openclaw/openclaw gateway (digest-pinned) + the mock
+#          Sidecar + the stub LLM on an internal, ZERO-EGRESS network, driven by
+#          a pytest container. The untrusted host image runs with dropped
+#          capabilities, no new privileges, no Docker socket, and cannot reach
+#          the internet, so a contaminated dep cannot phone home or pull a
+#          second stage. The plugin is seeded as files only — the host image is
+#          never rebuilt.
+#
+#   demo   Same stack via the compose.openclaw.demo.yml overlay, with the
+#          gateway control UI published to the host.
+#
+# Driven via the root Makefile (`make openclaw-unit|openclaw-e2e|openclaw-demo`)
+# so callers never type long docker commands.
+
+name: shadownet-openclaw
+
+x-toolchain: &toolchain
+  image: shadownet-openclaw-toolchain:local
+  build:
+    context: .
+    dockerfile: Dockerfile.toolchain
+
+services:
+  unit:
+    <<: *toolchain
+    profiles: ["unit"]
+    working_dir: /app
+    networks: ["egress"]
+    volumes:
+      - ..:/app
+      - openclaw-node-modules:/app/node_modules
+      - openclaw-dist:/app/dist
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        pnpm install --frozen-lockfile
+        test ! -e node_modules/openclaw || { echo "ERROR: openclaw peer leaked into node_modules"; exit 1; }
+        pnpm run lint
+        pnpm run test
+
+  # Builds the plugin dist/ and seeds the gateway's config volume (openclaw.json
+  # + the plugin dropped under extensions/shadownet/). Runs once and exits; the
+  # gateway waits for it to complete. Needs egress for `pnpm install`, so it is
+  # NOT on the zero-egress harness network.
+  prep:
+    <<: *toolchain
+    profiles: ["e2e", "demo"]
+    working_dir: /app
+    networks: ["egress"]
+    volumes:
+      - ..:/app
+      - openclaw-node-modules:/app/node_modules
+      - openclaw-dist:/app/dist
+      - openclaw-config:/out
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        pnpm install --frozen-lockfile
+        pnpm run build
+        rm -rf /out/extensions/shadownet
+        mkdir -p /out/extensions/shadownet
+        cp -r dist /out/extensions/shadownet/dist
+        cp openclaw.plugin.json package.json /out/extensions/shadownet/
+        # Ship the plugin's only runtime dep — tsup keeps `dependencies`
+        # external, and the gateway loads dist/ from a bare dir with no
+        # node_modules. A published plugin gets this via `openclaw plugins
+        # install` running npm install; the harness seeds it directly.
+        mkdir -p /out/extensions/shadownet/node_modules
+        # -L dereferences pnpm's symlinks (node_modules/@sinclair/* points into
+        # .pnpm/), copying the real typebox files rather than a broken link.
+        cp -rL node_modules/@sinclair /out/extensions/shadownet/node_modules/
+        cp deploy/openclaw.config.json /out/openclaw.json
+        # Own the data dir as the gateway's node user (uid 1000) and strip
+        # group/other write. OpenClaw BLOCKS plugins loaded from world-writable
+        # (mode 777) dirs, so a+rwX would make the channel silently fail to load.
+        chown -R 1000:1000 /out
+        chmod -R go-w /out
+        echo "seed complete: $(ls -R /out | head -40)"
+
+  stub-llm:
+    profiles: ["e2e", "demo"]
+    build:
+      context: ../../../harness/stub-llm
+    networks: ["harness"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  shadownet-mock:
+    profiles: ["e2e", "demo"]
+    build:
+      # Shared canonical fake Sidecar (integrations/harness/shadownet-mock): serves
+      # the raw JSON-RPC /u/<shadow>/mcp compat + signed webhook the current OpenClaw
+      # plugin uses, alongside the real MCP surface other hosts use.
+      context: ../../../harness/shadownet-mock
+    networks: ["harness"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  gateway:
+    profiles: ["e2e", "demo"]
+    image: ghcr.io/openclaw/openclaw@sha256:dbad4655fb87aa8d8662323daf9f46f4721504324e22c9f99d84849e609f5b2c
+    depends_on:
+      prep:
+        condition: service_completed_successfully
+      stub-llm:
+        condition: service_healthy
+      shadownet-mock:
+        condition: service_healthy
+    environment:
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_SKIP_ONBOARDING: "1"
+    volumes:
+      - openclaw-config:/home/node/.openclaw
+    networks: ["harness"]
+    # Isolation: the untrusted host image gets no extra capabilities, cannot
+    # escalate, has no Docker socket, and is on a zero-egress network.
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "node", "-e", "const n=require('net'),s=n.connect(18789,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  driver:
+    profiles: ["e2e"]
+    build:
+      context: ./e2e
+    depends_on:
+      gateway:
+        condition: service_healthy
+      shadownet-mock:
+        condition: service_healthy
+    environment:
+      GATEWAY_URL: http://gateway:18789
+      MOCK_URL: http://shadownet-mock:8000
+      WEBHOOK_PATH: /shadownet/inbox
+      ACCOUNT_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    networks: ["harness"]
+
+networks:
+  # Zero-egress: services can reach each other but not the internet.
+  harness:
+    internal: true
+  # Build/seed only — needs the internet for pnpm install.
+  egress:
+    driver: bridge
+
+volumes:
+  openclaw-node-modules:
+  openclaw-dist:
+  openclaw-config:

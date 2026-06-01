@@ -156,10 +156,41 @@ rather than working around them in a release:
 Both are listed in [`.github/CODEOWNERS`](./.github/CODEOWNERS) as default
 reviewers.
 
+## Container & harness security (hard rules)
+
+The integration harness runs **untrusted third-party host images** (OpenClaw,
+Hermes Agent) and their large dependency trees, which are targets for
+supply-chain contamination. Containers that run them MUST be strictly confined.
+These are non-negotiable:
+
+- **Never grant added privileges.** No `cap_add`, no `privileged: true`, no
+  admin/root capabilities, no `--security-opt` that *loosens* isolation. The
+  only acceptable direction is *more* confinement: `cap_drop: [ALL]` +
+  `security_opt: [no-new-privileges:true]`.
+- **Never mount the Docker socket** (`/var/run/docker.sock`) or any other
+  host/system path or non-local volume into a container. Mounts are limited to
+  the local project source and **named Docker volumes**. (This also rules out
+  OpenClaw's `OPENCLAW_SANDBOX=1`, which works by mounting the socket.)
+- **Zero egress for runtime.** Services that run an untrusted host image sit on
+  an `internal: true` Docker network so a contaminated dep cannot phone home or
+  fetch a second stage. Only the build/seed step (which needs `pnpm`/`pip`) may
+  use an egress network, and it never runs the untrusted image.
+- **Pin external images by digest** (`...@sha256:...`), never a floating tag,
+  in anything CI runs. Disable runtime installers in the image
+  (`HERMES_DISABLE_LAZY_INSTALLS=1`; never the OpenClaw install build-args).
+- **Stub credentials only.** The harness must be safe to run with zero real
+  secrets — a stub LLM + fake tokens. Never feed a real model/API key to an
+  untrusted host image.
+- **Nothing on the host.** All build/test for these subprojects runs inside
+  Docker with `node_modules`/`dist`/state in named volumes; never install the
+  host agents' dependency trees on a dev machine or the default CI lane.
+
 ## Things we do not do
 
 - No mocks or placeholder implementations in shipped code anywhere across
   the four subtrees.
+- No `cap_add`, `privileged`, loosened `security_opt`, or Docker-socket /
+  host-path mounts on any container — see "Container & harness security" above.
 - No backwards-compatibility shims while the protocol is at v0.2.
 - No emojis in code, comments, commits, or fixture file names.
 - No banner comments or multi-paragraph docstrings. Per-language guides

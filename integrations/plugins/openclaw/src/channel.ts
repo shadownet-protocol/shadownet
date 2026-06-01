@@ -11,6 +11,7 @@ import { waitUntilAbort } from "openclaw/plugin-sdk/channel-lifecycle";
 
 import {
   ShadownetChannelConfigSchema,
+  listAccountIds,
   resolveAccount,
 } from "./account";
 import { sendShadownetText } from "./messaging";
@@ -94,6 +95,22 @@ type ShadownetChannelPlugin = ReturnType<
 export const shadownetPlugin = createChatChannelPlugin<ResolvedShadownetAccount>({
   base: {
     ...(base as ShadownetChannelPlugin),
+    // The current SDK validates a channel registration by checking
+    // `plugin.config.resolveAccount` + `plugin.config.listAccountIds` are
+    // functions (src/plugins/channel-validation.ts). They belong on the config
+    // adapter, not setup. inspectAccount is optional but cheap.
+    config: {
+      resolveAccount,
+      listAccountIds,
+      inspectAccount: (cfg: unknown, accountId?: string | null) => {
+        const account = resolveAccount(cfg, accountId);
+        return {
+          enabled: account.enabled && Boolean(account.endpoint) && Boolean(account.token),
+          configured: Boolean(account.endpoint && account.token && account.secret),
+          tokenStatus: account.token ? "set" : "missing",
+        };
+      },
+    },
     gateway: {
       startAccount: async (ctx: GatewayCtx) => {
         const account = resolveAccount(ctx.cfg, ctx.accountId);

@@ -1,0 +1,17 @@
+# Demo overlay for compose.openclaw.yml.
+#
+# Same stack as the `e2e` profile, but the gateway is reachable from the host
+# (control UI / webhook port published on 127.0.0.1) and the network allows
+# egress so you can optionally point the gateway at a real model by editing
+# openclaw.config.json. Defaults remain the stub LLM + mock Sidecar.
+#
+# Use: make openclaw-demo   (then open http://127.0.0.1:18789)
+
+services:
+  gateway:
+    ports:
+      - "127.0.0.1:18789:18789"
+
+networks:
+  harness:
+    internal: false

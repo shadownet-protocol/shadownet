@@ -19,7 +19,7 @@ One install gives you **two surfaces**:
 └── openclaw.plugin.json             # configSchema (endpoint + token + secret + …)
 ```
 
-The plugin is real TypeScript, type-checked against the published `openclaw` npm types, vitest-tested with mocked `fetch` and a hand-rolled HMAC-validating webhook handler. End-to-end testing against a live OpenClaw instance is opt-in via the Docker harness at `integrations/plugins/openclaw/deploy/compose.openclaw-test.yml` — see "Local development" below.
+The plugin is real TypeScript, type-checked against the published `openclaw` npm types, vitest-tested with mocked `fetch` and a hand-rolled HMAC-validating webhook handler. End-to-end testing against a real OpenClaw gateway is opt-in via the Docker harness at `integrations/plugins/openclaw/deploy/compose.openclaw.yml` (run with `make openclaw-e2e`) — see "Local development" below.
 
 ## Tools registered
 
@@ -90,18 +90,21 @@ pnpm test        # vitest — 30 cases (client, tools, account, messaging, webho
 pnpm build       # tsup multi-entry → dist/{index,channel-plugin-api,runtime-setter-api,secret-contract-api,setup-entry}.js
 ```
 
-End-to-end harness against a real OpenClaw instance is opt-in:
+The containerized harness runs entirely in Docker on a zero-egress network, so
+the host never installs OpenClaw's heavy dependency tree:
 
 ```sh
-make test-openclaw-e2e        # from repo root
+make openclaw-unit   # lint + build + vitest in a Node container (from repo root)
+make openclaw-e2e    # boot the real gateway + shared mock + stub LLM, run the driver
+make openclaw-demo   # pokable gateway wired to the mock (control UI on :18789)
 ```
 
-The harness brings up `integrations/plugins/openclaw/deploy/compose.openclaw-test.yml`:
+`make openclaw-e2e` brings up `integrations/plugins/openclaw/deploy/compose.openclaw.yml`:
 
-- **shadownet-mock** — fully implemented FastAPI service that signs webhooks the way the real cloud does and records `tools/call` invocations.
-- **openclaw-test** — currently a placeholder; replace with a real OpenClaw image to complete the round-trip.
-
-Default `pytest -x` skips the harness entirely — the test module guards on `SHADOWNET_OPENCLAW_E2E=1` set by the Makefile.
+- **shadownet-mock** — the shared canonical fake Sidecar (`integrations/harness/shadownet-mock`): signs webhooks the way the real cloud does and records every `tools/call` in an assertable trace.
+- **stub-llm** — the shared OpenAI-compatible stub (`integrations/harness/stub-llm`) so the gateway boots with no GPU and no credits.
+- **gateway** — the digest-pinned `ghcr.io/openclaw/openclaw` image, run with dropped capabilities, no-new-privileges, and no Docker socket.
+- **driver** — the pytest e2e driver (`deploy/e2e/test_openclaw_e2e.py`) asserting inbound + outbound against the mock's trace.
 
 ## Versioning
 
