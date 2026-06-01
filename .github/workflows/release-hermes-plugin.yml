@@ -63,7 +63,12 @@ jobs:
         run: uv run pytest tests/ -v
 
       - name: Build distribution
-        run: uv build
+        # Wheel-only: the wheel is built from source so hatchling can resolve
+        # the canonical skills tree at ../../skills (a plain `uv build` builds
+        # the wheel from the sdist, which can't contain files outside the
+        # project, so the skills would be missing). The plugin is pip-installed
+        # from the wheel, so no sdist is needed.
+        run: uv build --wheel
 
       - name: Verify tag matches package version
         run: |
@@ -109,7 +114,6 @@ jobs:
           # `.gitignore` that `uv build` drops into the dist directory.
           files: |
             integrations/plugins/hermes-agent/dist/*.whl
-            integrations/plugins/hermes-agent/dist/*.tar.gz
             integrations/plugins/hermes-agent/dist/*.publish.attestation
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-alpha.') || contains(github.ref_name, '-beta.') }}
