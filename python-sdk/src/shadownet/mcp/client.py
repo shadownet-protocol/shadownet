@@ -23,18 +23,12 @@ from pydantic import BaseModel, ValidationError
 
 from shadownet.errors import ShadownetError
 from shadownet.mcp.tools import (
-    AcceptPlanInput,
-    AcceptPlanOutput,
     AddContactInput,
     AddContactOutput,
-    ConfirmPlanInput,
-    ConfirmPlanOutput,
     ContactDetailInput,
     ContactDetailOutput,
     ContactsInput,
     ContactsOutput,
-    CoordinateInput,
-    CoordinateOutput,
     GrantInput,
     GrantOutput,
     IdentityOutput,
@@ -118,15 +112,6 @@ class ShadownetMCPClient:
 
     async def respond(self, arg: RespondInput) -> RespondOutput:
         return await self._call("respond", arg, RespondOutput)
-
-    async def coordinate(self, arg: CoordinateInput) -> CoordinateOutput:
-        return await self._call("coordinate", arg, CoordinateOutput)
-
-    async def confirm_plan(self, arg: ConfirmPlanInput) -> ConfirmPlanOutput:
-        return await self._call("confirm_plan", arg, ConfirmPlanOutput)
-
-    async def accept_plan(self, arg: AcceptPlanInput) -> AcceptPlanOutput:
-        return await self._call("accept_plan", arg, AcceptPlanOutput)
 
     async def inbox(self, arg: InboxInput | None = None) -> InboxOutput:
         return await self._call("inbox", arg or InboxInput(), InboxOutput)

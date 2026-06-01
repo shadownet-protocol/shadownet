@@ -14,8 +14,7 @@ from shadownet_hermes_plugin._adapter import (
     CONFIRM_PLAN_V1_URI,
     COORDINATE_V1_URI,
     DEFAULT_SIDECAR_BASE_URL,
-    _build_initiator_inject,
-    _build_receiver_prompt,
+    _build_coordination_inject,
     _build_task_update_inject,
     _resolve_config,
     build_adapter_class,
@@ -148,24 +147,25 @@ class TestAdapterConstruction:
 
 
 class TestPromptBuilders:
-    def test_receiver_prompt_carries_correlation_ids(self) -> None:
-        text = _build_receiver_prompt(
+    def test_coordinate_inject_carries_correlation_ids(self) -> None:
+        text = _build_coordination_inject(
             sender="alice@x",
+            sender_name="Alice",
             context_id="ctx-001",
             message_id="msg-001",
+            intent=COORDINATE_V1_URI,
             body_text="grab coffee?",
             body_data={"activity": "coffee", "details": "Friday morning"},
         )
         assert "context_id: ctx-001" in text
         assert "message_id: msg-001" in text
-        assert "activity: coffee" in text
-        assert "details: Friday morning" in text
-        # Call instruction references the next intent in the dance.
-        assert CONFIRM_PLAN_V1_URI in text
+        assert "coffee" in text.lower()
+        assert "Friday morning" in text
 
-    def test_initiator_inject_for_confirm_plan(self) -> None:
-        text = _build_initiator_inject(
+    def test_coordination_inject_for_confirm_plan(self) -> None:
+        text = _build_coordination_inject(
             sender="alice@x",
+            sender_name="Alice",
             context_id="ctx-001",
             message_id="msg-001",
             intent=CONFIRM_PLAN_V1_URI,
@@ -178,12 +178,12 @@ class TestPromptBuilders:
         )
         assert "context_id: ctx-001" in text
         assert "message_id: msg-001" in text
-        assert "Coffee at The Daily Grind on 2026-05-15T10:00:00Z" in text
-        assert "mcp_shadownet_confirm_plan" in text
+        assert "accept_plan_v1" in text
 
-    def test_initiator_inject_for_accept_plan(self) -> None:
-        text = _build_initiator_inject(
+    def test_coordination_inject_for_accept_plan(self) -> None:
+        text = _build_coordination_inject(
             sender="alice@x",
+            sender_name="Alice",
             context_id="ctx-001",
             message_id="msg-001",
             intent=ACCEPT_PLAN_V1_URI,
@@ -206,8 +206,6 @@ class TestOnEventDispatch:
     def _setup(self, monkeypatch: pytest.MonkeyPatch) -> Any:
         adapter = _adapter_with_inline_config(monkeypatch)
 
-        # _on_event calls _fetch_inbox_item, which would go through the live
-        # MCP client. Patch it directly to return a minimal stand-in.
         async def _fake_fetch(_message_id: str) -> Any:
             stub = MagicMock()
             stub.body = MagicMock()
@@ -216,10 +214,16 @@ class TestOnEventDispatch:
             return stub
 
         adapter._fetch_inbox_item = _fake_fetch
+
+        from gateway.config import Platform
+
+        fake_gateway = MagicMock()
+        fake_gateway.adapters = {Platform("telegram"): adapter}
+        adapter._gateway = fake_gateway
         return adapter
 
     async def test_coordinate_v1_self_dispatches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        monkeypatch.setenv("SHADOWNET_NOTIFY_CHAT", "telegram:12345")
         adapter = self._setup(monkeypatch)
         event = {
             "event": "inbox.message",
@@ -238,6 +242,41 @@ class TestOnEventDispatch:
         assert "COORDINATION REQUEST" in msg.text
         assert "context_id: ctx-1" in msg.text
         assert msg.auto_skill == "shadownet-coordinate"
+
+    async def test_free_form_message_surfaces_in_sender_session_with_inbox_skill(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Regression for the real cloud bug: a plain inbound message (no intent,
+        # no SHADOWNET_NOTIFY_CHAT) must SURFACE — reach the agent through the
+        # platform pipeline, in a session bound to the sender, carrying the
+        # context/message ids and the body, with the shadownet-inbox skill
+        # auto-loaded. It must NOT be silently suppressed.
+        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        adapter = self._setup(monkeypatch)
+        event = {
+            "event": "inbox.message",
+            "eventId": "evt-1",
+            "data": {
+                "from": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "messageId": "msg-1",
+                "status": "inbox",
+            },
+        }
+        await adapter._on_event(event)
+
+        assert len(adapter.handled) == 1, "free-form inbound was suppressed, not surfaced"
+        msg = adapter.handled[0]
+        # Proper injected instructions: the inbox skill is auto-loaded on the turn.
+        assert msg.auto_skill == "shadownet-inbox"
+        # Proper context: the agent prompt carries the correlation ids + body.
+        assert "context_id: ctx-1" in msg.text
+        assert "message_id: msg-1" in msg.text
+        assert "alice@sh4dow.org" in msg.text
+        assert "Hi" in msg.text
+        # Proper session: bound to the sender's DM, not a stray/global chat.
+        assert msg.source.chat_id == "alice@sh4dow.org"
+        assert msg.source.user_id == "alice@sh4dow.org"
 
     async def test_confirm_plan_v1_no_notify_target_is_silent(
         self, monkeypatch: pytest.MonkeyPatch

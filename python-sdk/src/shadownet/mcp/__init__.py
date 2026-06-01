@@ -1,6 +1,6 @@
 """MCP control surface — RFC 0002 client-side primitives.
 
-Typed pydantic models for every tool's input / output shape, the three v0.2
+Typed pydantic models for every tool's input / output shape, the v0.2
 intent payload models, ContactProfile, PlanObject, and a thin streamable-HTTP
 MCP client wrapper. Server-side tool registration (``mcp.server.fastmcp``
 decorators) is the Sidecar's concern; shadownet-local owns that surface.
@@ -24,21 +24,15 @@ from shadownet.mcp.notifications import (
     TaskUpdateEvent,
 )
 from shadownet.mcp.tools import (
-    AcceptPlanInput,
-    AcceptPlanOutput,
     AddContactInput,
     AddContactOutput,
     BodySlot,
-    ConfirmPlanInput,
-    ConfirmPlanOutput,
     ContactDetailInput,
     ContactDetailOutput,
     ContactProfile,
     ContactsInput,
     ContactsOutput,
     ContactSummary,
-    CoordinateInput,
-    CoordinateOutput,
     CredentialSummary,
     GrantInput,
     GrantOutput,
@@ -60,14 +54,10 @@ from shadownet.mcp.tools import (
 
 __all__ = [
     "NOTIFICATION_NAMESPACE",
-    "AcceptPlanInput",
-    "AcceptPlanOutput",
     "AcceptPlanV1Data",
     "AddContactInput",
     "AddContactOutput",
     "BodySlot",
-    "ConfirmPlanInput",
-    "ConfirmPlanOutput",
     "ConfirmPlanV1Data",
     "ContactDetailInput",
     "ContactDetailOutput",
@@ -75,8 +65,6 @@ __all__ = [
     "ContactSummary",
     "ContactsInput",
     "ContactsOutput",
-    "CoordinateInput",
-    "CoordinateOutput",
     "CoordinateV1Data",
     "CredentialSummary",
     "GeoCoordinate",

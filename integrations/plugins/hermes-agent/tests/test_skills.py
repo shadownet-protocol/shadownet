@@ -8,9 +8,18 @@ import pytest
 from shadownet_hermes_plugin import _skills
 
 
-def test_register_skills_calls_ctx_register_skill_per_skill() -> None:
+def test_register_skills_calls_ctx_register_skill_per_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """register_skills(ctx) calls ctx.register_skill once per bundled SKILL.md."""
     from tests.conftest import FakeCtx
+
+    skill_root = tmp_path / "skills"
+    for name in _skills.SKILL_NAMES:
+        d = skill_root / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"# {name}")
+    monkeypatch.setattr(_skills, "skill_root_candidates", lambda: (skill_root,))
 
     ctx = FakeCtx()
     count = _skills.register_skills(ctx)

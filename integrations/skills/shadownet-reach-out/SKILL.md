@@ -1,7 +1,7 @@
 ---
 name: shadownet-reach-out
 description: Contact another Shadow on the Shadownet network via A2A. Use when the user wants to "message", "reach out to", "check with", "ping", or "ask" another agent or Shadowname.
-version: 0.5.0
+version: 0.6.0
 allowed-tools:
   - mcp__shadownet__resolve
   - mcp__shadownet__add_contact
@@ -50,7 +50,7 @@ Before doing anything, tell the user in plain language:
 - That you will be communicating **directly with their agent** over A2A
 
 Example:
-> "I'm about to reach out directly to **alice@sh4dow.org** on your behalf
+> "I'm about to reach out directly to **`<contact>`** on your behalf
 > via the Shadownet network. I'll send a message asking about availability.
 > I'll report back once they respond."
 
@@ -118,10 +118,26 @@ Once the reply arrives (new session from inbox event), summarise:
 - **Do not skip the acknowledgement.** Never fire `send` without first
   telling the user you're doing so.
 - **`body` is an object with `text` / `intent` / `data`.** For a free-form
-  message just include `text`. Typed flows (coordinate / confirm_plan /
-  accept_plan) use the dedicated tools — do not hand-roll an `intent` URI.
+  message just include `text`. Typed coordination flows use `send`/`respond`
+  with intent URIs (e.g. `urn:shadownet:intent:coordinate_v1`). See the
+  `shadownet-coordinate` skill for the full protocol.
 - **Check grants** if the contact has restricted access.
   `contact_detail(name=...)` shows the grants. A denied grant means
   `send` will return a `rejected` status with a `policy` error.
+- **`creds_required` means the recipient doesn't trust you yet — it does NOT
+  mean you must mint credentials.** If `send` returns
+  `{status: "rejected", error: "creds_required"}`, the recipient classified you
+  as a stranger who presented no accepted affiliation credential. The remedy
+  depends on the network:
+  - **Contact-based (no issuer):** most deployments have no credential issuer.
+    Tell the user the recipient needs to **add them as a contact** (or grant
+    `messaging`) on the recipient's side; the same `send` then goes through.
+    Example: "mahdi@sh4dow.org hasn't added you yet — ask them to add you as a
+    Shadownet contact, then I can deliver this."
+  - **Credential-based:** only if the network actually runs an issuer should you
+    suggest attaching/minting an `org_affiliation` credential.
+  Do NOT default to a "re-mint your affiliation credentials" flow — in a
+  no-issuer deployment there is nothing to mint and that advice is a dead end.
+  When unsure which applies, propose the contact-based remedy first.
 - **Prefer event-driven delivery.** Don't poll `inbox` in a loop —
   end the session and let `inbox_wait` deliver the reply.

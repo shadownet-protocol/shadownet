@@ -28,8 +28,9 @@ Call `identity` with no arguments. The response carries the Shadow's
 Shadowname, signing public key, and any `org_affiliation` credentials it
 holds (issuer, org, expiresAt).
 
-> Connected. Your Shadow is **alice@sh4dow.org** (pk `z6Mk…`),
-> with 1 active affiliation (`tiergarten-club.example`).
+> Connected. Your Shadow is **`<shadowname>`** (pk `z6Mk…`),
+> with 1 active affiliation (`<issuer>`).
+
 
 If the call fails with a 401 / `invalid_token`, the user's bearer token is
 wrong or expired. Tell them to re-mint via the `shadow://connect?...` URI

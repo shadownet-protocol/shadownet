@@ -12,11 +12,12 @@ using ``shadownet.mcp.ShadownetMCPClient``), runs an inbox loop in an
 ``asyncio.Task``, and dispatches each inbound event to
 ``self.handle_message(MessageEvent)``.
 
-The v0.1 ``data_type`` event taxonomy (``coordination_request``,
-``response``, ``confirmation``, ``confirmed``) is gone — v0.2 dispatch is
-driven by RFC 0002 §5 intent URIs (``urn:shadownet:intent:coordinate_v1``,
-``…:confirm_plan_v1``, ``…:accept_plan_v1``). v0.1's ``intentId``
-correlation handle is replaced by A2A's ``contextId`` (RFC 0001 §8.2).
+Coordination intents (coordinate_v1, propose_plan_v1, confirm_plan_v1,
+accept_plan_v1) are application-level flows transported via the sidecar's
+generic send/respond/inbox tools. The sidecar is content-agnostic; all
+intent interpretation and flow orchestration lives here in the plugin.
+All coordination events are injected into the user's chat session
+(human-in-the-loop) — the agent never acts autonomously on coordination.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any
 
 from shadownet.mcp import (
+    BodySlot,
     InboxInput,
     InboxWaitInput,
     SendInput,
@@ -39,8 +41,8 @@ from shadownet.mcp.intents import (
     ACCEPT_PLAN_V1_URI,
     CONFIRM_PLAN_V1_URI,
     COORDINATE_V1_URI,
+    PROPOSE_PLAN_V1_URI,
 )
-from shadownet.mcp.tools import BodySlot
 from shadownet.onboarding import parse_connect_uri
 
 if TYPE_CHECKING:
@@ -211,19 +213,9 @@ def build_adapter_class() -> type:
         async def _on_event(self, event: dict[str, Any]) -> None:
             """Route inbound Shadownet events.
 
-            Event taxonomy per RFC 0002 §7:
-
-            - ``inbox.message`` with a typed ``intent`` → branch on the
-              intent URI: ``coordinate_v1`` dispatches into a synthetic
-              ``shadownet`` session (the receiver's autonomous-negotiation
-              skill); ``confirm_plan_v1`` and ``accept_plan_v1`` inject
-              into the user-facing chat session via
-              ``SHADOWNET_NOTIFY_CHAT``.
-            - ``inbox.message`` without an intent (or unrecognized) → if
-              ``status == inbox`` and a notify target is configured, inject
-              as a free-form message.
-            - ``task.update`` → inject the task-state transition.
-            - Other event types → suppress.
+            All coordination intents are injected into the user's chat
+            session (human-in-the-loop). The sidecar is content-agnostic;
+            intent interpretation happens entirely here.
             """
             notify_target = os.environ.get("SHADOWNET_NOTIFY_CHAT", "")
             event_name = event.get("event")
@@ -242,31 +234,27 @@ def build_adapter_class() -> type:
                 return
 
             sender = data.get("from") or ""
+            sender_name = data.get("fromName") or sender
             context_id = data.get("contextId") or ""
             message_id = data.get("messageId") or ""
             intent = data.get("intent") or ""
 
-            # The body isn't carried on the inbox.message event payload per
-            # RFC 0002 §7 — fetch it via the inbox tool when we need it.
             inbox_item = await self._fetch_inbox_item(message_id)
             body = inbox_item.body if inbox_item is not None else None
             body_text = (body.text if body is not None else "") or ""
             body_data = (body.data if body is not None else None) or {}
 
-            if intent == COORDINATE_V1_URI:
-                await self._dispatch_coordinate(
-                    sender=sender,
-                    context_id=context_id,
-                    message_id=message_id,
-                    body_text=body_text,
-                    body_data=body_data,
-                    event_id=event_id,
-                )
-                return
+            coordination_intents = {
+                COORDINATE_V1_URI,
+                PROPOSE_PLAN_V1_URI,
+                CONFIRM_PLAN_V1_URI,
+                ACCEPT_PLAN_V1_URI,
+            }
 
-            if intent in (CONFIRM_PLAN_V1_URI, ACCEPT_PLAN_V1_URI):
-                await self._inject_plan_event(
+            if intent in coordination_intents:
+                await self._inject_coordination_event(
                     sender=sender,
+                    sender_name=sender_name,
                     context_id=context_id,
                     message_id=message_id,
                     intent=intent,
@@ -276,20 +264,29 @@ def build_adapter_class() -> type:
                 )
                 return
 
-            # Free-form inbound (no intent, or one we don't model). If the
-            # operator pointed us at a user-facing session, inject as a
-            # plain message so the user sees it.
             if notify_target and body_text:
                 await self._inject_free_form(
-                    sender=sender,
+                    sender=sender_name,
                     context_id=context_id,
                     message_id=message_id,
                     body_text=body_text,
                     notify_target=notify_target,
                 )
+            elif body_text:
+                # No SHADOWNET_NOTIFY_CHAT bridge: surface the message as a
+                # Shadownet chat (a DM from the sender) so the user always sees
+                # it. Suppressing here is what dropped plain inbound A2A messages.
+                await self._surface_inbound_message(
+                    sender=sender,
+                    sender_name=sender_name,
+                    context_id=context_id,
+                    message_id=message_id,
+                    body_text=body_text,
+                    event_id=event_id,
+                )
             else:
                 _log.debug(
-                    "Suppressed free-form inbox.message from %s (no notify target)",
+                    "inbox.message from %s carried no body text; nothing to surface",
                     sender,
                 )
 
@@ -306,47 +303,11 @@ def build_adapter_class() -> type:
                     return item
             return None
 
-        async def _dispatch_coordinate(
+        async def _inject_coordination_event(
             self,
             *,
             sender: str,
-            context_id: str,
-            message_id: str,
-            body_text: str,
-            body_data: dict[str, Any],
-            event_id: str,
-        ) -> None:
-            """Open a synthetic shadownet session for the receiver-branch agent."""
-            text = _build_receiver_prompt(
-                sender=sender,
-                context_id=context_id,
-                message_id=message_id,
-                body_text=body_text,
-                body_data=body_data,
-            )
-            source = self.build_source(
-                chat_id=sender,
-                chat_type="dm",
-                user_id=sender,
-                user_name=sender,
-            )
-            try:
-                msg_event = message_event_cls(
-                    text=text,
-                    source=source,
-                    raw_message={"event_id": event_id, "intent": COORDINATE_V1_URI},
-                    # On a new session Hermes auto-loads this skill so the
-                    # agent has the receiver-branch protocol context.
-                    auto_skill="shadownet-coordinate",
-                )
-                await self.handle_message(msg_event)
-            except Exception:
-                _log.exception("failed to dispatch coordinate_v1 %s", event_id)
-
-        async def _inject_plan_event(
-            self,
-            *,
-            sender: str,
+            sender_name: str,
             context_id: str,
             message_id: str,
             intent: str,
@@ -354,7 +315,7 @@ def build_adapter_class() -> type:
             body_data: dict[str, Any],
             notify_target: str,
         ) -> None:
-            """Inject a confirm_plan_v1 or accept_plan_v1 event into the user session."""
+            """Inject any coordination intent into the user's chat session."""
             if not notify_target:
                 _log.warning(
                     "Got %s from %s but SHADOWNET_NOTIFY_CHAT not set — cannot notify user",
@@ -378,8 +339,9 @@ def build_adapter_class() -> type:
                 return
             target_platform, chat_id, adapter = target
 
-            inject_text = _build_initiator_inject(
+            inject_text = _build_coordination_inject(
                 sender=sender,
+                sender_name=sender_name,
                 context_id=context_id,
                 message_id=message_id,
                 intent=intent,
@@ -470,6 +432,58 @@ def build_adapter_class() -> type:
                     target_platform.value,
                     chat_id,
                 )
+
+        async def _surface_inbound_message(
+            self,
+            *,
+            sender: str,
+            sender_name: str,
+            context_id: str,
+            message_id: str,
+            body_text: str,
+            event_id: str,
+        ) -> None:
+            """Surface a plain inbound A2A message as a Shadownet chat.
+
+            With no SHADOWNET_NOTIFY_CHAT bridge, route the message through the
+            platform-adapter pipeline (``handle_message``) so Hermes opens a
+            session bound to the sender — the channel the plugin advertises — and
+            auto-loads the ``shadownet-inbox`` skill so the agent has the
+            context-id and the respond instructions. Without this a plain inbound
+            message is silently dropped and never reaches the user.
+            """
+            source = self.build_source(
+                chat_id=sender,
+                chat_type="dm",
+                user_id=sender,
+                user_name=sender_name or sender,
+            )
+            text = (
+                f"[SHADOWNET MESSAGE from {sender}]\n"
+                f"context_id: {context_id}\n"
+                f"message_id: {message_id}\n\n"
+                f"{body_text}"
+            )
+            try:
+                synth_event = message_event_cls(
+                    text=text,
+                    source=source,
+                    raw_message={
+                        "event_id": event_id,
+                        "context_id": context_id,
+                        "message_id": message_id,
+                    },
+                    auto_skill="shadownet-inbox",
+                )
+                await self.handle_message(synth_event)
+                _log.info(
+                    "shadownet: surfaced inbox.message from %s (context=%s, message=%s) as a shadownet chat",
+                    sender,
+                    context_id,
+                    message_id,
+                )
+            except Exception:
+                _log.exception("failed to surface inbox.message from %s", sender)
 
         async def _inject_task_update(
             self, data: dict[str, Any], event_id: str, notify_target: str
@@ -597,89 +611,153 @@ def build_adapter_class() -> type:
     return ShadownetAdapter
 
 
-def _build_receiver_prompt(
+def _build_coordination_inject(
     *,
     sender: str,
-    context_id: str,
-    message_id: str,
-    body_text: str,
-    body_data: dict[str, Any],
-) -> str:
-    """Build the prompt the receiver-branch agent sees for a coordinate_v1 inbound.
-
-    Emits ``context_id`` and ``message_id`` as separate plain-text lines so
-    Hermes' built-in ``session_search`` tool can recall the thread on
-    later turns even after the live context window has rolled.
-    """
-    activity = body_data.get("activity") if isinstance(body_data, dict) else None
-    details = body_data.get("details") if isinstance(body_data, dict) else None
-    activity_line = f"activity: {activity}\n" if activity else ""
-    details_line = f"details: {details}\n" if details else ""
-    return (
-        f"[SHADOWNET COORDINATION REQUEST from {sender}]\n"
-        f"context_id: {context_id}\n"
-        f"message_id: {message_id}\n"
-        f"{activity_line}"
-        f"{details_line}"
-        f"Request body: {body_text}\n\n"
-        f"INSTRUCTIONS: You are the RECEIVER in a Shadownet coordination.\n"
-        f"1. Read the request above.\n"
-        f"2. Decide on a concrete plan autonomously (pick a specific time, "
-        f"place, and any relevant details based on your user's preferences).\n"
-        f"3. Call mcp_shadownet_respond with body containing intent="
-        f"urn:shadownet:intent:confirm_plan_v1 and a typed PlanObject in data:\n"
-        f'   contextId="{context_id}"\n'
-        f'   body={{"text":"<one-line summary>","intent":"'
-        f'{CONFIRM_PLAN_V1_URI}","data":<PlanObject>}}\n'
-        f"4. Say NOTHING to the user. Your only output is the tool call.\n"
-        f"5. End immediately after the tool call."
-    )
-
-
-def _build_initiator_inject(
-    *,
-    sender: str,
+    sender_name: str,
     context_id: str,
     message_id: str,
     intent: str,
     body_text: str,
     body_data: dict[str, Any],
 ) -> str:
-    """Build the text injected into the user's chat session for plan events."""
+    """Build inject text for any coordination intent.
+
+    Each intent has unambiguous semantics — no flowRole needed:
+      coordinate_v1   → "someone wants to coordinate, ask your user"
+      propose_plan_v1 → "someone proposed a plan, ask your user to confirm"
+      confirm_plan_v1 → "someone confirmed your proposal, send accept"
+      accept_plan_v1  → "fully done, tell the user"
+    """
+    if intent == COORDINATE_V1_URI:
+        activity = body_data.get("activity", "") if isinstance(body_data, dict) else ""
+        details = body_data.get("details", "") if isinstance(body_data, dict) else ""
+        details_line = f"\nDetails: {details}" if details else ""
+        return (
+            f"[SHADOWNET COORDINATION REQUEST from {sender_name}]\n"
+            f"context_id: {context_id}\n"
+            f"message_id: {message_id}\n"
+            f"Activity: {activity}{details_line}\n"
+            f"Message: {body_text}\n\n"
+            f'INSTRUCTIONS: {sender_name} wants to coordinate "{activity}". '
+            f"You MUST propose a concrete plan IMMEDIATELY and AUTONOMOUSLY — "
+            f"do NOT ask your user for input.\n\n"
+            f"1. Check your user's calendar/availability if you have access. "
+            f"If not, assume they are free.\n"
+            f"2. Determine your user's city from memory/profile.\n"
+            f"3. Search the web for a real, specific venue that fits the "
+            f"activity (e.g. a popular cafe for coffee, a well-reviewed "
+            f'restaurant for dinner). Never use "TBD" or placeholders.\n'
+            f'4. Interpret the timing from the details (e.g. "Sunday morning" '
+            f"→ next Sunday 10:00 AM). Pick a concrete ISO datetime.\n\n"
+            f"Then call mcp_shadownet_respond with:\n"
+            f'  contextId="{context_id}"\n'
+            f"  body={{\n"
+            f'    "text": "<activity> at <venue> on <date/time>",\n'
+            f'    "intent": "urn:shadownet:intent:propose_plan_v1",\n'
+            f'    "data": {{\n'
+            f'      "activity": "{activity}",\n'
+            f'      "when": "<ISO datetime you chose>",\n'
+            f'      "where": {{"name": "<real venue>", "city": "<city>"}},\n'
+            f'      "participants": []\n'
+            f"    }}\n"
+            f"  }}\n\n"
+            f"After calling respond, say only: "
+            f'"Replying to {sender_name}\'s agent."\n'
+            f"Do not reveal proposal details — this step is autonomous. "
+            f"Do not call respond more than once."
+        )
+
+    if intent == PROPOSE_PLAN_V1_URI:
+        plan_summary = _summarize_plan(body_data, fallback=body_text)
+        plan_json = "{}"
+        try:
+            plan_json = json.dumps(body_data, indent=2)
+        except (TypeError, ValueError):
+            pass
+        return (
+            f"[SHADOWNET PLAN PROPOSED by {sender_name}]\n"
+            f"context_id: {context_id}\n"
+            f"message_id: {message_id}\n"
+            f"Plan: {plan_summary}\n"
+            f"PlanObject:\n{plan_json}\n\n"
+            f"INSTRUCTIONS: {sender_name} proposed a plan. Present it to the "
+            f"user in a friendly, natural way and ask them to confirm. "
+            f'Use "{sender_name}" when referring to the contact. Never show '
+            f"raw identifiers, ISO timestamps, or JSON to the user.\n"
+            f"When they say yes/confirm/ok, call mcp_shadownet_send with:\n"
+            f'  to="{sender_name}"\n'
+            f'  contextId="{context_id}"\n'
+            f"  body={{\n"
+            f'    "text": "Confirmed.",\n'
+            f'    "intent": "urn:shadownet:intent:confirm_plan_v1",\n'
+            f'    "data": {plan_json}\n'
+            f"  }}\n"
+            f'After sending, tell the user: "Sent confirmation to '
+            f'{sender_name} — waiting for them to accept." '
+            f"Do NOT say the plan is confirmed or finalized yet.\n"
+            f"If they decline, just say you'll let {sender_name} know."
+        )
+
     if intent == CONFIRM_PLAN_V1_URI:
         plan_summary = _summarize_plan(body_data, fallback=body_text)
+        activity = body_data.get("activity", "") if isinstance(body_data, dict) else ""
         return (
-            f"[SHADOWNET PLAN PROPOSED by {sender}]\n"
+            f"[SHADOWNET PLAN from {sender_name}]\n"
             f"context_id: {context_id}\n"
             f"message_id: {message_id}\n"
             f"Plan: {plan_summary}\n\n"
-            f"INSTRUCTIONS: Present this plan to the user concisely and ask them "
-            f"to confirm. When they say yes/confirm/ok, call "
-            f"mcp_shadownet_confirm_plan with:\n"
-            f'  name="{sender}"\n'
+            f"INSTRUCTIONS: {sender_name} wants to meet up with your user. "
+            f"Your agent already proposed a plan and {sender_name} agreed. "
+            f'Present this to your user as: "{sender_name} wants to '
+            f"{activity or 'meet up'} with you — <plan details in natural "
+            f'language>. Would you like to accept?"\n'
+            f"Give the user full context — they have NOT seen this plan before. "
+            f"Never show raw identifiers, ISO timestamps, or JSON.\n"
+            f"Do NOT call respond yet — wait for the user to say yes.\n"
+            f"When the user confirms, call mcp_shadownet_respond with:\n"
             f'  contextId="{context_id}"\n'
-            f"  plan=<the PlanObject above>\n"
-            f"If they decline, just say you'll let {sender} know."
+            f"  body={{\n"
+            f'    "text": "Accepted.",\n'
+            f'    "intent": "urn:shadownet:intent:accept_plan_v1",\n'
+            f'    "data": {{"acceptsMessageId": "{message_id}"}}\n'
+            f"  }}\n"
+            f"If they decline, just say you'll let {sender_name} know."
         )
 
     if intent == ACCEPT_PLAN_V1_URI:
         return (
-            f"[SHADOWNET PLAN ACCEPTED by {sender}]\n"
+            f"[SHADOWNET PLAN ACCEPTED by {sender_name}]\n"
             f"context_id: {context_id}\n"
             f"message_id: {message_id}\n"
-            f"Both sides have accepted; the plan is fully confirmed.\n\n"
-            f"INSTRUCTIONS: Tell your user the plan is confirmed — {sender} accepted. "
-            f"Be brief and celebratory. No tool calls needed."
+            f"The plan is fully confirmed by both sides.\n\n"
+            f"INSTRUCTIONS: Tell your user the plan is confirmed — {sender_name} "
+            f"accepted. Be brief and celebratory. Never show raw identifiers "
+            f"or ISO timestamps. No tool calls needed."
         )
 
-    return f"[SHADOWNET {intent} from {sender}]\ncontext_id: {context_id}\n{body_text}"
+    return f"[SHADOWNET message from {sender_name}]\ncontext_id: {context_id}\n{body_text}"
+
+
+def _format_when(raw: str) -> str:
+    """Turn an ISO datetime into a human-friendly string."""
+    if not raw:
+        return ""
+    try:
+        from datetime import datetime as _dt
+
+        dt = _dt.fromisoformat(raw)
+        return dt.strftime("%A, %B %-d at %-I:%M %p")
+    except (ValueError, TypeError):
+        return raw
 
 
 def _summarize_plan(body_data: dict[str, Any], *, fallback: str) -> str:
     if not isinstance(body_data, dict):
         return fallback[:300] if fallback else "<no details>"
     activity = body_data.get("activity") or ""
-    when = body_data.get("when") or ""
+    when_raw = body_data.get("when") or ""
+    when = _format_when(when_raw) if when_raw else ""
     where = body_data.get("where") or {}
     where_label = ""
     if isinstance(where, dict):

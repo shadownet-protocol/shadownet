@@ -19,6 +19,9 @@ Thumbs.db
 # Local scratch / consolidation artifacts
 /.consolidation-scratch/
 
+# Local Cursor rules (contain instance-specific deploy details)
+.cursor/rules/*.local.mdc
+
 # Top-level build / coverage outputs (per-SDK ignores cover their own subtrees)
 /dist/
 /build/
