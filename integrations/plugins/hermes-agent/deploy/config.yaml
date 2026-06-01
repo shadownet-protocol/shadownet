@@ -7,5 +7,9 @@ plugins:
     - shadownet
 
 model:
+  # `default` (the model name) is required — without it the agent falls back to
+  # the built-in openrouter/nous providers instead of the stub.
+  default: stub-model
   provider: custom
   base_url: http://stub-llm:9000/v1
+  api_key: stub-key-do-not-use

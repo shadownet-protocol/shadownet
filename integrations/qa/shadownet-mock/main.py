@@ -45,6 +45,9 @@ SIDECAR_ID = "mock-shadownet"
 
 _trace: list[dict[str, Any]] = []
 _events: list[dict[str, Any]] = []
+# Inbox contents the `inbox` tool returns — populated by /_enqueue-inbox-event
+# so a consumer that fetches the body by messageId (Hermes) finds it.
+_inbox_items: list[dict[str, Any]] = []
 _seq = count(1)
 
 
@@ -135,6 +138,8 @@ async def inbox(
     intent: str | None = None,
 ) -> Inbox:
     _record("mcp", "inbox", {"limit": limit})
+    if _inbox_items:
+        return Inbox(items=[InboxItemModel(**it) for it in _inbox_items])
     item = InboxItemModel(
         message_id="m-stub",
         context_id="c-stub",
@@ -235,6 +240,20 @@ async def _trigger_route(request: Request) -> JSONResponse:
 async def _enqueue_route(request: Request) -> JSONResponse:
     event = await request.json()
     _events.append(event)
+    # Mirror the event into the inbox so a body-by-messageId fetch finds it.
+    data = event.get("data") or {}
+    message_id = data.get("messageId")
+    if message_id:
+        _inbox_items.append(
+            {
+                "message_id": message_id,
+                "context_id": data.get("contextId") or "c-stub",
+                "sender": data.get("from") or "bob@sh4dow.org",
+                "received_at": "2026-05-31T00:00:00Z",
+                "status": "inbox",
+                "body": {"text": event.get("body") or "hello from peer"},
+            }
+        )
     return JSONResponse({"status": "enqueued", "queued": len(_events)})
 
 
@@ -245,6 +264,7 @@ async def _calls_route(_request: Request) -> JSONResponse:
 async def _reset_route(_request: Request) -> JSONResponse:
     _trace.clear()
     _events.clear()
+    _inbox_items.clear()
     return JSONResponse({"status": "reset"})
 
 

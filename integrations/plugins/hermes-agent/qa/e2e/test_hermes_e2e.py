@@ -48,12 +48,12 @@ def test_adapter_loads_and_connects() -> None:
         )
 
     calls = _wait(ready, timeout=180)
-    assert any(
-        c["name"] == "identity" and c["transport"] == "mcp" for c in calls
-    ), f"adapter never called identity over MCP; trace={calls}"
-    assert any(
-        c["name"] == "inbox_wait" and c["transport"] == "mcp" for c in calls
-    ), f"adapter never long-polled inbox_wait; trace={calls}"
+    assert any(c["name"] == "identity" and c["transport"] == "mcp" for c in calls), (
+        f"adapter never called identity over MCP; trace={calls}"
+    )
+    assert any(c["name"] == "inbox_wait" and c["transport"] == "mcp" for c in calls), (
+        f"adapter never long-polled inbox_wait; trace={calls}"
+    )
 
 
 def test_inbound_event_delivered_during_held_long_poll() -> None:
@@ -92,4 +92,41 @@ def test_polling_loop_is_persistent() -> None:
         timeout=20,
     )
     n = sum(1 for c in calls if c["name"] == "inbox_wait" and c["transport"] == "mcp")
-    assert n >= 2, f"adapter did not keep polling on a persistent session (saw {n} inbox_wait); trace={calls}"
+    assert n >= 2, (
+        f"adapter did not keep polling on a persistent session (saw {n} inbox_wait); trace={calls}"
+    )
+
+
+def test_inbound_message_surfaces_to_agent() -> None:
+    # Regression for the real cloud bug: a plain inbound message (no intent, no
+    # SHADOWNET_NOTIFY_CHAT) must SURFACE as a Shadownet chat and reach a Hermes
+    # turn — the agent then runs against the stub model and its reply flows back
+    # out to the sender's DM (adapter.send(to=sender)) / the message context
+    # (respond(contextId)). A SUPPRESSED message never reaches a turn, so no
+    # reply is ever issued. We attribute the reply to THIS message (to == sender
+    # / contextId == ours) so it can't be confused with any other test's traffic.
+    httpx.post(f"{MOCK}/_reset", timeout=10)
+
+    sender = "perfect@sh4dow.org"
+    context_id = "ctx-surface-1"
+    _enqueue(
+        {
+            "event": "inbox.message",
+            "event_id": "e-surface-1",
+            "data": {"from": sender, "messageId": "m-surface-1", "contextId": context_id},
+            "body": "hi from perfect via shadownet",
+        }
+    )
+
+    def replied_to_us(c: dict) -> bool:
+        args = c.get("arguments") or {}
+        return (c["name"] == "send" and args.get("to") == sender) or (
+            c["name"] == "respond" and args.get("contextId") == context_id
+        )
+
+    calls = _wait(lambda cs: any(replied_to_us(c) for c in cs), timeout=120)
+    names = [c["name"] for c in calls]
+    assert any(replied_to_us(c) for c in calls), (
+        "inbound message did not surface into an agent turn (no reply back to the "
+        f"sender/context); trace={names}"
+    )

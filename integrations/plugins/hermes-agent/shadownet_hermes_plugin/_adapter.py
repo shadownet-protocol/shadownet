@@ -276,10 +276,15 @@ def build_adapter_class() -> type:
                 )
                 return
 
-            # Free-form inbound (no intent, or one we don't model). If the
-            # operator pointed us at a user-facing session, inject as a
-            # plain message so the user sees it.
-            if notify_target and body_text:
+            # Free-form inbound (no intent, or one we don't model). Default:
+            # surface it as a Shadownet chat (a DM from the sender) through the
+            # platform-adapter pipeline, so the user always sees it — this is
+            # what "Shadownet appears as a chat channel" means. If the operator
+            # ALSO bridged Shadownet into an existing chat via
+            # SHADOWNET_NOTIFY_CHAT, inject there instead.
+            if not body_text:
+                _log.debug("inbox.message from %s carried no body text; nothing to surface", sender)
+            elif notify_target:
                 await self._inject_free_form(
                     sender=sender,
                     context_id=context_id,
@@ -288,9 +293,12 @@ def build_adapter_class() -> type:
                     notify_target=notify_target,
                 )
             else:
-                _log.debug(
-                    "Suppressed free-form inbox.message from %s (no notify target)",
-                    sender,
+                await self._surface_inbound_message(
+                    sender=sender,
+                    context_id=context_id,
+                    message_id=message_id,
+                    body_text=body_text,
+                    event_id=event_id,
                 )
 
         async def _fetch_inbox_item(self, message_id: str) -> Any | None:
@@ -342,6 +350,55 @@ def build_adapter_class() -> type:
                 await self.handle_message(msg_event)
             except Exception:
                 _log.exception("failed to dispatch coordinate_v1 %s", event_id)
+
+        async def _surface_inbound_message(
+            self,
+            *,
+            sender: str,
+            context_id: str,
+            message_id: str,
+            body_text: str,
+            event_id: str,
+        ) -> None:
+            """Surface a plain inbound A2A message as a Shadownet chat.
+
+            Routes through the platform-adapter pipeline (``handle_message``) so
+            Hermes opens/uses a session bound to the sender — the channel the
+            plugin advertises — and auto-loads the ``shadownet-inbox`` skill so
+            the agent has the context-id and the respond instructions.
+            """
+            source = self.build_source(
+                chat_id=sender,
+                chat_type="dm",
+                user_id=sender,
+                user_name=sender,
+            )
+            text = (
+                f"[SHADOWNET MESSAGE from {sender}]\n"
+                f"context_id: {context_id}\n"
+                f"message_id: {message_id}\n\n"
+                f"{body_text}"
+            )
+            try:
+                msg_event = message_event_cls(
+                    text=text,
+                    source=source,
+                    raw_message={
+                        "event_id": event_id,
+                        "context_id": context_id,
+                        "message_id": message_id,
+                    },
+                    auto_skill="shadownet-inbox",
+                )
+                await self.handle_message(msg_event)
+                _log.info(
+                    "shadownet: surfaced inbox.message from %s (context=%s, message=%s) as a shadownet chat",
+                    sender,
+                    context_id,
+                    message_id,
+                )
+            except Exception:
+                _log.exception("failed to surface inbox.message from %s", sender)
 
         async def _inject_plan_event(
             self,

@@ -64,6 +64,9 @@ services:
       HERMES_GID: "10000"
       # The container must not pip-install anything at runtime (zero egress).
       HERMES_DISABLE_LAZY_INSTALLS: "1"
+      # Let a stranger's surfaced inbound message reach the agent (the harness
+      # has no allowlist); without this the gateway denies unknown senders.
+      GATEWAY_ALLOW_ALL_USERS: "true"
       # Stub model — no real provider is ever contacted.
       OPENAI_BASE_URL: http://stub-llm:9000/v1
       OPENAI_API_KEY: stub-key-do-not-use
