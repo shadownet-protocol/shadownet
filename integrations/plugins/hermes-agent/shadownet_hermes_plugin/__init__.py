@@ -87,7 +87,7 @@ def register(ctx: Any) -> None:
         ctx,
         name="shadownet",
         label="Shadownet",
-        adapter_factory=lambda cfg: adapter_class(cfg),
+        adapter_factory=lambda cfg: adapter_class(cfg, ctx),
         check_fn=check_shadownet_requirements,
         env_enablement_fn=env_enablement,
         platform_hint=_PLATFORM_HINT,

@@ -14,6 +14,8 @@ import types
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 # asyncio_mode = auto is configured in pytest.ini at the plugin root, so
 # async def tests are picked up without explicit @pytest.mark.asyncio.
 
@@ -69,6 +71,8 @@ def _install_fake_hermes_module() -> None:
     @dataclass
     class SendResult:
         success: bool
+        message_id: str | None = None
+        error: str | None = None
 
     class BasePlatformAdapter:
         def __init__(self, config: Any, platform: Any = None) -> None:
@@ -188,3 +192,14 @@ class FakeCtx:
 
     def set_dispatch_return(self, value: Any) -> None:
         self._dispatch_return = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_hermes_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Point HERMES_HOME at a throwaway dir so no test touches the real ~/.hermes.
+
+    Tests that need a specific home still override HERMES_HOME in their own body.
+    """
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path_factory.mktemp("hermes_home")))

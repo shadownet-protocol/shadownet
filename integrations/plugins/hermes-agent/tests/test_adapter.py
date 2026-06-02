@@ -320,27 +320,70 @@ class TestOnEventDispatch:
 
 class TestSendRoutesThroughClient:
     async def test_send_uses_typed_client_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from shadownet.mcp.tools import SendOutput
+
         adapter = _adapter_with_inline_config(monkeypatch)
         fake_client = MagicMock()
-        fake_client.send = AsyncMock(return_value=None)
+        fake_client.send = AsyncMock(
+            return_value=SendOutput(messageId="m-1", contextId="ctx-1", status="accepted")
+        )
         adapter._client = fake_client
 
         result = await adapter.send(chat_id="alice@sh4dow.org", content="hello")
         assert result.success is True
+        assert result.message_id == "m-1"
         fake_client.send.assert_awaited_once()
         sent_input = fake_client.send.await_args.args[0]
         assert sent_input.to == "alice@sh4dow.org"
         assert sent_input.body.text == "hello"
 
-    async def test_send_cooldown_suppresses_repeat(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SHADOWNET_SEND_COOLDOWN_SECONDS", "999")
+    async def test_send_reports_sidecar_rejection(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A rejected send is reported as failure, not silently swallowed as success."""
+        from shadownet.mcp.tools import SendOutput
+
         adapter = _adapter_with_inline_config(monkeypatch)
         fake_client = MagicMock()
-        fake_client.send = AsyncMock(return_value=None)
+        fake_client.send = AsyncMock(
+            return_value=SendOutput(
+                messageId="m-2", contextId="ctx-1", status="rejected", error="not_contact"
+            )
+        )
+        adapter._client = fake_client
+
+        result = await adapter.send(chat_id="bob@x", content="hi")
+        assert result.success is False
+        assert result.error == "not_contact"
+
+    async def test_send_distinct_content_not_suppressed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Distinct messages always go out — the old 120s cooldown that killed the loop is gone."""
+        from shadownet.mcp.tools import SendOutput
+
+        adapter = _adapter_with_inline_config(monkeypatch)
+        fake_client = MagicMock()
+        fake_client.send = AsyncMock(
+            return_value=SendOutput(messageId="m", contextId="ctx-1", status="accepted")
+        )
         adapter._client = fake_client
 
         await adapter.send(chat_id="bob@x", content="first")
         await adapter.send(chat_id="bob@x", content="second")
+        assert fake_client.send.await_count == 2
+
+    async def test_send_suppresses_exact_duplicate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An immediate identical resend is anti-echo'd within the dedup window."""
+        from shadownet.mcp.tools import SendOutput
+
+        adapter = _adapter_with_inline_config(monkeypatch)
+        fake_client = MagicMock()
+        fake_client.send = AsyncMock(
+            return_value=SendOutput(messageId="m", contextId="ctx-1", status="accepted")
+        )
+        adapter._client = fake_client
+
+        await adapter.send(chat_id="bob@x", content="same")
+        await adapter.send(chat_id="bob@x", content="same")
         fake_client.send.assert_awaited_once()
 
 

@@ -154,29 +154,41 @@ def build_adapter_class() -> type:
             _log.info("Shadownet plugin disconnected")
 
         async def send(self, chat_id: str, content: str, **kwargs: object) -> SendResult:
-            """Send a free-form text response to a contact, with loop prevention.
+            """Send a free-form text reply to a contact over A2A.
 
-            ``chat_id`` is the recipient Shadowname (or bare public key in
-            direct mode). Allows one send per contact per cooldown window;
-            subsequent sends are suppressed to prevent A2A feedback loops.
+            Suppresses only an exact-duplicate resend to the same contact within
+            a short window (anti-echo for an accidental double-dispatch); a
+            distinct message is never dropped. Bounding an autonomous loop is the
+            exchange engine's job, not a blanket cooldown here. The result
+            reflects the sidecar's accept/reject status rather than always
+            reporting success.
             """
-            send_cooldown = int(os.environ.get("SHADOWNET_SEND_COOLDOWN_SECONDS", "120"))
+            _, _, send_result_cls = _resolve_hermes_types()
+            dedup_window = int(os.environ.get("SHADOWNET_SEND_DEDUP_SECONDS", "5"))
             now = time.time()
-            last = self._send_timestamps.get(chat_id, 0.0)
-            if now - last < send_cooldown:
+            last_content, last_ts = self._last_send.get(chat_id, ("", 0.0))
+            if content == last_content and now - last_ts < dedup_window:
                 _log.debug(
-                    "[Shadownet] send() suppressed (cooldown): chat_id=%s elapsed=%.1fs",
+                    "[Shadownet] send() suppressed exact-duplicate to %s within %ss",
                     chat_id,
-                    now - last,
+                    dedup_window,
                 )
-                _, _, send_result_cls = _resolve_hermes_types()
                 return send_result_cls(success=True)
 
-            self._send_timestamps[chat_id] = now
-            self._evict_stale_timestamps(self._send_timestamps, send_cooldown * 2)
-            await self._client.send(SendInput(to=chat_id, body=BodySlot(text=content)))
-            _, _, send_result_cls = _resolve_hermes_types()
-            return send_result_cls(success=True)
+            out = await self._client.send(SendInput(to=chat_id, body=BodySlot(text=content)))
+            self._last_send[chat_id] = (content, now)
+            stale = [
+                cid for cid, (_c, ts) in self._last_send.items() if now - ts > dedup_window * 4
+            ]
+            for cid in stale:
+                del self._last_send[cid]
+            # SendOutput.status is a required Literal["accepted","rejected"]; read it
+            # directly rather than assuming success, so a sidecar rejection surfaces.
+            return send_result_cls(
+                success=(out.status == "accepted"),
+                message_id=out.message_id,
+                error=out.error,
+            )
 
         async def send_typing(self, chat_id: str, metadata: dict[str, Any] | None = None) -> None:
             """Shadownet is async / fire-and-forget — no typing indicator."""
@@ -589,15 +601,19 @@ def build_adapter_class() -> type:
                 return None
             return target_platform, chat_id, adapter
 
-        def __init__(self, config: Any) -> None:
+        def __init__(self, config: Any, ctx: Any = None) -> None:
             from gateway.config import Platform
 
             super().__init__(config, Platform("shadownet"))
+            # Plugin context (None outside a Hermes install / in tests). Held so
+            # the exchange engine can reach host LLM/tool surfaces in a later phase.
+            self._ctx = ctx
             mcp_endpoint, token, timeout = _resolve_config(config)
             self._mcp_endpoint = mcp_endpoint
             self._token = token
             self._long_poll_timeout = timeout
-            self._send_timestamps: dict[str, float] = {}
+            # chat_id -> (last content sent, timestamp), for exact-duplicate anti-echo.
+            self._last_send: dict[str, tuple[str, float]] = {}
             self._notify_timestamps: dict[str, float] = {}
 
         @staticmethod
