@@ -52,6 +52,7 @@ def test_manifest_lists_every_registered_surface() -> None:
         "shadownet:shadownet-reach-out",
         "shadownet:shadownet-inbox",
         "shadownet:shadownet-coordinate",
+        "shadownet:shadownet-autonomous",
     }
     # MCP tools come from config.yaml, not from register_tool — must NOT
     # appear under provides_tools.

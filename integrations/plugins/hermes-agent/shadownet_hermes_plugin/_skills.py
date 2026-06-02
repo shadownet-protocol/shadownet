@@ -39,6 +39,7 @@ SKILL_NAMES = (
     "shadownet-reach-out",
     "shadownet-inbox",
     "shadownet-coordinate",
+    "shadownet-autonomous",
 )
 
 

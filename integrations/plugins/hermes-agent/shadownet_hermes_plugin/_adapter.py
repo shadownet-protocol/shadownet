@@ -32,8 +32,10 @@ from typing import TYPE_CHECKING, Any
 
 from shadownet.mcp import (
     BodySlot,
+    ContactDetailInput,
     InboxInput,
     InboxWaitInput,
+    RespondInput,
     SendInput,
     ShadownetMCPClient,
 )
@@ -44,6 +46,8 @@ from shadownet.mcp.intents import (
     PROPOSE_PLAN_V1_URI,
 )
 from shadownet.onboarding import parse_connect_uri
+
+from shadownet_hermes_plugin._engine import ExchangeEngine
 
 if TYPE_CHECKING:
     # Hermes Agent ships its plugin-side types under these modules. They
@@ -175,20 +179,26 @@ def build_adapter_class() -> type:
                 )
                 return send_result_cls(success=True)
 
-            out = await self._client.send(SendInput(to=chat_id, body=BodySlot(text=content)))
+            # If this contact has an active exchange, thread the reply onto its
+            # contextId via respond(); otherwise start a fresh send().
+            context_id = self._engine.active_context_for(chat_id)
+            if context_id:
+                replied = await self._client.respond(
+                    RespondInput(contextId=context_id, body=BodySlot(text=content))
+                )
+                status, message_id, error = replied.status, replied.message_id, replied.error
+            else:
+                sent = await self._client.send(SendInput(to=chat_id, body=BodySlot(text=content)))
+                status, message_id, error = sent.status, sent.message_id, sent.error
             self._last_send[chat_id] = (content, now)
             stale = [
                 cid for cid, (_c, ts) in self._last_send.items() if now - ts > dedup_window * 4
             ]
             for cid in stale:
                 del self._last_send[cid]
-            # SendOutput.status is a required Literal["accepted","rejected"]; read it
-            # directly rather than assuming success, so a sidecar rejection surfaces.
-            return send_result_cls(
-                success=(out.status == "accepted"),
-                message_id=out.message_id,
-                error=out.error,
-            )
+            # status is a required Literal["accepted","rejected"]; read it directly so a
+            # sidecar rejection surfaces rather than being assumed successful.
+            return send_result_cls(success=(status == "accepted"), message_id=message_id, error=error)
 
         async def send_typing(self, chat_id: str, metadata: dict[str, Any] | None = None) -> None:
             """Shadownet is async / fire-and-forget — no typing indicator."""
@@ -255,6 +265,7 @@ def build_adapter_class() -> type:
             body = inbox_item.body if inbox_item is not None else None
             body_text = (body.text if body is not None else "") or ""
             body_data = (body.data if body is not None else None) or {}
+            status = (inbox_item.status if inbox_item is not None else "") or ""
 
             coordination_intents = {
                 COORDINATE_V1_URI,
@@ -276,7 +287,43 @@ def build_adapter_class() -> type:
                 )
                 return
 
-            if notify_target and body_text:
+            if not body_text:
+                _log.debug(
+                    "inbox.message from %s carried no body text; nothing to surface",
+                    sender,
+                )
+                return
+
+            # Free-form message: the engine decides whether the full Hermes agent
+            # handles it silently (a known contact) or we surface it to the human
+            # (a stranger pending review, or the runaway backstop tripped).
+            decision = self._engine.decide(
+                status=status,
+                contact=sender,
+                context_id=context_id,
+                message_id=message_id,
+            )
+            if decision.action == "skip":
+                _log.debug("shadownet: dropping duplicate message %s from %s", message_id, sender)
+                return
+            if decision.action == "autonomous":
+                await self._run_autonomous_turn(
+                    sender=sender,
+                    sender_name=sender_name,
+                    context_id=context_id,
+                    message_id=message_id,
+                    body_text=body_text,
+                    first_turn=decision.first_turn,
+                )
+                return
+
+            _log.debug(
+                "shadownet: surfacing %s from %s to human (%s)",
+                message_id,
+                sender,
+                decision.reason,
+            )
+            if notify_target:
                 await self._inject_free_form(
                     sender=sender_name,
                     context_id=context_id,
@@ -284,10 +331,7 @@ def build_adapter_class() -> type:
                     body_text=body_text,
                     notify_target=notify_target,
                 )
-            elif body_text:
-                # No SHADOWNET_NOTIFY_CHAT bridge: surface the message as a
-                # Shadownet chat (a DM from the sender) so the user always sees
-                # it. Suppressing here is what dropped plain inbound A2A messages.
+            else:
                 await self._surface_inbound_message(
                     sender=sender,
                     sender_name=sender_name,
@@ -295,11 +339,6 @@ def build_adapter_class() -> type:
                     message_id=message_id,
                     body_text=body_text,
                     event_id=event_id,
-                )
-            else:
-                _log.debug(
-                    "inbox.message from %s carried no body text; nothing to surface",
-                    sender,
                 )
 
         async def _fetch_inbox_item(self, message_id: str) -> Any | None:
@@ -314,6 +353,71 @@ def build_adapter_class() -> type:
                 if item.message_id == message_id:
                     return item
             return None
+
+        async def _contact_notes_for(self, sender: str) -> str:
+            """Cached ``ContactProfile.notes`` for a contact (the human's per-contact guidance)."""
+            if sender in self._contact_notes:
+                return self._contact_notes[sender]
+            notes = ""
+            try:
+                detail = await self._client.contact_detail(ContactDetailInput(name=sender))
+                profile = detail.profile
+                notes = (profile.notes if profile is not None and profile.notes else "") or ""
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("contact_detail for %s failed: %s", sender, exc)
+            self._contact_notes[sender] = notes
+            return notes
+
+        async def _run_autonomous_turn(
+            self,
+            *,
+            sender: str,
+            sender_name: str,
+            context_id: str,
+            message_id: str,
+            body_text: str,
+            first_turn: bool,
+        ) -> None:
+            """Run the full Hermes agent silently on a known contact's message.
+
+            The turn runs in the shadownet session bound to the sender; the
+            agent's reply IS the move and is delivered to the peer via send()
+            (threaded by contextId). The human is not in this session — the
+            agent surfaces to them only by calling send_message when warranted.
+            """
+            notes = await self._contact_notes_for(sender) if first_turn else ""
+            text = _build_autonomous_inject(
+                sender_name=sender_name,
+                body_text=body_text,
+                notes=notes,
+                first_turn=first_turn,
+            )
+            source = self.build_source(
+                chat_id=sender,
+                chat_type="dm",
+                user_id=sender,
+                user_name=sender_name or sender,
+            )
+            try:
+                synth_event = message_event_cls(
+                    text=text,
+                    source=source,
+                    raw_message={
+                        "event_kind": "shadownet.autonomous",
+                        "context_id": context_id,
+                        "message_id": message_id,
+                    },
+                    auto_skill="shadownet-autonomous",
+                )
+                await self.handle_message(synth_event)
+                _log.info(
+                    "shadownet: autonomous turn for %s (context=%s, first=%s)",
+                    sender,
+                    context_id,
+                    first_turn,
+                )
+            except Exception:
+                _log.exception("shadownet: autonomous turn failed for %s", sender)
 
         async def _inject_coordination_event(
             self,
@@ -615,6 +719,10 @@ def build_adapter_class() -> type:
             # chat_id -> (last content sent, timestamp), for exact-duplicate anti-echo.
             self._last_send: dict[str, tuple[str, float]] = {}
             self._notify_timestamps: dict[str, float] = {}
+            # Switchboard + circuit-breaker for autonomous exchanges (in-memory).
+            self._engine = ExchangeEngine()
+            # contact shadowname -> ContactProfile.notes (cached human guidance).
+            self._contact_notes: dict[str, str] = {}
 
         @staticmethod
         def _evict_stale_timestamps(timestamps: dict[str, float], max_age: float) -> None:
@@ -625,6 +733,31 @@ def build_adapter_class() -> type:
                 del timestamps[k]
 
     return ShadownetAdapter
+
+
+def _build_autonomous_inject(
+    *, sender_name: str, body_text: str, notes: str, first_turn: bool
+) -> str:
+    """Context injected into an autonomous turn: the move framing + the peer's message.
+
+    On the first turn it carries the full framing plus the human's per-contact
+    notes; later turns are light because the skill (re-loaded each turn) and the
+    persisted Hermes session already hold the framing and history.
+    """
+    if not first_turn:
+        return f"[shadownet-autonomous · {sender_name}]\n{body_text}"
+    notes_line = f"Your user's notes on {sender_name}: {notes}\n" if notes else ""
+    return (
+        f"[AUTONOMOUS SHADOWNET EXCHANGE with {sender_name}]\n"
+        f"You are conversing directly with {sender_name}, a known contact, on your "
+        f"user's behalf. Your reply goes straight to them and IS your move — do not "
+        f"call mcp_shadownet_send or mcp_shadownet_respond yourself.\n"
+        f"{notes_line}"
+        f"Follow the shadownet-autonomous skill. Surface to your user via send_message "
+        f"only if the exchange completes, a decision is needed, or something notable "
+        f"happens.\n\n"
+        f"{sender_name} says:\n{body_text}"
+    )
 
 
 def _build_coordination_inject(

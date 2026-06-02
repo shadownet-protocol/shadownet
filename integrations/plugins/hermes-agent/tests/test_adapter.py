@@ -203,17 +203,22 @@ class TestPromptBuilders:
 class TestOnEventDispatch:
     """Exercise _on_event branches without a real MCP client."""
 
-    def _setup(self, monkeypatch: pytest.MonkeyPatch) -> Any:
+    def _setup(self, monkeypatch: pytest.MonkeyPatch, status: str = "inbox") -> Any:
         adapter = _adapter_with_inline_config(monkeypatch)
 
         async def _fake_fetch(_message_id: str) -> Any:
             stub = MagicMock()
+            stub.status = status
             stub.body = MagicMock()
             stub.body.text = "Hi"
             stub.body.data = {"activity": "Coffee"}
             return stub
 
         adapter._fetch_inbox_item = _fake_fetch
+        # No live MCP client in unit tests; contact_detail returns no profile.
+        client = MagicMock()
+        client.contact_detail = AsyncMock(return_value=MagicMock(profile=None))
+        adapter._client = client
 
         from gateway.config import Platform
 
@@ -243,16 +248,16 @@ class TestOnEventDispatch:
         assert "context_id: ctx-1" in msg.text
         assert msg.auto_skill == "shadownet-coordinate"
 
-    async def test_free_form_message_surfaces_in_sender_session_with_inbox_skill(
+    async def test_stranger_free_form_surfaces_in_sender_session_with_inbox_skill(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Regression for the real cloud bug: a plain inbound message (no intent,
-        # no SHADOWNET_NOTIFY_CHAT) must SURFACE — reach the agent through the
-        # platform pipeline, in a session bound to the sender, carrying the
-        # context/message ids and the body, with the shadownet-inbox skill
-        # auto-loaded. It must NOT be silently suppressed.
+        # A stranger (status=stranger_review), no SHADOWNET_NOTIFY_CHAT, must
+        # SURFACE to the human — reach the agent through the platform pipeline,
+        # in a session bound to the sender, carrying the context/message ids and
+        # the body, with the shadownet-inbox skill auto-loaded. It must NOT be
+        # handled autonomously and must NOT be silently suppressed.
         monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
-        adapter = self._setup(monkeypatch)
+        adapter = self._setup(monkeypatch, status="stranger_review")
         event = {
             "event": "inbox.message",
             "eventId": "evt-1",
@@ -316,6 +321,51 @@ class TestOnEventDispatch:
         event = {"event": "freshness.expired", "eventId": "evt-1", "data": {}}
         await adapter._on_event(event)
         assert adapter.handled == []
+
+    async def test_known_contact_free_form_runs_autonomous_turn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A known contact (status=inbox), no SHADOWNET_NOTIFY_CHAT: the full Hermes
+        # agent handles it silently in the shadownet session with the autonomous
+        # skill — NOT surfaced to the human, NOT the inbox-triage skill.
+        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        adapter = self._setup(monkeypatch, status="inbox")
+        event = {
+            "event": "inbox.message",
+            "eventId": "evt-1",
+            "data": {
+                "from": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "messageId": "msg-1",
+                "status": "inbox",
+            },
+        }
+        await adapter._on_event(event)
+        assert len(adapter.handled) == 1
+        msg = adapter.handled[0]
+        assert msg.auto_skill == "shadownet-autonomous"
+        assert "AUTONOMOUS SHADOWNET EXCHANGE" in msg.text
+        assert "Hi" in msg.text
+        assert msg.source.chat_id == "alice@sh4dow.org"
+        # The engine now threads replies to this contact onto its contextId.
+        assert adapter._engine.active_context_for("alice@sh4dow.org") == "ctx-1"
+
+    async def test_duplicate_inbound_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        adapter = self._setup(monkeypatch, status="inbox")
+        event = {
+            "event": "inbox.message",
+            "eventId": "evt-1",
+            "data": {
+                "from": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "messageId": "msg-1",
+                "status": "inbox",
+            },
+        }
+        await adapter._on_event(event)
+        await adapter._on_event(event)  # same messageId -> idempotent skip
+        assert len(adapter.handled) == 1
 
 
 class TestSendRoutesThroughClient:
@@ -385,6 +435,29 @@ class TestSendRoutesThroughClient:
         await adapter.send(chat_id="bob@x", content="same")
         await adapter.send(chat_id="bob@x", content="same")
         fake_client.send.assert_awaited_once()
+
+    async def test_send_threads_via_respond_for_active_exchange(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When a contact has an active exchange, the reply threads via respond(contextId)."""
+        from shadownet.mcp.tools import RespondOutput
+
+        adapter = _adapter_with_inline_config(monkeypatch)
+        fake_client = MagicMock()
+        fake_client.send = AsyncMock()
+        fake_client.respond = AsyncMock(
+            return_value=RespondOutput(messageId="r-1", status="accepted")
+        )
+        adapter._client = fake_client
+        adapter._engine.decide(
+            status="inbox", contact="alice@sh4dow.org", context_id="ctx-9", message_id="m1"
+        )
+
+        result = await adapter.send(chat_id="alice@sh4dow.org", content="next word")
+        assert result.success is True
+        fake_client.respond.assert_awaited_once()
+        assert fake_client.respond.await_args.args[0].context_id == "ctx-9"
+        fake_client.send.assert_not_awaited()
 
 
 class TestLifecycle:
