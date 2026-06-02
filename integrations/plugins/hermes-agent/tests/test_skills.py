@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -33,7 +32,7 @@ def test_materialize_skills_lands_under_category_dir(
     """Skills are copied to <data>/skills/shadownet/<name>/ with DESCRIPTION.md."""
     src_root = tmp_path / "src"
     data_dir = tmp_path / "data"
-    monkeypatch.setenv("HERMES_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("HERMES_HOME", str(data_dir))
 
     paths: dict[str, Path] = {}
     for name in _skills.SKILL_NAMES:
@@ -55,7 +54,7 @@ def test_count_materialized_skills_reports_state(
 ) -> None:
     """count_materialized_skills counts SKILL.md files under the category dir."""
     data_dir = tmp_path / "data"
-    monkeypatch.setenv("HERMES_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("HERMES_HOME", str(data_dir))
 
     assert _skills.count_materialized_skills() == 0
 
@@ -82,7 +81,3 @@ def test_register_skills_warns_when_files_missing(
     count = _skills.register_skills(ctx)
     assert count == 0
     assert ctx.skills == []
-
-
-def _unused_typing_import_anchor() -> Any:
-    return None

@@ -11,15 +11,23 @@ def _load_manifest() -> dict:
         return yaml.safe_load(f)
 
 
-def test_manifest_version_format_and_kind() -> None:
-    """plugin.yaml has a valid 0.5.x version and the right kind."""
+def _pyproject_version() -> str:
+    import tomllib
+
+    path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with path.open("rb") as f:
+        data = tomllib.load(f)
+    return str(data["project"]["version"])
+
+
+def test_manifest_version_matches_pyproject_and_kind() -> None:
+    """plugin.yaml version is valid SemVer, matches pyproject, and kind is platform."""
     manifest = _load_manifest()
     version = manifest["version"]
     assert isinstance(version, str)
     parts = version.split(".")
     assert len(parts) == 3 and all(p.isdigit() for p in parts)
-    assert parts[0] == "0"
-    assert parts[1] == "5"
+    assert version == _pyproject_version()
     assert manifest["kind"] == "platform"
 
 

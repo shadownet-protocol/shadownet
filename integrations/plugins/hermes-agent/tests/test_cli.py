@@ -31,10 +31,8 @@ def test_handle_prints_usage_for_unknown_subcommand(capsys: pytest.CaptureFixtur
 
 
 def test_do_status_reports_each_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
-    (tmp_path / ".env").write_text(
-        "SHADOWNET_CONNECT_URL=shadownet://connect?base=https://x&token=t\n"
-    )
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / ".env").write_text("SHADOWNET_CONNECT_URL=shadow://connect?mcp=https://x&token=t\n")
     (tmp_path / "config.yaml").write_text(
         yaml.safe_dump({"mcp_servers": {"shadownet": {"url": "https://api/mcp"}}})
     )
@@ -45,9 +43,9 @@ def test_do_status_reports_each_surface(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_do_logout_removes_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     (tmp_path / ".env").write_text(
-        "SHADOWNET_CONNECT_URL=shadownet://connect?base=https://x&token=t\nOTHER=1\n"
+        "SHADOWNET_CONNECT_URL=shadow://connect?mcp=https://x&token=t\nOTHER=1\n"
     )
     (tmp_path / "config.yaml").write_text(
         yaml.safe_dump(
@@ -70,14 +68,14 @@ def test_do_logout_removes_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_do_logout_idempotent_when_nothing_to_remove(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     out = _cli.do_logout()
     assert "already disconnected" in out
 
 
 def test_do_doctor_returns_overall_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """doctor emits OK/FAIL per check and an overall summary line."""
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     out = _cli.do_doctor()
     assert "shadownet plugin doctor" in out
@@ -89,7 +87,7 @@ def test_do_sync_writes_skills_and_returns_message(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """sync re-materializes skills under the categorized layout and returns a confirmation."""
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     out = _cli.do_sync()
     assert "sync complete" in out

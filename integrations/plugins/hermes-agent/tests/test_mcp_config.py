@@ -17,7 +17,7 @@ def _seed_config(data_dir: Path, payload: dict) -> Path:
 def test_read_mcp_server_config_returns_existing_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_config(
         tmp_path,
         {
@@ -34,7 +34,7 @@ def test_read_mcp_server_config_returns_existing_entry(
 def test_read_mcp_server_config_absent_returns_none(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_config(tmp_path, {"gateway": {"platforms": {}}})
     assert _mcp_config.read_mcp_server_config() is None
 
@@ -42,7 +42,7 @@ def test_read_mcp_server_config_absent_returns_none(
 def test_remove_mcp_server_drops_entry_and_empty_parent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     config_path = _seed_config(
         tmp_path,
         {"mcp_servers": {"shadownet": {"url": "https://x/mcp"}}, "other": 1},
@@ -57,7 +57,7 @@ def test_remove_mcp_server_drops_entry_and_empty_parent(
 def test_remove_mcp_server_noop_when_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_config(tmp_path, {"other": 2})
     assert _mcp_config.remove_mcp_server_from_config() is False
 
@@ -65,7 +65,7 @@ def test_remove_mcp_server_noop_when_absent(
 def test_set_platform_enabled_toggles_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_config(tmp_path, {})
 
     assert _mcp_config.set_platform_enabled("shadownet", False) is True
@@ -85,7 +85,7 @@ def test_ensure_mcp_server_skips_without_connect_url(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ensure_mcp_server_in_config is a no-op when SHADOWNET_CONNECT_URL is unset."""
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.delenv("SHADOWNET_CONNECT_URL", raising=False)
     _mcp_config.ensure_mcp_server_in_config()
     # config.yaml should not have been created.
@@ -101,7 +101,7 @@ def test_ensure_mcp_server_writes_block(tmp_path: Path, monkeypatch: pytest.Monk
     from urllib.parse import quote
 
     mcp_endpoint = "https://api.example/mcp/v1"
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.setenv(
         "SHADOWNET_CONNECT_URL",
         f"shadow://connect?mcp={quote(mcp_endpoint, safe='')}&token=tok-abc",
@@ -122,7 +122,7 @@ def test_ensure_mcp_server_skips_handoff_uri(
     from urllib.parse import quote
 
     mcp_endpoint = "https://api.example/mcp/v1"
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.setenv(
         "SHADOWNET_CONNECT_URL",
         f"shadow://connect?mcp={quote(mcp_endpoint, safe='')}&handoff=8K3J9-W2L1Q-Y5R7T-V1234",

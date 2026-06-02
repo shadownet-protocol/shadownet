@@ -24,8 +24,8 @@ classifiers = [
 ]
 dependencies = [
     "shadownet>=0.6.0,<0.7",
-    "httpx>=0.27",
-    "pydantic>=2.7",
+    "httpx>=0.27,<1",
+    "pydantic>=2.7,<3",
 ]
 
 # In-repo dev override: when working inside the monorepo (CI + local dev),
@@ -98,5 +98,5 @@ warn_unused_ignores = true
 # in modules that aren't typed for external consumers (per the Hermes docs).
 # Plugin code uses these types behind TYPE_CHECKING guards; at runtime they
 # resolve when Hermes is installed.
-module = ["hermes_agent.*", "gateway.*"]
+module = ["hermes_agent.*", "gateway.*", "hermes_constants"]
 ignore_missing_imports = true

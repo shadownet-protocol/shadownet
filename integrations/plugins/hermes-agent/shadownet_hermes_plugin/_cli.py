@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from shadownet_hermes_plugin import _env, _mcp_config, _skills
 
@@ -29,7 +29,9 @@ def handle(args: argparse.Namespace) -> None:
     if cmd == "status":
         print(do_status())
     elif cmd == "doctor":
-        print(do_doctor())
+        report, ok = _doctor_report()
+        print(report)
+        raise SystemExit(0 if ok else 1)
     elif cmd == "sync":
         print(do_sync())
     elif cmd == "logout":
@@ -39,11 +41,17 @@ def handle(args: argparse.Namespace) -> None:
 
 
 def _format_connect_url(value: str | None) -> str:
+    """Redact a connect URL for display: show the endpoint, never the token."""
     if not value:
         return "absent"
-    if len(value) <= 32:
-        return value
-    return value[:24] + "…"
+    try:
+        from shadownet.onboarding import parse_connect_uri
+
+        parsed = parse_connect_uri(value)
+    except Exception:  # noqa: BLE001 - any parse failure means we just say "present"
+        return "present (unparseable)"
+    token_state = "token present" if parsed.access_token else "no token"
+    return f"{parsed.mcp_endpoint} ({token_state})"
 
 
 def do_status() -> str:
@@ -65,8 +73,8 @@ def do_status() -> str:
     return "\n".join(lines)
 
 
-def do_doctor() -> str:
-    """Run each end-to-end check and return a multi-line report."""
+def _doctor_report() -> tuple[str, bool]:
+    """Run each end-to-end check; return ``(report, overall_ok)``."""
     results: list[tuple[str, bool, str]] = []
 
     env_url = _env.read_connect_url_from_env()
@@ -110,7 +118,12 @@ def do_doctor() -> str:
     overall = all(ok for _, ok, _ in results)
     lines.append("  ----")
     lines.append(f"  overall: {'OK' if overall else 'FAIL'}")
-    return "\n".join(lines)
+    return "\n".join(lines), overall
+
+
+def do_doctor() -> str:
+    """Run the self-check and return the multi-line report (see :func:`_doctor_report`)."""
+    return _doctor_report()[0]
 
 
 def _probe_mcp_endpoint(url: str) -> tuple[bool, str]:
@@ -158,21 +171,17 @@ def do_logout() -> str:
         disabled = _mcp_config.set_platform_enabled("shadownet", False)
         if disabled:
             actions.append("set gateway.platforms.shadownet.enabled=false")
+    env_file = _env.env_path()
     if not actions:
         return (
             "shadownet plugin: already disconnected (nothing to remove). "
-            "To reconnect: paste your shadownet://connect?... URL into ~/.hermes/.env "
+            f"To reconnect: paste your shadow://connect?mcp=…&token=… URL into {env_file} "
             "and run `hermes shadownet sync`."
         )
     return (
         "Disconnected from shadownet:\n  - "
         + "\n  - ".join(actions)
         + "\nRestart Hermes (docker compose restart hermes) for changes to take effect.\n"
-        "To reconnect: paste your shadownet://connect?... URL into ~/.hermes/.env, "
+        f"To reconnect: paste your shadow://connect?mcp=…&token=… URL into {env_file}, "
         "run `hermes shadownet sync`, and restart."
     )
-
-
-def _check_async_handler_signatures() -> Any:
-    """No-op — exposed so test_cli can confirm the module imports cleanly."""
-    return True

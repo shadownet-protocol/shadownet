@@ -178,7 +178,7 @@ def build_adapter_class() -> type:
             _, _, send_result_cls = _resolve_hermes_types()
             return send_result_cls(success=True)
 
-        async def send_typing(self, chat_id: str) -> None:
+        async def send_typing(self, chat_id: str, metadata: dict[str, Any] | None = None) -> None:
             """Shadownet is async / fire-and-forget — no typing indicator."""
 
         async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
@@ -294,7 +294,7 @@ def build_adapter_class() -> type:
             if not message_id:
                 return None
             try:
-                result = await self._client.inbox(InboxInput(limit=50))
+                result = await self._client.inbox(InboxInput(includeReview=True, limit=50))
             except Exception as exc:  # noqa: BLE001
                 _log.debug("inbox fetch for %s failed: %s", message_id, exc)
                 return None
@@ -747,7 +747,11 @@ def _format_when(raw: str) -> str:
         from datetime import datetime as _dt
 
         dt = _dt.fromisoformat(raw)
-        return dt.strftime("%A, %B %-d at %-I:%M %p")
+        hour12 = dt.hour % 12 or 12
+        return (
+            f"{dt.strftime('%A')}, {dt.strftime('%B')} {dt.day} "
+            f"at {hour12}:{dt.minute:02d} {dt.strftime('%p')}"
+        )
     except (ValueError, TypeError):
         return raw
 

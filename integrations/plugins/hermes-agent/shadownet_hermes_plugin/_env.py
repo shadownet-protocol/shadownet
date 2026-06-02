@@ -1,11 +1,11 @@
-"""Read/write helpers for the ``SHADOWNET_CONNECT_URL`` line in ``~/.hermes/.env``."""
+"""Read/write helpers for the ``SHADOWNET_CONNECT_URL`` line in Hermes' ``.env``."""
 
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-from shadownet_hermes_plugin._skills import hermes_data_dir
+from shadownet_hermes_plugin import _paths
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,8 +22,8 @@ _VAR = "SHADOWNET_CONNECT_URL"
 
 
 def env_path() -> Path:
-    """Path to ``<data>/.env`` — Hermes' env-var file."""
-    return hermes_data_dir() / ".env"
+    """Path to ``.env`` — the file Hermes loads env vars from (``HERMES_HOME``)."""
+    return _paths.env_path()
 
 
 def _is_target_line(line: str) -> bool:
@@ -49,7 +49,7 @@ def read_connect_url_from_env() -> str | None:
     if not path.is_file():
         return None
     try:
-        with path.open() as f:
+        with path.open(encoding="utf-8-sig") as f:
             for line in f:
                 if _is_target_line(line):
                     return _extract_value(line) or None
@@ -64,7 +64,7 @@ def strip_connect_url_from_env() -> bool:
     if not path.is_file():
         return False
     try:
-        with path.open() as f:
+        with path.open(encoding="utf-8-sig") as f:
             lines = f.readlines()
     except OSError as e:
         _log.warning("shadownet plugin: failed to read %s (%s)", path, e)
@@ -73,7 +73,7 @@ def strip_connect_url_from_env() -> bool:
     if len(kept) == len(lines):
         return False
     try:
-        with path.open("w") as f:
+        with path.open("w", encoding="utf-8") as f:
             f.writelines(kept)
     except OSError as e:
         _log.warning("shadownet plugin: failed to write %s (%s)", path, e)

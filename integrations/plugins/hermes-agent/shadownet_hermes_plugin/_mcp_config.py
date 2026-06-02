@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import tempfile
 from typing import Any
 
-from shadownet_hermes_plugin._skills import hermes_data_dir
+from shadownet_hermes_plugin import _paths
 
 __all__ = [
     "config_path",
@@ -20,8 +22,38 @@ _log = logging.getLogger(__name__)
 
 
 def config_path() -> Any:
-    """Path to ``<data>/config.yaml`` — the file Hermes reads at startup."""
-    return hermes_data_dir() / "config.yaml"
+    """Path to ``config.yaml`` — the file Hermes reads at startup."""
+    return _paths.config_path()
+
+
+def _has_env_ref_token(existing: Any, desired: dict[str, Any]) -> bool:
+    """True when an existing entry matches by url but carries a ``${ENV}`` token.
+
+    Hermes lets operators rewrite the bearer header as a ``${VAR}`` template and
+    preserves it across saves. We must not clobber that with the literal token,
+    so when the url matches and the existing Authorization is a template we leave
+    the entry untouched.
+    """
+    if not isinstance(existing, dict) or existing.get("url") != desired.get("url"):
+        return False
+    headers = existing.get("headers")
+    auth = headers.get("Authorization", "") if isinstance(headers, dict) else ""
+    return isinstance(auth, str) and "${" in auth
+
+
+def _is_managed() -> bool:
+    """True when Hermes owns/regenerates config (NixOS/systemd/Homebrew).
+
+    Writing config.yaml in managed mode would be clobbered by the next
+    package activation, so we skip with a warning. Mirrors the host's
+    ``is_managed`` signal (``HERMES_MANAGED`` env or a ``.managed`` marker).
+    """
+    if os.environ.get("HERMES_MANAGED", "").strip():
+        return True
+    try:
+        return (_paths.hermes_home() / ".managed").exists()
+    except OSError:
+        return False
 
 
 def _load_yaml_module() -> Any | None:
@@ -41,7 +73,7 @@ def _load_config() -> tuple[Any, dict[str, Any] | None]:
     path = config_path()
     try:
         if path.is_file():
-            with path.open() as f:
+            with path.open(encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
         else:
             cfg = {}
@@ -55,12 +87,36 @@ def _load_config() -> tuple[Any, dict[str, Any] | None]:
 
 
 def _write_config(yaml: Any, cfg: dict[str, Any]) -> bool:
-    """Write ``cfg`` back to ``config.yaml``. Returns True on success."""
+    """Atomically write ``cfg`` to ``config.yaml`` with 0600 perms.
+
+    Skips the write in Hermes managed mode (the activation script owns the
+    file). Writes a sibling temp file, fsyncs, restricts permissions, then
+    ``os.replace`` so a crash mid-write can never truncate the user's config.
+    Returns True on success.
+    """
     path = config_path()
+    if _is_managed():
+        _log.warning(
+            "shadownet plugin: Hermes is in managed mode; not writing %s "
+            "(config is owned by the activation script)",
+            path,
+        )
+        return False
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w") as f:
-            yaml.safe_dump(cfg, f, sort_keys=False)
+        fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".config.", suffix=".yaml")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg, f, sort_keys=False)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.name != "nt":
+                os.chmod(tmp_name, 0o600)
+            os.replace(tmp_name, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
     except OSError as e:
         _log.warning("shadownet plugin: failed to write %s (%s)", path, e)
         return False
@@ -142,6 +198,11 @@ def ensure_mcp_server_in_config() -> None:
     if existing == desired:
         _log.debug("shadownet plugin: mcp_servers.shadownet already up-to-date")
         return
+    if _has_env_ref_token(existing, desired):
+        _log.debug(
+            "shadownet plugin: preserving env-ref Authorization template in mcp_servers.shadownet"
+        )
+        return
 
     mcp_servers["shadownet"] = desired
 
@@ -150,7 +211,8 @@ def ensure_mcp_server_in_config() -> None:
 
     _log.info(
         "shadownet plugin: wrote mcp_servers.shadownet to %s (url=%s). "
-        "Restart Hermes once for the agent's tool registry to expose "
+        "Interactive sessions auto-reload mcp_servers within a few seconds; "
+        "restart the gateway daemon once if running headless to expose "
         "mcp_shadownet_* tools.",
         config_path(),
         mcp_endpoint,

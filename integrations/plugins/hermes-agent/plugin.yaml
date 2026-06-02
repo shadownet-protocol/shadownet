@@ -17,14 +17,16 @@
 # manifest is still authoritative if the install path changes.
 
 name: shadownet
-version: "0.5.0"
+version: "0.6.0"
 description: >-
   Shadownet v0.2 protocol integration for Hermes Agent. Adds identity-
   anchored agent-to-agent messaging via Shadownet (RFC 0002 MCP control
-  surface): outbound MCP tools (identity, resolve, contacts, send, respond,
-  coordinate, confirm_plan, accept_plan, inbox, inbox_wait), four skills, a
-  NAT-free inbound channel via the long-poll inbox_wait tool, six slash
-  commands, lifecycle hooks, and a `hermes shadownet` CLI subcommand.
+  surface): MCP tools (identity, resolve, contacts, contact_detail,
+  add_contact, send, respond, inbox, inbox_wait), with coordination intents
+  (coordinate_v1, propose_plan_v1, confirm_plan_v1, accept_plan_v1) carried
+  over send/respond; four skills, a NAT-free inbound channel via the long-poll
+  inbox_wait tool, slash commands, lifecycle hooks, and a `hermes shadownet`
+  CLI subcommand.
 
 kind: platform
 
