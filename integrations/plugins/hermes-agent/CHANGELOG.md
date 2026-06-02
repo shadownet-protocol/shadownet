@@ -28,6 +28,28 @@ Tracks `shadownet>=0.6.0,<0.7`.
   canonical `integrations/skills/` tree (no committed per-plugin copy); the
   release builds the wheel from source so they land under
   `share/hermes-plugins/shadownet/skills/` as before.
+- **Profile-correct paths.** Skills and `config.yaml` are now resolved via
+  `hermes_constants.get_hermes_home()` (the real `HERMES_HOME`), not a
+  non-existent `HERMES_DATA_DIR`/`/opt/data` heuristic — so under Hermes
+  profiles or a custom `HERMES_HOME` the skills surface in `<available_skills>`
+  and the agent actually sees the `mcp_shadownet_*` tools.
+- **Safe `config.yaml` writes.** The `mcp_servers.shadownet` block is written
+  atomically (temp + `os.replace`) with `0600` permissions, honoring Hermes
+  managed-mode and preserving `${ENV}` token templates — a crash mid-write can
+  no longer truncate the user's config, and the token is no longer world-readable.
+- **`shadow://` connect scheme everywhere.** The `hermes shadownet logout`
+  reconnect guidance and the README install one-liners use the SDK-required
+  `shadow://connect?mcp=…&token=…` form (the old `shadownet://…&base=…` was
+  rejected by `parse_connect_uri`). `hermes shadownet status` redacts the token.
+- **Slash commands no longer shadow the native skill commands.** The four
+  skill-backed `/shadownet-*` commands (which printed raw `skill_view` JSON)
+  were removed; the bundled skills provide those commands natively. Only the
+  plugin-owned `/shadownet-status` and `/shadownet-logout` are registered.
+- **Cross-platform + correctness fixes.** `encoding="utf-8"` on all file I/O;
+  portable date formatting; `send_typing` matches the base signature;
+  `stranger_review` inbound messages are surfaced; `hermes shadownet doctor`
+  exits nonzero on failure; dependency upper bounds (`httpx<1`, `pydantic<3`);
+  `py.typed` marker added.
 
 ### Changed
 
