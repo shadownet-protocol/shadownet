@@ -10,12 +10,10 @@ import pytest
 
 # The conftest installs a fake gateway.platforms.base before this import.
 from shadownet_hermes_plugin._adapter import (
-    ACCEPT_PLAN_V1_URI,
     CONFIRM_PLAN_V1_URI,
     COORDINATE_V1_URI,
     DEFAULT_SIDECAR_BASE_URL,
-    _build_coordination_inject,
-    _build_task_update_inject,
+    _coordination_context,
     _resolve_config,
     build_adapter_class,
     check_shadownet_requirements,
@@ -146,58 +144,20 @@ class TestAdapterConstruction:
         assert adapter._long_poll_timeout == 5
 
 
-class TestPromptBuilders:
-    def test_coordinate_inject_carries_correlation_ids(self) -> None:
-        text = _build_coordination_inject(
-            sender="alice@x",
+class TestCoordinationContext:
+    def test_coordination_context_carries_intent_and_data(self) -> None:
+        text = _coordination_context(
             sender_name="Alice",
-            context_id="ctx-001",
-            message_id="msg-001",
             intent=COORDINATE_V1_URI,
             body_text="grab coffee?",
             body_data={"activity": "coffee", "details": "Friday morning"},
+            context_id="ctx-001",
         )
         assert "context_id: ctx-001" in text
-        assert "message_id: msg-001" in text
+        assert "coordinate_v1" in text
         assert "coffee" in text.lower()
         assert "Friday morning" in text
-
-    def test_coordination_inject_for_confirm_plan(self) -> None:
-        text = _build_coordination_inject(
-            sender="alice@x",
-            sender_name="Alice",
-            context_id="ctx-001",
-            message_id="msg-001",
-            intent=CONFIRM_PLAN_V1_URI,
-            body_text="agreed plan",
-            body_data={
-                "activity": "Coffee",
-                "when": "2026-05-15T10:00:00Z",
-                "where": {"name": "The Daily Grind"},
-            },
-        )
-        assert "context_id: ctx-001" in text
-        assert "message_id: msg-001" in text
-        assert "accept_plan_v1" in text
-
-    def test_coordination_inject_for_accept_plan(self) -> None:
-        text = _build_coordination_inject(
-            sender="alice@x",
-            sender_name="Alice",
-            context_id="ctx-001",
-            message_id="msg-001",
-            intent=ACCEPT_PLAN_V1_URI,
-            body_text="",
-            body_data={},
-        )
-        assert "context_id: ctx-001" in text
-        assert "ACCEPTED" in text
-
-    def test_task_update_inject_carries_context_id(self) -> None:
-        text = _build_task_update_inject("ctx-001", "task-42", "completed")
-        assert "context_id: ctx-001" in text
-        assert "task_id: task-42" in text
-        assert "status: completed" in text
+        assert "shadownet-coordinate skill" in text
 
 
 class TestOnEventDispatch:
@@ -227,9 +187,12 @@ class TestOnEventDispatch:
         adapter._gateway = fake_gateway
         return adapter
 
-    async def test_coordinate_v1_self_dispatches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SHADOWNET_NOTIFY_CHAT", "telegram:12345")
-        adapter = self._setup(monkeypatch)
+    async def test_coordination_intent_from_contact_runs_coordinate_skill(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A coordination intent from a known contact is handled autonomously with
+        # the shadownet-coordinate skill — no NOTIFY_CHAT, no human push.
+        adapter = self._setup(monkeypatch, status="inbox")
         event = {
             "event": "inbox.message",
             "eventId": "evt-1",
@@ -244,19 +207,16 @@ class TestOnEventDispatch:
         await adapter._on_event(event)
         assert len(adapter.handled) == 1
         msg = adapter.handled[0]
-        assert "COORDINATION REQUEST" in msg.text
-        assert "context_id: ctx-1" in msg.text
         assert msg.auto_skill == "shadownet-coordinate"
+        assert "COORDINATION" in msg.text
+        assert "context_id: ctx-1" in msg.text
 
-    async def test_stranger_free_form_surfaces_in_sender_session_with_inbox_skill(
+    async def test_stranger_free_form_is_left_for_pull_triage(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # A stranger (status=stranger_review), no SHADOWNET_NOTIFY_CHAT, must
-        # SURFACE to the human — reach the agent through the platform pipeline,
-        # in a session bound to the sender, carrying the context/message ids and
-        # the body, with the shadownet-inbox skill auto-loaded. It must NOT be
-        # handled autonomously and must NOT be silently suppressed.
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
+        # A stranger (status=stranger_review) is NOT handled autonomously and is
+        # NOT pushed anywhere — it stays in the sidecar for the human to triage
+        # via the pending-inbox hook + inbox skill (pull model).
         adapter = self._setup(monkeypatch, status="stranger_review")
         event = {
             "event": "inbox.message",
@@ -265,29 +225,16 @@ class TestOnEventDispatch:
                 "from": "alice@sh4dow.org",
                 "contextId": "ctx-1",
                 "messageId": "msg-1",
-                "status": "inbox",
+                "status": "stranger_review",
             },
         }
         await adapter._on_event(event)
+        assert adapter.handled == []  # pull-only: nothing pushed to the human
 
-        assert len(adapter.handled) == 1, "free-form inbound was suppressed, not surfaced"
-        msg = adapter.handled[0]
-        # Proper injected instructions: the inbox skill is auto-loaded on the turn.
-        assert msg.auto_skill == "shadownet-inbox"
-        # Proper context: the agent prompt carries the correlation ids + body.
-        assert "context_id: ctx-1" in msg.text
-        assert "message_id: msg-1" in msg.text
-        assert "alice@sh4dow.org" in msg.text
-        assert "Hi" in msg.text
-        # Proper session: bound to the sender's DM, not a stray/global chat.
-        assert msg.source.chat_id == "alice@sh4dow.org"
-        assert msg.source.user_id == "alice@sh4dow.org"
-
-    async def test_confirm_plan_v1_no_notify_target_is_silent(
+    async def test_confirm_plan_from_contact_runs_coordinate_skill(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
-        adapter = self._setup(monkeypatch)
+        adapter = self._setup(monkeypatch, status="inbox")
         event = {
             "event": "inbox.message",
             "eventId": "evt-1",
@@ -300,13 +247,12 @@ class TestOnEventDispatch:
             },
         }
         await adapter._on_event(event)
-        # Without SHADOWNET_NOTIFY_CHAT: no self-dispatch, no inject.
-        assert adapter.handled == []
+        assert len(adapter.handled) == 1
+        assert adapter.handled[0].auto_skill == "shadownet-coordinate"
 
     async def test_task_update_without_notify_is_silent(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
         adapter = self._setup(monkeypatch)
         event = {
             "event": "task.update",
@@ -328,7 +274,6 @@ class TestOnEventDispatch:
         # A known contact (status=inbox), no SHADOWNET_NOTIFY_CHAT: the full Hermes
         # agent handles it silently in the shadownet session with the autonomous
         # skill — NOT surfaced to the human, NOT the inbox-triage skill.
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
         adapter = self._setup(monkeypatch, status="inbox")
         event = {
             "event": "inbox.message",
@@ -351,7 +296,6 @@ class TestOnEventDispatch:
         assert adapter._engine.active_context_for("alice@sh4dow.org") == "ctx-1"
 
     async def test_duplicate_inbound_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("SHADOWNET_NOTIFY_CHAT", raising=False)
         adapter = self._setup(monkeypatch, status="inbox")
         event = {
             "event": "inbox.message",

@@ -12,12 +12,12 @@ using ``shadownet.mcp.ShadownetMCPClient``), runs an inbox loop in an
 ``asyncio.Task``, and dispatches each inbound event to
 ``self.handle_message(MessageEvent)``.
 
-Coordination intents (coordinate_v1, propose_plan_v1, confirm_plan_v1,
-accept_plan_v1) are application-level flows transported via the sidecar's
-generic send/respond/inbox tools. The sidecar is content-agnostic; all
-intent interpretation and flow orchestration lives here in the plugin.
-All coordination events are injected into the user's chat session
-(human-in-the-loop) — the agent never acts autonomously on coordination.
+Inbound messages from a known contact are handled autonomously by the full
+Hermes agent (the engine in :mod:`._engine` gates and bounds this); free-form
+messages use the shadownet-autonomous skill and coordination intents use the
+shadownet-coordinate skill. Strangers are left in the sidecar for the human to
+triage (pull). The agent surfaces to the human only by its own judgment, via
+``send_message`` — there is no per-message push.
 """
 
 from __future__ import annotations
@@ -73,9 +73,11 @@ _log = logging.getLogger(__name__)
 # yet; this is just a placeholder operators can override.
 DEFAULT_SIDECAR_BASE_URL = "https://app.sh4dow.org"
 
-# Intent URI for free-form `respond` calls when the inbound payload doesn't
-# fit one of the typed v0.2 intents.
-INTENT_FREE_FORM_RESPONSE = "urn:shadownet:intent:response_v1"
+# Typed v0.2 coordination intents; these are handled by the shadownet-coordinate
+# skill rather than the free-form shadownet-autonomous skill.
+_COORDINATION_INTENTS = frozenset(
+    {COORDINATE_V1_URI, PROPOSE_PLAN_V1_URI, CONFIRM_PLAN_V1_URI, ACCEPT_PLAN_V1_URI}
+)
 
 
 def _resolve_hermes_types() -> tuple[type, type, type]:
@@ -198,7 +200,9 @@ def build_adapter_class() -> type:
                 del self._last_send[cid]
             # status is a required Literal["accepted","rejected"]; read it directly so a
             # sidecar rejection surfaces rather than being assumed successful.
-            return send_result_cls(success=(status == "accepted"), message_id=message_id, error=error)
+            return send_result_cls(
+                success=(status == "accepted"), message_id=message_id, error=error
+            )
 
         async def send_typing(self, chat_id: str, metadata: dict[str, Any] | None = None) -> None:
             """Shadownet is async / fire-and-forget — no typing indicator."""
@@ -235,22 +239,25 @@ def build_adapter_class() -> type:
         async def _on_event(self, event: dict[str, Any]) -> None:
             """Route inbound Shadownet events.
 
-            All coordination intents are injected into the user's chat
-            session (human-in-the-loop). The sidecar is content-agnostic;
-            intent interpretation happens entirely here.
+            An inbox.message from a known contact is handled autonomously by the
+            full Hermes agent; from a stranger it is left in the sidecar for the
+            human to triage (pull — the pending-inbox hook surfaces it).
+            task.update carries no proactive push; it is observed on the next look.
             """
-            notify_target = os.environ.get("SHADOWNET_NOTIFY_CHAT", "")
             event_name = event.get("event")
             data = event.get("data") or {}
-            event_id = event.get("eventId") or event.get("event_id") or ""
 
             if event_name == "task.update":
-                await self._inject_task_update(data, event_id, notify_target)
+                _log.debug(
+                    "task.update for context %s (status=%s) — pull model, not pushed",
+                    data.get("contextId") or "",
+                    data.get("status") or "",
+                )
                 return
 
             if event_name != "inbox.message":
                 _log.debug(
-                    "ignoring %s event (only inbox.message + task.update dispatched)",
+                    "ignoring %s event (only inbox.message + task.update handled)",
                     event_name,
                 )
                 return
@@ -267,36 +274,14 @@ def build_adapter_class() -> type:
             body_data = (body.data if body is not None else None) or {}
             status = (inbox_item.status if inbox_item is not None else "") or ""
 
-            coordination_intents = {
-                COORDINATE_V1_URI,
-                PROPOSE_PLAN_V1_URI,
-                CONFIRM_PLAN_V1_URI,
-                ACCEPT_PLAN_V1_URI,
-            }
-
-            if intent in coordination_intents:
-                await self._inject_coordination_event(
-                    sender=sender,
-                    sender_name=sender_name,
-                    context_id=context_id,
-                    message_id=message_id,
-                    intent=intent,
-                    body_text=body_text,
-                    body_data=body_data,
-                    notify_target=notify_target,
-                )
+            if not (body_text or body_data):
+                _log.debug("inbox.message from %s carried no content; nothing to do", sender)
                 return
 
-            if not body_text:
-                _log.debug(
-                    "inbox.message from %s carried no body text; nothing to surface",
-                    sender,
-                )
-                return
-
-            # Free-form message: the engine decides whether the full Hermes agent
-            # handles it silently (a known contact) or we surface it to the human
-            # (a stranger pending review, or the runaway backstop tripped).
+            # The engine decides: a known contact is handled autonomously by the
+            # full Hermes agent (free-form or a coordination intent); a stranger,
+            # or a tripped runaway backstop, is left for the human to triage via
+            # the pending-inbox hook + inbox skill (pull — no proactive push).
             decision = self._engine.decide(
                 status=status,
                 contact=sender,
@@ -313,33 +298,18 @@ def build_adapter_class() -> type:
                     context_id=context_id,
                     message_id=message_id,
                     body_text=body_text,
+                    body_data=body_data,
+                    intent=intent,
                     first_turn=decision.first_turn,
                 )
                 return
 
             _log.debug(
-                "shadownet: surfacing %s from %s to human (%s)",
+                "shadownet: leaving %s from %s for human triage (%s)",
                 message_id,
                 sender,
                 decision.reason,
             )
-            if notify_target:
-                await self._inject_free_form(
-                    sender=sender_name,
-                    context_id=context_id,
-                    message_id=message_id,
-                    body_text=body_text,
-                    notify_target=notify_target,
-                )
-            else:
-                await self._surface_inbound_message(
-                    sender=sender,
-                    sender_name=sender_name,
-                    context_id=context_id,
-                    message_id=message_id,
-                    body_text=body_text,
-                    event_id=event_id,
-                )
 
         async def _fetch_inbox_item(self, message_id: str) -> Any | None:
             if not message_id:
@@ -376,22 +346,37 @@ def build_adapter_class() -> type:
             context_id: str,
             message_id: str,
             body_text: str,
+            body_data: dict[str, Any],
+            intent: str,
             first_turn: bool,
         ) -> None:
             """Run the full Hermes agent silently on a known contact's message.
 
-            The turn runs in the shadownet session bound to the sender; the
-            agent's reply IS the move and is delivered to the peer via send()
-            (threaded by contextId). The human is not in this session — the
-            agent surfaces to them only by calling send_message when warranted.
+            The turn runs in the shadownet session bound to the sender. For a
+            free-form message the agent's reply IS the move (delivered to the peer
+            via send()); for a coordination intent the agent makes typed moves with
+            mcp_shadownet_respond per the shadownet-coordinate skill. Either way the
+            human is not in this session — the agent surfaces to them only by
+            calling send_message when a decision is needed or the flow completes.
             """
-            notes = await self._contact_notes_for(sender) if first_turn else ""
-            text = _build_autonomous_inject(
-                sender_name=sender_name,
-                body_text=body_text,
-                notes=notes,
-                first_turn=first_turn,
-            )
+            if intent in _COORDINATION_INTENTS:
+                skill = "shadownet-coordinate"
+                text = _coordination_context(
+                    sender_name=sender_name,
+                    intent=intent,
+                    body_text=body_text,
+                    body_data=body_data,
+                    context_id=context_id,
+                )
+            else:
+                skill = "shadownet-autonomous"
+                notes = await self._contact_notes_for(sender) if first_turn else ""
+                text = _build_autonomous_inject(
+                    sender_name=sender_name,
+                    body_text=body_text,
+                    notes=notes,
+                    first_turn=first_turn,
+                )
             source = self.build_source(
                 chat_id=sender,
                 chat_type="dm",
@@ -406,304 +391,20 @@ def build_adapter_class() -> type:
                         "event_kind": "shadownet.autonomous",
                         "context_id": context_id,
                         "message_id": message_id,
+                        "intent": intent,
                     },
-                    auto_skill="shadownet-autonomous",
+                    auto_skill=skill,
                 )
                 await self.handle_message(synth_event)
                 _log.info(
-                    "shadownet: autonomous turn for %s (context=%s, first=%s)",
+                    "shadownet: autonomous %s turn for %s (context=%s, first=%s)",
+                    skill,
                     sender,
                     context_id,
                     first_turn,
                 )
             except Exception:
                 _log.exception("shadownet: autonomous turn failed for %s", sender)
-
-        async def _inject_coordination_event(
-            self,
-            *,
-            sender: str,
-            sender_name: str,
-            context_id: str,
-            message_id: str,
-            intent: str,
-            body_text: str,
-            body_data: dict[str, Any],
-            notify_target: str,
-        ) -> None:
-            """Inject any coordination intent into the user's chat session."""
-            if not notify_target:
-                _log.warning(
-                    "Got %s from %s but SHADOWNET_NOTIFY_CHAT not set — cannot notify user",
-                    intent,
-                    sender,
-                )
-                return
-
-            now = time.time()
-            dedup_key = f"{sender}:{intent}:{context_id}"
-            last = self._notify_timestamps.get(dedup_key, 0.0)
-            notify_cooldown = int(os.environ.get("SHADOWNET_NOTIFY_COOLDOWN_SECONDS", "60"))
-            if now - last < notify_cooldown:
-                _log.debug("Dedup suppressed inject: %s (%.1fs ago)", dedup_key, now - last)
-                return
-            self._notify_timestamps[dedup_key] = now
-            self._evict_stale_timestamps(self._notify_timestamps, notify_cooldown * 2)
-
-            target = self._resolve_notify_target(notify_target)
-            if target is None:
-                return
-            target_platform, chat_id, adapter = target
-
-            inject_text = _build_coordination_inject(
-                sender=sender,
-                sender_name=sender_name,
-                context_id=context_id,
-                message_id=message_id,
-                intent=intent,
-                body_text=body_text,
-                body_data=body_data,
-            )
-
-            from gateway.session import SessionSource
-
-            source = SessionSource(
-                platform=target_platform,
-                chat_id=chat_id,
-                user_id=chat_id,
-                user_name="shadownet",
-            )
-            try:
-                synth_event = message_event_cls(
-                    text=inject_text,
-                    source=source,
-                    internal=True,
-                    raw_message={
-                        "intent": intent,
-                        "context_id": context_id,
-                        "message_id": message_id,
-                    },
-                    auto_skill="shadownet-coordinate",
-                )
-                await adapter.handle_message(synth_event)
-                _log.info(
-                    "Injected %s from %s (context=%s) into %s:%s session",
-                    intent,
-                    sender,
-                    context_id,
-                    target_platform.value,
-                    chat_id,
-                )
-            except Exception:
-                _log.exception(
-                    "Failed to inject into %s:%s session", target_platform.value, chat_id
-                )
-
-        async def _inject_free_form(
-            self,
-            *,
-            sender: str,
-            context_id: str,
-            message_id: str,
-            body_text: str,
-            notify_target: str,
-        ) -> None:
-            target = self._resolve_notify_target(notify_target)
-            if target is None:
-                return
-            target_platform, chat_id, adapter = target
-
-            inject_text = (
-                f"[SHADOWNET MESSAGE from {sender}]\n"
-                f"context_id: {context_id}\n"
-                f"message_id: {message_id}\n"
-                f"{body_text}\n\n"
-                f"INSTRUCTIONS: Surface this message to the user. If they want "
-                f"to reply, use mcp_shadownet_respond with the context_id above."
-            )
-
-            from gateway.session import SessionSource
-
-            source = SessionSource(
-                platform=target_platform,
-                chat_id=chat_id,
-                user_id=chat_id,
-                user_name="shadownet",
-            )
-            try:
-                synth_event = message_event_cls(
-                    text=inject_text,
-                    source=source,
-                    internal=True,
-                    raw_message={
-                        "context_id": context_id,
-                        "message_id": message_id,
-                    },
-                    auto_skill="shadownet-inbox",
-                )
-                await adapter.handle_message(synth_event)
-            except Exception:
-                _log.exception(
-                    "Failed to inject free-form into %s:%s session",
-                    target_platform.value,
-                    chat_id,
-                )
-
-        async def _surface_inbound_message(
-            self,
-            *,
-            sender: str,
-            sender_name: str,
-            context_id: str,
-            message_id: str,
-            body_text: str,
-            event_id: str,
-        ) -> None:
-            """Surface a plain inbound A2A message as a Shadownet chat.
-
-            With no SHADOWNET_NOTIFY_CHAT bridge, route the message through the
-            platform-adapter pipeline (``handle_message``) so Hermes opens a
-            session bound to the sender — the channel the plugin advertises — and
-            auto-loads the ``shadownet-inbox`` skill so the agent has the
-            context-id and the respond instructions. Without this a plain inbound
-            message is silently dropped and never reaches the user.
-            """
-            source = self.build_source(
-                chat_id=sender,
-                chat_type="dm",
-                user_id=sender,
-                user_name=sender_name or sender,
-            )
-            text = (
-                f"[SHADOWNET MESSAGE from {sender}]\n"
-                f"context_id: {context_id}\n"
-                f"message_id: {message_id}\n\n"
-                f"{body_text}"
-            )
-            try:
-                synth_event = message_event_cls(
-                    text=text,
-                    source=source,
-                    raw_message={
-                        "event_id": event_id,
-                        "context_id": context_id,
-                        "message_id": message_id,
-                    },
-                    auto_skill="shadownet-inbox",
-                )
-                await self.handle_message(synth_event)
-                _log.info(
-                    "shadownet: surfaced inbox.message from %s (context=%s, message=%s) as a shadownet chat",
-                    sender,
-                    context_id,
-                    message_id,
-                )
-            except Exception:
-                _log.exception("failed to surface inbox.message from %s", sender)
-
-        async def _inject_task_update(
-            self, data: dict[str, Any], event_id: str, notify_target: str
-        ) -> None:
-            """Inject a ``task.update`` event into the user-facing session.
-
-            Per RFC 0002 §7, task.update carries ``{contextId, taskId, status}``
-            and is only emitted for application-opened A2A Task workflows
-            (Shadownet's standard envelope responses use A2A Message and do
-            NOT generate this event). Dedup is keyed on (contextId, status)
-            so repeated polling doesn't spam.
-            """
-            context_id = data.get("contextId") or ""
-            task_id = data.get("taskId") or ""
-            status = data.get("status") or "unknown"
-
-            if not context_id:
-                _log.debug("task.update without contextId, ignoring: %s", event_id)
-                return
-
-            if not notify_target:
-                _log.debug(
-                    "task.update for context %s (status=%s) but SHADOWNET_NOTIFY_CHAT "
-                    "not set — nothing to notify",
-                    context_id,
-                    status,
-                )
-                return
-
-            now = time.time()
-            dedup_key = f"task.update:{context_id}:{status}"
-            last = self._notify_timestamps.get(dedup_key, 0.0)
-            notify_cooldown = int(os.environ.get("SHADOWNET_NOTIFY_COOLDOWN_SECONDS", "60"))
-            if now - last < notify_cooldown:
-                _log.debug("Dedup suppressed task.update: %s (%.1fs ago)", dedup_key, now - last)
-                return
-            self._notify_timestamps[dedup_key] = now
-            self._evict_stale_timestamps(self._notify_timestamps, notify_cooldown * 2)
-
-            target = self._resolve_notify_target(notify_target)
-            if target is None:
-                return
-            target_platform, chat_id, adapter = target
-
-            inject_text = _build_task_update_inject(context_id, task_id, status)
-
-            from gateway.session import SessionSource
-
-            source = SessionSource(
-                platform=target_platform,
-                chat_id=chat_id,
-                user_id=chat_id,
-                user_name="shadownet",
-            )
-            try:
-                synth_event = message_event_cls(
-                    text=inject_text,
-                    source=source,
-                    internal=True,
-                    raw_message={
-                        "context_id": context_id,
-                        "task_id": task_id,
-                        "status": status,
-                        "event_type": "task.update",
-                    },
-                )
-                await adapter.handle_message(synth_event)
-                _log.info(
-                    "Injected task.update context=%s status=%s into %s:%s session",
-                    context_id,
-                    status,
-                    target_platform.value,
-                    chat_id,
-                )
-            except Exception:
-                _log.exception(
-                    "Failed to inject task.update into %s:%s session",
-                    target_platform.value,
-                    chat_id,
-                )
-
-        def _resolve_notify_target(self, notify_target: str) -> tuple[Any, str, Any] | None:
-            """Resolve ``platform:chat_id`` env target into (Platform, chat_id, adapter)."""
-            parts = notify_target.split(":", 1)
-            if len(parts) != 2:
-                _log.warning(
-                    "SHADOWNET_NOTIFY_CHAT must be 'platform:chat_id', got %r", notify_target
-                )
-                return None
-            platform_name, chat_id = parts
-
-            gateway = self._gateway
-            if gateway is None:
-                _log.warning("No gateway runner available for session injection")
-                return None
-
-            from gateway.config import Platform
-
-            target_platform = Platform(platform_name)
-            adapter = gateway.adapters.get(target_platform)
-            if adapter is None:
-                _log.warning("No adapter for platform %s", platform_name)
-                return None
-            return target_platform, chat_id, adapter
 
         def __init__(self, config: Any, ctx: Any = None) -> None:
             from gateway.config import Platform
@@ -718,19 +419,10 @@ def build_adapter_class() -> type:
             self._long_poll_timeout = timeout
             # chat_id -> (last content sent, timestamp), for exact-duplicate anti-echo.
             self._last_send: dict[str, tuple[str, float]] = {}
-            self._notify_timestamps: dict[str, float] = {}
             # Switchboard + circuit-breaker for autonomous exchanges (in-memory).
             self._engine = ExchangeEngine()
             # contact shadowname -> ContactProfile.notes (cached human guidance).
             self._contact_notes: dict[str, str] = {}
-
-        @staticmethod
-        def _evict_stale_timestamps(timestamps: dict[str, float], max_age: float) -> None:
-            """Remove entries older than max_age to prevent unbounded growth."""
-            now = time.time()
-            stale = [k for k, v in timestamps.items() if now - v > max_age]
-            for k in stale:
-                del timestamps[k]
 
     return ShadownetAdapter
 
@@ -760,186 +452,30 @@ def _build_autonomous_inject(
     )
 
 
-def _build_coordination_inject(
-    *,
-    sender: str,
-    sender_name: str,
-    context_id: str,
-    message_id: str,
-    intent: str,
-    body_text: str,
-    body_data: dict[str, Any],
+def _coordination_context(
+    *, sender_name: str, intent: str, body_text: str, body_data: dict[str, Any], context_id: str
 ) -> str:
-    """Build inject text for any coordination intent.
+    """Thin context for an autonomous coordination turn: the structured facts only.
 
-    Each intent has unambiguous semantics — no flowRole needed:
-      coordinate_v1   → "someone wants to coordinate, ask your user"
-      propose_plan_v1 → "someone proposed a plan, ask your user to confirm"
-      confirm_plan_v1 → "someone confirmed your proposal, send accept"
-      accept_plan_v1  → "fully done, tell the user"
+    The protocol detail lives in the shadownet-coordinate skill (single source);
+    here we hand the agent the intent, the contextId to thread on, and the plan
+    data so it can make its typed move and surface a decision when needed.
     """
-    if intent == COORDINATE_V1_URI:
-        activity = body_data.get("activity", "") if isinstance(body_data, dict) else ""
-        details = body_data.get("details", "") if isinstance(body_data, dict) else ""
-        details_line = f"\nDetails: {details}" if details else ""
-        return (
-            f"[SHADOWNET COORDINATION REQUEST from {sender_name}]\n"
-            f"context_id: {context_id}\n"
-            f"message_id: {message_id}\n"
-            f"Activity: {activity}{details_line}\n"
-            f"Message: {body_text}\n\n"
-            f'INSTRUCTIONS: {sender_name} wants to coordinate "{activity}". '
-            f"You MUST propose a concrete plan IMMEDIATELY and AUTONOMOUSLY — "
-            f"do NOT ask your user for input.\n\n"
-            f"1. Check your user's calendar/availability if you have access. "
-            f"If not, assume they are free.\n"
-            f"2. Determine your user's city from memory/profile.\n"
-            f"3. Search the web for a real, specific venue that fits the "
-            f"activity (e.g. a popular cafe for coffee, a well-reviewed "
-            f'restaurant for dinner). Never use "TBD" or placeholders.\n'
-            f'4. Interpret the timing from the details (e.g. "Sunday morning" '
-            f"→ next Sunday 10:00 AM). Pick a concrete ISO datetime.\n\n"
-            f"Then call mcp_shadownet_respond with:\n"
-            f'  contextId="{context_id}"\n'
-            f"  body={{\n"
-            f'    "text": "<activity> at <venue> on <date/time>",\n'
-            f'    "intent": "urn:shadownet:intent:propose_plan_v1",\n'
-            f'    "data": {{\n'
-            f'      "activity": "{activity}",\n'
-            f'      "when": "<ISO datetime you chose>",\n'
-            f'      "where": {{"name": "<real venue>", "city": "<city>"}},\n'
-            f'      "participants": []\n'
-            f"    }}\n"
-            f"  }}\n\n"
-            f"After calling respond, say only: "
-            f'"Replying to {sender_name}\'s agent."\n'
-            f"Do not reveal proposal details — this step is autonomous. "
-            f"Do not call respond more than once."
-        )
-
-    if intent == PROPOSE_PLAN_V1_URI:
-        plan_summary = _summarize_plan(body_data, fallback=body_text)
-        plan_json = "{}"
-        try:
-            plan_json = json.dumps(body_data, indent=2)
-        except (TypeError, ValueError):
-            pass
-        return (
-            f"[SHADOWNET PLAN PROPOSED by {sender_name}]\n"
-            f"context_id: {context_id}\n"
-            f"message_id: {message_id}\n"
-            f"Plan: {plan_summary}\n"
-            f"PlanObject:\n{plan_json}\n\n"
-            f"INSTRUCTIONS: {sender_name} proposed a plan. Present it to the "
-            f"user in a friendly, natural way and ask them to confirm. "
-            f'Use "{sender_name}" when referring to the contact. Never show '
-            f"raw identifiers, ISO timestamps, or JSON to the user.\n"
-            f"When they say yes/confirm/ok, call mcp_shadownet_send with:\n"
-            f'  to="{sender_name}"\n'
-            f'  contextId="{context_id}"\n'
-            f"  body={{\n"
-            f'    "text": "Confirmed.",\n'
-            f'    "intent": "urn:shadownet:intent:confirm_plan_v1",\n'
-            f'    "data": {plan_json}\n'
-            f"  }}\n"
-            f'After sending, tell the user: "Sent confirmation to '
-            f'{sender_name} — waiting for them to accept." '
-            f"Do NOT say the plan is confirmed or finalized yet.\n"
-            f"If they decline, just say you'll let {sender_name} know."
-        )
-
-    if intent == CONFIRM_PLAN_V1_URI:
-        plan_summary = _summarize_plan(body_data, fallback=body_text)
-        activity = body_data.get("activity", "") if isinstance(body_data, dict) else ""
-        return (
-            f"[SHADOWNET PLAN from {sender_name}]\n"
-            f"context_id: {context_id}\n"
-            f"message_id: {message_id}\n"
-            f"Plan: {plan_summary}\n\n"
-            f"INSTRUCTIONS: {sender_name} wants to meet up with your user. "
-            f"Your agent already proposed a plan and {sender_name} agreed. "
-            f'Present this to your user as: "{sender_name} wants to '
-            f"{activity or 'meet up'} with you — <plan details in natural "
-            f'language>. Would you like to accept?"\n'
-            f"Give the user full context — they have NOT seen this plan before. "
-            f"Never show raw identifiers, ISO timestamps, or JSON.\n"
-            f"Do NOT call respond yet — wait for the user to say yes.\n"
-            f"When the user confirms, call mcp_shadownet_respond with:\n"
-            f'  contextId="{context_id}"\n'
-            f"  body={{\n"
-            f'    "text": "Accepted.",\n'
-            f'    "intent": "urn:shadownet:intent:accept_plan_v1",\n'
-            f'    "data": {{"acceptsMessageId": "{message_id}"}}\n'
-            f"  }}\n"
-            f"If they decline, just say you'll let {sender_name} know."
-        )
-
-    if intent == ACCEPT_PLAN_V1_URI:
-        return (
-            f"[SHADOWNET PLAN ACCEPTED by {sender_name}]\n"
-            f"context_id: {context_id}\n"
-            f"message_id: {message_id}\n"
-            f"The plan is fully confirmed by both sides.\n\n"
-            f"INSTRUCTIONS: Tell your user the plan is confirmed — {sender_name} "
-            f"accepted. Be brief and celebratory. Never show raw identifiers "
-            f"or ISO timestamps. No tool calls needed."
-        )
-
-    return f"[SHADOWNET message from {sender_name}]\ncontext_id: {context_id}\n{body_text}"
-
-
-def _format_when(raw: str) -> str:
-    """Turn an ISO datetime into a human-friendly string."""
-    if not raw:
-        return ""
+    intent_short = intent.rsplit(":", 1)[-1] if intent else "message"
     try:
-        from datetime import datetime as _dt
-
-        dt = _dt.fromisoformat(raw)
-        hour12 = dt.hour % 12 or 12
-        return (
-            f"{dt.strftime('%A')}, {dt.strftime('%B')} {dt.day} "
-            f"at {hour12}:{dt.minute:02d} {dt.strftime('%p')}"
-        )
-    except (ValueError, TypeError):
-        return raw
-
-
-def _summarize_plan(body_data: dict[str, Any], *, fallback: str) -> str:
-    if not isinstance(body_data, dict):
-        return fallback[:300] if fallback else "<no details>"
-    activity = body_data.get("activity") or ""
-    when_raw = body_data.get("when") or ""
-    when = _format_when(when_raw) if when_raw else ""
-    where = body_data.get("where") or {}
-    where_label = ""
-    if isinstance(where, dict):
-        where_label = where.get("name") or where.get("address") or where.get("city") or ""
-    parts = [str(activity)] if activity else []
-    if where_label:
-        parts.append(f"at {where_label}")
-    if when:
-        parts.append(f"on {when}")
-    if not parts:
-        try:
-            return json.dumps(body_data, separators=(",", ":"))[:300]
-        except TypeError:
-            return fallback[:300] if fallback else "<no details>"
-    return " ".join(parts)
-
-
-def _build_task_update_inject(context_id: str, task_id: str, status: str) -> str:
-    """Build the inject text for an RFC 0002 §7 ``task.update`` event."""
+        data_json = json.dumps(body_data, indent=2) if body_data else "{}"
+    except (TypeError, ValueError):
+        data_json = "{}"
     return (
-        f"[SHADOWNET TASK UPDATE]\n"
+        f"[AUTONOMOUS SHADOWNET COORDINATION with {sender_name}]\n"
+        f"intent: {intent_short}\n"
         f"context_id: {context_id}\n"
-        f"task_id: {task_id}\n"
-        f"status: {status}\n\n"
-        f"INSTRUCTIONS: A task's state changed. If this is the first time the "
-        f"user is hearing about this status (or it's a terminal state like "
-        f"'completed', 'failed', or 'canceled'), tell them concisely. "
-        f"Otherwise stay silent — no tool calls, no acknowledgement. "
-        f"Reference the context_id above if the user asks for more detail."
+        f"Coordinate with {sender_name}, a known contact, on your user's behalf. "
+        f"Follow the shadownet-coordinate skill: make your typed move with "
+        f"mcp_shadownet_respond, and surface to your user via send_message only "
+        f"when their decision is needed or the plan is settled.\n"
+        f"Message: {body_text}\n"
+        f"Data:\n{data_json}"
     )
 
 

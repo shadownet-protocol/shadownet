@@ -179,17 +179,8 @@ def pre_llm_call_callback(
     if _looks_like_coordination(user_message):
         parts.append(
             "[shadownet-coordinate] The user wants to coordinate with a contact. "
-            "You MUST follow the shadownet-coordinate skill protocol:\n"
-            "1. Look up the contact: mcp_shadownet_contacts\n"
-            "2. Send with the EXACT intent URI:\n"
-            '   mcp_shadownet_send(to="<name>", body={\n'
-            '     "text": "Let\'s coordinate <activity> — <details>",\n'
-            '     "intent": "urn:shadownet:intent:coordinate_v1",\n'
-            '     "data": {"activity": "<activity>", "details": "<details>"}\n'
-            "   })\n"
-            "3. Tell the user you sent the request and end your turn.\n"
-            "Do NOT invent intent values. Do NOT set up cron jobs. "
-            "Do NOT use body.message — use body.text."
+            "Load the shadownet-coordinate skill and follow it — it carries the "
+            "exact intent URIs and body shapes. Do not invent your own."
         )
 
     return {"context": "\n\n".join(parts)} if parts else None

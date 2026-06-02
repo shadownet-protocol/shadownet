@@ -140,7 +140,9 @@ The plugin reads its config from environment variables (or Hermes'
 | `SHADOWNET_CONNECT_URL` | one of these | — | Full `shadow://connect?mcp=…&token=…` URL — a single value carrying the MCP endpoint and the bearer token. What the sidecar's connect page hands you. Inline (`token=`) form only; handoff URIs need a browser flow the plugin doesn't run. |
 | `SHADOWNET_TOKEN` + `SHADOWNET_MCP_ENDPOINT` | one of these | — | Split form: bearer token plus the MCP endpoint URL, for operators wiring values via env directly. `SHADOWNET_CONNECT_URL` supersedes both when set. |
 | `SHADOWNET_LONG_POLL_TIMEOUT_SECONDS` | no | `30` | Per-call timeout for the inbox long-poll. |
-| `SHADOWNET_NOTIFY_CHAT` | no | — | Cross-platform notification target for plan events, format `platform:chat_id` (e.g. `telegram:123456`). When set, inbound coordination / `task.update` events are injected into this chat session so the user sees them. |
+| `SHADOWNET_MAX_AUTO_TURNS` | no | `50` | Anti-runaway backstop: max autonomous turns per exchange before it's left for the human. The agent normally ends an exchange well before this. |
+| `SHADOWNET_AUTO_IDLE_SECONDS` | no | `900` | After this much quiet, an exchange's turn budget resets. |
+| `SHADOWNET_SEND_DEDUP_SECONDS` | no | `5` | Window for suppressing an exact-duplicate resend to the same contact (anti-echo). |
 
 ## How inbound works (no NAT problem)
 
