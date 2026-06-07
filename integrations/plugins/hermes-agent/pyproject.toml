@@ -100,3 +100,10 @@ warn_unused_ignores = true
 # resolve when Hermes is installed.
 module = ["hermes_agent.*", "gateway.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# shadownet-x402 (the x402 settlement adapter) is loaded at runtime via a path
+# fallback for the /shadownet-pay command; it is not a hard dependency so the
+# plugin still installs cleanly where shadownet-x402 is not published.
+module = ["shadownet_x402.*"]
+ignore_missing_imports = true

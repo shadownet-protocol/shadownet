@@ -53,7 +53,10 @@ import shutil
 import subprocess
 import sys
 
-import keyring
+try:
+    import keyring
+except ModuleNotFoundError:  # optional convenience cache; falls back to env tokens
+    keyring = None  # type: ignore[assignment]
 
 from shadownet.mcp import InboxWaitInput, ShadownetMCPClient
 from shadownet.onboarding import ConnectURIError, parse_connect_uri
@@ -78,6 +81,8 @@ def _env_first(*names: str, default: str = "") -> str:
 
 
 def _cached_access_token(handoff_code: str) -> str | None:
+    if keyring is None:
+        return None
     try:
         return keyring.get_password(_KEYRING_SERVICE, handoff_code)
     except Exception as exc:  # noqa: BLE001

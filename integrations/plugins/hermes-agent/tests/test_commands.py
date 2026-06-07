@@ -7,19 +7,20 @@ import pytest
 from shadownet_hermes_plugin import _commands
 
 
-def test_build_specs_returns_six_commands() -> None:
-    """All six /shadownet-* commands have name + handler + description."""
+def test_build_specs_returns_seven_commands() -> None:
+    """All seven /shadownet-* commands have name + handler + description."""
     from tests.conftest import FakeCtx
 
     ctx = FakeCtx()
     specs = _commands.build_slash_command_specs(ctx)
-    assert len(specs) == 6
+    assert len(specs) == 7
     names = {s["name"] for s in specs}
     assert names == {
         "shadownet-setup",
         "shadownet-inbox",
         "shadownet-reach-out",
         "shadownet-coordinate",
+        "shadownet-pay",
         "shadownet-status",
         "shadownet-logout",
     }
@@ -28,14 +29,14 @@ def test_build_specs_returns_six_commands() -> None:
         assert spec["description"]
 
 
-def test_register_slash_commands_calls_register_command_six_times() -> None:
-    """register_slash_commands fans out to ctx.register_command six times."""
+def test_register_slash_commands_calls_register_command_seven_times() -> None:
+    """register_slash_commands fans out to ctx.register_command seven times."""
     from tests.conftest import FakeCtx
 
     ctx = FakeCtx()
     count = _commands.register_slash_commands(ctx)
-    assert count == 6
-    assert len(ctx.commands) == 6
+    assert count == 7
+    assert len(ctx.commands) == 7
 
 
 def test_skill_handler_dispatches_to_skill_view() -> None:

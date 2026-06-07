@@ -104,6 +104,8 @@ def register(ctx: Any) -> None:
     if command_count:
         _log.info("registered %d shadownet slash commands", command_count)
 
+    _safe_register_tools(ctx)
+
     _safe_register_cli_command(ctx)
 
 
@@ -163,6 +165,45 @@ def _safe_register_slash_commands(ctx: Any) -> int:
     except Exception as e:  # noqa: BLE001
         _log.warning("shadownet plugin: failed to register slash commands: %s", e)
         return 0
+
+
+_SHADOWNET_PAY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "to": {"type": "string", "description": "The shadow/agent to pay, e.g. alice"},
+        "amount": {"type": "string", "description": "Amount in USDC, e.g. 0.005"},
+    },
+    "required": [],
+}
+
+
+def _shadownet_pay_handler(args: dict[str, Any], **_kwargs: Any) -> str:
+    from shadownet_hermes_plugin import _shadowpay
+
+    to = str(args.get("to") or "")
+    amount = str(args.get("amount") or "")
+    return _shadowpay.run(f"{to} {amount}".strip())
+
+
+def _safe_register_tools(ctx: Any) -> None:
+    register_fn = getattr(ctx, "register_tool", None)
+    if register_fn is None:
+        return
+    try:
+        register_fn(
+            name="shadownet_pay",
+            toolset="shadownet",
+            schema=_SHADOWNET_PAY_SCHEMA,
+            handler=_shadownet_pay_handler,
+            description=(
+                "Pay another agent over x402 on Algorand, bound to a verified, revocable "
+                "Shadow identity (not an anonymous wallet). Use when the user asks to pay, "
+                "send money to, settle with, or do 'shadowpay' with someone. Returns the "
+                "settlement result."
+            ),
+        )
+    except Exception as e:  # noqa: BLE001
+        _log.warning("shadownet plugin: failed to register shadownet_pay tool: %s", e)
 
 
 def _safe_register_cli_command(ctx: Any) -> None:

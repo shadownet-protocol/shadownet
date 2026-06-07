@@ -46,6 +46,22 @@ def _make_logout_handler() -> Callable[[str], str | None]:
     return _handler
 
 
+def _make_pay_handler() -> Callable[[str], str | None]:
+    def _handler(raw_args: str) -> str | None:
+        return _run_shadowpay(raw_args)
+
+    return _handler
+
+
+def _run_shadowpay(raw_args: str) -> str:
+    from shadownet_hermes_plugin import _shadowpay
+
+    try:
+        return _shadowpay.run(raw_args)
+    except Exception as e:  # noqa: BLE001 — a slash command must always answer
+        return f"[shadownet] ShadowPay failed: {e}"
+
+
 def build_slash_command_specs(ctx: Any) -> list[dict[str, Any]]:
     """Return the spec list ``[{name, handler, description}, ...]`` for registration."""
     return [
@@ -68,6 +84,11 @@ def build_slash_command_specs(ctx: Any) -> list[dict[str, Any]]:
             "name": "shadownet-coordinate",
             "handler": _make_skill_handler(ctx, "shadownet-coordinate"),
             "description": "Run a two-sided shadownet coordination plan",
+        },
+        {
+            "name": "shadownet-pay",
+            "handler": _make_pay_handler(),
+            "description": "ShadowPay: pay a shadow over x402 on Algorand (identity-bound)",
         },
         {
             "name": "shadownet-status",
