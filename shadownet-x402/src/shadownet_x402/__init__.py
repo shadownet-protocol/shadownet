@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from shadownet_x402._version import __version__
 from shadownet_x402.budget import BudgetStore, InMemoryBudgetStore
+from shadownet_x402.client import ShadowX402Client
 from shadownet_x402.config import Settings
 from shadownet_x402.errors import (
     AmountMismatchError,
@@ -52,6 +53,7 @@ __all__ = [
     "Settled",
     "SettlementError",
     "ShadowIdentity",
+    "ShadowX402Client",
     "ShadownetX402Error",
     "__version__",
     "build_payment_requirements",
