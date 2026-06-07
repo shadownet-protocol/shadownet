@@ -1,6 +1,6 @@
 # shadownet-x402
 
-> **Know Your Agent for x402 — every agent payment bound to a verified, revocable identity, not an anonymous wallet.**
+**Know Your Agent for x402 — every agent payment bound to a verified, revocable identity, not an anonymous wallet.**
 
 Identity-gated [x402](https://github.com/x402-foundation/x402) payments on
 Algorand for [Shadownet](https://github.com/shadownet-protocol/shadownet).
