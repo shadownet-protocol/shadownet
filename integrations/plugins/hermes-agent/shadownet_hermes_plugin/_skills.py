@@ -38,6 +38,7 @@ SKILL_NAMES = (
     "shadownet-reach-out",
     "shadownet-inbox",
     "shadownet-coordinate",
+    "shadownet-pay",
 )
 
 
@@ -60,10 +61,18 @@ def skill_root_candidates() -> tuple[Path, ...]:
 
 
 def skill_paths() -> dict[str, Path]:
-    """Absolute paths to bundled SKILL.md files, picking the first matching root."""
+    """Absolute paths to bundled SKILL.md files, picking the first complete root.
+
+    A root only wins if it holds *every* skill in ``SKILL_NAMES``. Checking the
+    full set (not just the first name) is deliberate: a data dir left partially
+    populated by an earlier deploy — e.g. a different branch's skill set — still
+    contains ``shadownet-setup``, and a first-name-only check would pick that
+    stale root and silently drop the skills it is missing. Requiring the whole
+    set lets a complete source (the wheel's share dir) win instead.
+    """
     candidates = skill_root_candidates()
     for root in candidates:
-        if (root / SKILL_NAMES[0] / "SKILL.md").is_file():
+        if all((root / name / "SKILL.md").is_file() for name in SKILL_NAMES):
             return {name: root / name / "SKILL.md" for name in SKILL_NAMES}
     return {name: candidates[0] / name / "SKILL.md" for name in SKILL_NAMES}
 
@@ -145,6 +154,14 @@ def materialize_skills_into_data_dir(paths: dict[str, Path]) -> None:
                 dst_dir,
                 e,
             )
+
+    # Drop skill dirs from earlier deploys that are no longer in SKILL_NAMES, so
+    # <available_skills> reflects only the current set. A branch switch that
+    # renames or removes skills would otherwise leave orphans behind.
+    keep = set(paths)
+    for child in category_root.iterdir():
+        if child.is_dir() and child.name not in keep:
+            shutil.rmtree(child, ignore_errors=True)
 
 
 def count_materialized_skills() -> int:
