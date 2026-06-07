@@ -1123,7 +1123,6 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "shadownet" },
-    { name = "shadownet-x402" },
 ]
 
 [package.dev-dependencies]
@@ -1141,7 +1140,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "shadownet", directory = "../../../python-sdk" },
-    { name = "shadownet-x402", directory = "../../../shadownet-x402" },
 ]
 
 [package.metadata.requires-dev]
@@ -1152,39 +1150,6 @@ dev = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.7" },
     { name = "types-pyyaml", specifier = ">=6.0" },
-]
-
-[[package]]
-name = "shadownet-x402"
-source = { directory = "../../../shadownet-x402" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "shadownet" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "py-algorand-sdk", marker = "extra == 'algorand'", specifier = ">=2.6" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pydantic-settings", specifier = ">=2.4" },
-    { name = "shadownet", directory = "../../../python-sdk" },
-    { name = "x402-avm", marker = "extra == 'algorand'", specifier = ">=2.0" },
-]
-provides-extras = ["algorand", "server"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "fastapi", specifier = ">=0.110" },
-    { name = "mypy", specifier = ">=1.13" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-cov", specifier = ">=5" },
-    { name = "respx", specifier = ">=0.21" },
-    { name = "ruff", specifier = ">=0.7" },
 ]
 
 [[package]]
