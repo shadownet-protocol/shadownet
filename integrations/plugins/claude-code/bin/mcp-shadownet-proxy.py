@@ -115,7 +115,9 @@ async def _resolve_endpoint_and_token(connect_url: str) -> tuple[str, str]:
         return parsed.mcp_endpoint, cached
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as http:
-        response = await aredeem_handoff(parsed.mcp_endpoint, parsed.handoff_code, client=http)
+        response = await aredeem_handoff(
+            parsed.mcp_endpoint, parsed.handoff_code, client=http
+        )
     _cache_access_token(parsed.handoff_code, response.access_token)
     return parsed.mcp_endpoint, response.access_token
 

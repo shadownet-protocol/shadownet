@@ -198,8 +198,8 @@ class FakeCtx:
 def _isolate_hermes_home(
     tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Point HERMES_HOME at a throwaway dir so no test touches the real ~/.hermes.
-
-    Tests that need a specific home still override HERMES_HOME in their own body.
-    """
+    """Isolate HERMES_HOME on a throwaway dir and reset the engine singleton per test."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path_factory.mktemp("hermes_home")))
+    from shadownet_hermes_plugin._engine import reset_engine
+
+    reset_engine()

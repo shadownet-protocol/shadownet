@@ -37,23 +37,27 @@ def test_manifest_lists_every_registered_surface() -> None:
     assert set(manifest["provides_hooks"]) == {
         "on_session_start",
         "pre_llm_call",
+        "pre_tool_call",
         "on_session_end",
     }
     assert set(manifest["provides_commands"]) == {
         "shadownet-setup",
-        "shadownet-inbox",
-        "shadownet-reach-out",
+        "shadownet-messaging",
         "shadownet-coordinate",
         "shadownet-status",
         "shadownet-logout",
     }
     assert set(manifest["provides_skills"]) == {
         "shadownet:shadownet-setup",
-        "shadownet:shadownet-reach-out",
-        "shadownet:shadownet-inbox",
+        "shadownet:shadownet-messaging",
         "shadownet:shadownet-coordinate",
         "shadownet:shadownet-autonomous",
     }
-    # MCP tools come from config.yaml, not from register_tool — must NOT
-    # appear under provides_tools.
-    assert "provides_tools" not in manifest
+    # Channel-bridge tools are plugin-registered; the mcp_shadownet_* protocol
+    # tools come from config.yaml and are deliberately absent here.
+    assert set(manifest["provides_tools"]) == {
+        "shadownet_directive",
+        "shadownet_exchanges",
+        "shadownet_exchange_control",
+        "shadownet_delegate",
+    }

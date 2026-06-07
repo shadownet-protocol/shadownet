@@ -81,3 +81,61 @@ def test_register_skills_warns_when_files_missing(
     count = _skills.register_skills(ctx)
     assert count == 0
     assert ctx.skills == []
+
+
+def test_materialize_drops_stale_skill_dirs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skill dir from a previous version (renamed/removed) is dropped on materialize."""
+    src_root = tmp_path / "src"
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("HERMES_HOME", str(data_dir))
+    cat_root = data_dir / "skills" / _skills.SHADOWNET_CATEGORY
+    stale = cat_root / "shadownet-inbox"
+    stale.mkdir(parents=True)
+    (stale / "SKILL.md").write_text("# stale")
+
+    paths: dict[str, Path] = {}
+    for name in _skills.SKILL_NAMES:
+        d = src_root / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"# {name}")
+        paths[name] = d / "SKILL.md"
+    _skills.materialize_skills_into_data_dir(paths)
+
+    for name in _skills.SKILL_NAMES:
+        assert (cat_root / name / "SKILL.md").is_file()
+    assert not stale.exists()
+
+
+def test_materialize_is_safe_when_source_is_the_data_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the source paths already ARE the materialized files, copy must not raise."""
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("HERMES_HOME", str(data_dir))
+    cat_root = data_dir / "skills" / _skills.SHADOWNET_CATEGORY
+    paths: dict[str, Path] = {}
+    for name in _skills.SKILL_NAMES:
+        d = cat_root / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"# {name}")
+        paths[name] = d / "SKILL.md"
+    _skills.materialize_skills_into_data_dir(paths)  # must not raise SameFileError
+    for name in _skills.SKILL_NAMES:
+        assert (cat_root / name / "SKILL.md").is_file()
+
+
+def test_skill_paths_ignores_a_stale_data_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale partial set in the data dir must not shadow the bundled source."""
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("HERMES_HOME", str(data_dir))
+    stale = data_dir / "skills" / _skills.SHADOWNET_CATEGORY / "shadownet-setup"
+    stale.mkdir(parents=True)
+    (stale / "SKILL.md").write_text("# stale")
+
+    resolved = _skills.skill_paths()
+    assert all(p.is_file() for p in resolved.values())
+    assert not str(resolved["shadownet-messaging"]).startswith(str(data_dir))

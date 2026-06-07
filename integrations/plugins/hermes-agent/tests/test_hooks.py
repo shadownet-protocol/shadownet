@@ -10,6 +10,28 @@ def _clear_pending_inbox() -> None:
     _hooks._pending_inbox.clear()
 
 
+def test_pre_tool_call_blocks_foreground_exchange_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_hooks, "_current_platform", lambda: "telegram")
+    out = _hooks.pre_tool_call_callback(tool_name="mcp_shadownet_respond")
+    assert out is not None and out["action"] == "block"
+
+
+def test_pre_tool_call_allows_background_shadownet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_hooks, "_current_platform", lambda: "shadownet")
+    assert _hooks.pre_tool_call_callback(tool_name="mcp_shadownet_respond") is None
+
+
+def test_pre_tool_call_ignores_non_exchange_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_hooks, "_current_platform", lambda: "telegram")
+    assert _hooks.pre_tool_call_callback(tool_name="shadownet_delegate") is None
+    assert _hooks.pre_tool_call_callback(tool_name="web_search") is None
+
+
+def test_pre_tool_call_unknown_platform_fails_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_hooks, "_current_platform", lambda: "")
+    assert _hooks.pre_tool_call_callback(tool_name="mcp_shadownet_respond") is None
+
+
 def test_on_session_start_records_pending_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

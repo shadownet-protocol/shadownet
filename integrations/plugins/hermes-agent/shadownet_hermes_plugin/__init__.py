@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from shadownet_hermes_plugin import _cli, _commands, _hooks, _mcp_config, _skills
+from shadownet_hermes_plugin import _bridge, _cli, _commands, _hooks, _mcp_config, _skills
 from shadownet_hermes_plugin._adapter import (
     build_adapter_class,
     check_shadownet_requirements,
@@ -58,14 +58,20 @@ _materialize_skills_into_data_dir = _skills.materialize_skills_into_data_dir
 
 
 _PLATFORM_HINT = (
-    "Shadownet is connected. Use mcp_shadownet_contacts to list contacts, "
-    "mcp_shadownet_send to send messages (with body.text, body.intent, "
-    "body.data), mcp_shadownet_respond to reply in a thread (by contextId), "
-    "and mcp_shadownet_inbox / mcp_shadownet_inbox_wait for inbox triage. "
-    "IMPORTANT: When the user asks to plan a meeting, coordinate, schedule, "
-    "or meet up with a contact, ALWAYS load the 'shadownet-coordinate' skill "
-    "first — it contains the exact intent URIs and data shapes required. "
-    "Do NOT invent your own intent values or body formats."
+    "Shadownet connects you to other people's agents (Shadows) over A2A. "
+    "Core model: a message from a contact the user has ADDED is handled "
+    "autonomously by you in that contact's own session — your reply is delivered "
+    "straight to the contact, and the user is NOT in that session, so reach the "
+    "user only by calling send_message when something is genuinely worth their "
+    "attention. A message from a STRANGER is never auto-handled; it waits for the "
+    "user to review. "
+    "Skills: load 'shadownet-messaging' to reach a contact or triage what has "
+    "arrived; 'shadownet-coordinate' when the user wants to plan / schedule / "
+    "meet up with a contact (it carries the exact intent URIs and data shapes — "
+    "never invent your own); 'shadownet-setup' to verify the connection. "
+    "Tools: mcp_shadownet_contacts / resolve / add_contact for the contact graph; "
+    "mcp_shadownet_send and mcp_shadownet_respond to message (body has text / "
+    "intent / data; respond threads by contextId); mcp_shadownet_inbox to triage."
 )
 
 
@@ -98,6 +104,7 @@ def register(ctx: Any) -> None:
 
     _safe_register_hook(ctx, "on_session_start", _hooks.on_session_start_callback)
     _safe_register_hook(ctx, "pre_llm_call", _hooks.pre_llm_call_callback)
+    _safe_register_hook(ctx, "pre_tool_call", _hooks.pre_tool_call_callback)
     _safe_register_hook(ctx, "on_session_end", _hooks.on_session_end_callback)
 
     command_count = _safe_register_slash_commands(ctx)
@@ -105,6 +112,10 @@ def register(ctx: Any) -> None:
         _log.info("registered %d shadownet slash commands", command_count)
 
     _safe_register_cli_command(ctx)
+
+    tool_count = _bridge.register_bridge_tools(ctx)
+    if tool_count:
+        _log.info("registered %d shadownet bridge tools", tool_count)
 
 
 def _register_platform_compat(ctx: Any, **kwargs: Any) -> None:

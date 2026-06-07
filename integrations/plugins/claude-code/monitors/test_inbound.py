@@ -27,7 +27,9 @@ import inbound  # type: ignore[import-not-found]  # noqa: E402
 
 MCP_ENDPOINT = "https://acme.example/mcp"
 INLINE_URI = f"shadow://connect?mcp={quote(MCP_ENDPOINT, safe='')}&token=t-from-url"
-HANDOFF_URI = f"shadow://connect?mcp={quote(MCP_ENDPOINT, safe='')}&handoff=ABCDEFGHIJ12345678"
+HANDOFF_URI = (
+    f"shadow://connect?mcp={quote(MCP_ENDPOINT, safe='')}&handoff=ABCDEFGHIJ12345678"
+)
 
 
 def test_resolve_config_from_shell_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,7 +107,10 @@ def test_resolve_config_prefers_claude_plugin_connect_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_CONNECT_URL", INLINE_URI)
-    monkeypatch.setenv("SHADOWNET_CONNECT_URL", "shadow://connect?mcp=https://shell.example/m&token=shell")
+    monkeypatch.setenv(
+        "SHADOWNET_CONNECT_URL",
+        "shadow://connect?mcp=https://shell.example/m&token=shell",
+    )
 
     endpoint, token, _, _ = inbound._resolve_endpoint_and_token()
     assert endpoint == MCP_ENDPOINT
@@ -122,7 +127,9 @@ def test_resolve_config_bad_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         inbound._resolve_endpoint_and_token()
 
 
-def test_resolve_config_negative_timeout_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_config_negative_timeout_clamped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
     monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
     monkeypatch.setenv("SHADOWNET_LONG_POLL_TIMEOUT", "-5")
@@ -132,7 +139,9 @@ def test_resolve_config_negative_timeout_clamped(monkeypatch: pytest.MonkeyPatch
     assert timeout == 1
 
 
-def test_resolve_config_os_notifications_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_config_os_notifications_opt_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("SHADOWNET_TOKEN", "tok")
     monkeypatch.setenv("SHADOWNET_MCP_ENDPOINT", MCP_ENDPOINT)
     monkeypatch.setenv("SHADOWNET_OS_NOTIFICATIONS", "0")
@@ -182,7 +191,7 @@ def test_emit_claude_notification_handles_unicode(
 
 
 def test_applescript_escape_handles_quotes_and_backslashes() -> None:
-    assert inbound._escape_for_applescript(r'a"b\c') == r'a\"b\\c'
+    assert inbound._escape_for_applescript(r'a"b\c') == r"a\"b\\c"
 
 
 def test_powershell_escape_handles_backticks_and_quotes() -> None:

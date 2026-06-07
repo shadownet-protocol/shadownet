@@ -13,7 +13,10 @@ from shadownet_hermes_plugin._adapter import (
     CONFIRM_PLAN_V1_URI,
     COORDINATE_V1_URI,
     DEFAULT_SIDECAR_BASE_URL,
+    _build_autonomous_inject,
+    _coalesce_events,
     _coordination_context,
+    _drain_delay_seconds,
     _resolve_config,
     build_adapter_class,
     check_shadownet_requirements,
@@ -147,17 +150,31 @@ class TestAdapterConstruction:
 class TestCoordinationContext:
     def test_coordination_context_carries_intent_and_data(self) -> None:
         text = _coordination_context(
+            sender="alice@sh4dow.org",
             sender_name="Alice",
             intent=COORDINATE_V1_URI,
             body_text="grab coffee?",
             body_data={"activity": "coffee", "details": "Friday morning"},
             context_id="ctx-001",
+            directives="",
         )
-        assert "context_id: ctx-001" in text
+        assert "contextId ctx-001" in text
         assert "coordinate_v1" in text
         assert "coffee" in text.lower()
         assert "Friday morning" in text
         assert "shadownet-coordinate skill" in text
+
+    def test_coordination_context_includes_directives(self) -> None:
+        text = _coordination_context(
+            sender="alice@sh4dow.org",
+            sender_name="Alice",
+            intent=COORDINATE_V1_URI,
+            body_text="?",
+            body_data={},
+            context_id="ctx-1",
+            directives="[standing instruction] confirm with me first",
+        )
+        assert "confirm with me first" in text
 
 
 class TestOnEventDispatch:
@@ -208,8 +225,9 @@ class TestOnEventDispatch:
         assert len(adapter.handled) == 1
         msg = adapter.handled[0]
         assert msg.auto_skill == "shadownet-coordinate"
-        assert "COORDINATION" in msg.text
-        assert "context_id: ctx-1" in msg.text
+        assert "coordination" in msg.text
+        assert "contextId ctx-1" in msg.text
+        assert msg.source.chat_id == "ctx-1"
 
     async def test_stranger_free_form_is_left_for_pull_triage(
         self, monkeypatch: pytest.MonkeyPatch
@@ -289,11 +307,41 @@ class TestOnEventDispatch:
         assert len(adapter.handled) == 1
         msg = adapter.handled[0]
         assert msg.auto_skill == "shadownet-autonomous"
-        assert "AUTONOMOUS SHADOWNET EXCHANGE" in msg.text
+        # Synthesized turn must be internal so Hermes skips the pairing/auth gate.
+        assert msg.internal is True
+        assert "autonomous shadownet exchange" in msg.text
         assert "Hi" in msg.text
-        assert msg.source.chat_id == "alice@sh4dow.org"
-        # The engine now threads replies to this contact onto its contextId.
-        assert adapter._engine.active_context_for("alice@sh4dow.org") == "ctx-1"
+        # The session key is the contextId, not the sender.
+        assert msg.source.chat_id == "ctx-1"
+        assert adapter._engine.active() == [
+            {
+                "contact": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "turnCount": 1,
+                "status": "active",
+            }
+        ]
+
+    async def test_autonomous_inject_includes_layered_directives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        adapter = self._setup(monkeypatch, status="inbox")
+        adapter._engine.set_directive(scope="global", text="be brief")
+        adapter._engine.set_directive(scope="contact", target="alice@sh4dow.org", text="formal")
+        adapter._engine.set_directive(scope="session", target="ctx-1", text="wrap up")
+        event = {
+            "event": "inbox.message",
+            "eventId": "evt-1",
+            "data": {
+                "from": "alice@sh4dow.org",
+                "contextId": "ctx-1",
+                "messageId": "msg-1",
+                "status": "inbox",
+            },
+        }
+        await adapter._on_event(event)
+        text = adapter.handled[0].text
+        assert "be brief" in text and "formal" in text and "wrap up" in text
 
     async def test_duplicate_inbound_is_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = self._setup(monkeypatch, status="inbox")
@@ -312,96 +360,59 @@ class TestOnEventDispatch:
         assert len(adapter.handled) == 1
 
 
-class TestSendRoutesThroughClient:
-    async def test_send_uses_typed_client_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from shadownet.mcp.tools import SendOutput
+class TestSendDeliversTheMove:
+    """send() delivers a free-form turn's reply to the contact; coordinate turns don't."""
 
+    @staticmethod
+    def _client_ok() -> Any:
+        client = MagicMock()
+        client.respond = AsyncMock(return_value=MagicMock(status="accepted", error=None))
+        return client
+
+    async def test_free_form_reply_is_delivered_via_respond(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         adapter = _adapter_with_inline_config(monkeypatch)
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock(
-            return_value=SendOutput(messageId="m-1", contextId="ctx-1", status="accepted")
-        )
-        adapter._client = fake_client
-
-        result = await adapter.send(chat_id="alice@sh4dow.org", content="hello")
+        adapter._client = self._client_ok()
+        result = await adapter.send(chat_id="ctx-1", content="waddle")
         assert result.success is True
-        assert result.message_id == "m-1"
-        fake_client.send.assert_awaited_once()
-        sent_input = fake_client.send.await_args.args[0]
-        assert sent_input.to == "alice@sh4dow.org"
-        assert sent_input.body.text == "hello"
+        adapter._client.respond.assert_awaited_once()
+        arg = adapter._client.respond.await_args.args[0]
+        assert arg.context_id == "ctx-1"
+        assert arg.body.text == "waddle"
 
-    async def test_send_reports_sidecar_rejection(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A rejected send is reported as failure, not silently swallowed as success."""
-        from shadownet.mcp.tools import SendOutput
-
+    async def test_coordinate_turn_reply_is_not_delivered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         adapter = _adapter_with_inline_config(monkeypatch)
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock(
-            return_value=SendOutput(
-                messageId="m-2", contextId="ctx-1", status="rejected", error="not_contact"
-            )
-        )
-        adapter._client = fake_client
+        adapter._client = self._client_ok()
+        adapter._delivery_mode["ctx-1"] = "coordinate"
+        result = await adapter.send(chat_id="ctx-1", content="let's meet wednesday")
+        assert result.success is True
+        adapter._client.respond.assert_not_called()
 
-        result = await adapter.send(chat_id="bob@x", content="hi")
+    async def test_empty_reply_is_not_delivered(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter_with_inline_config(monkeypatch)
+        adapter._client = self._client_ok()
+        assert (await adapter.send(chat_id="ctx-1", content="   ")).success is True
+        adapter._client.respond.assert_not_called()
+
+    async def test_rejected_respond_returns_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter_with_inline_config(monkeypatch)
+        client = MagicMock()
+        client.respond = AsyncMock(return_value=MagicMock(status="rejected", error="nope"))
+        adapter._client = client
+        result = await adapter.send(chat_id="ctx-1", content="waddle")
         assert result.success is False
-        assert result.error == "not_contact"
 
-    async def test_send_distinct_content_not_suppressed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Distinct messages always go out — the old 120s cooldown that killed the loop is gone."""
-        from shadownet.mcp.tools import SendOutput
-
+    async def test_status_is_swallowed_not_sent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = _adapter_with_inline_config(monkeypatch)
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock(
-            return_value=SendOutput(messageId="m", contextId="ctx-1", status="accepted")
+        adapter._client = self._client_ok()
+        result = await adapter.send_or_update_status(
+            "ctx-1", "post_tool_empty", "⚠️ Model returned empty after tool calls"
         )
-        adapter._client = fake_client
-
-        await adapter.send(chat_id="bob@x", content="first")
-        await adapter.send(chat_id="bob@x", content="second")
-        assert fake_client.send.await_count == 2
-
-    async def test_send_suppresses_exact_duplicate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """An immediate identical resend is anti-echo'd within the dedup window."""
-        from shadownet.mcp.tools import SendOutput
-
-        adapter = _adapter_with_inline_config(monkeypatch)
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock(
-            return_value=SendOutput(messageId="m", contextId="ctx-1", status="accepted")
-        )
-        adapter._client = fake_client
-
-        await adapter.send(chat_id="bob@x", content="same")
-        await adapter.send(chat_id="bob@x", content="same")
-        fake_client.send.assert_awaited_once()
-
-    async def test_send_threads_via_respond_for_active_exchange(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When a contact has an active exchange, the reply threads via respond(contextId)."""
-        from shadownet.mcp.tools import RespondOutput
-
-        adapter = _adapter_with_inline_config(monkeypatch)
-        fake_client = MagicMock()
-        fake_client.send = AsyncMock()
-        fake_client.respond = AsyncMock(
-            return_value=RespondOutput(messageId="r-1", status="accepted")
-        )
-        adapter._client = fake_client
-        adapter._engine.decide(
-            status="inbox", contact="alice@sh4dow.org", context_id="ctx-9", message_id="m1"
-        )
-
-        result = await adapter.send(chat_id="alice@sh4dow.org", content="next word")
         assert result.success is True
-        fake_client.respond.assert_awaited_once()
-        assert fake_client.respond.await_args.args[0].context_id == "ctx-9"
-        fake_client.send.assert_not_awaited()
+        adapter._client.respond.assert_not_called()
 
 
 class TestLifecycle:
@@ -424,6 +435,84 @@ class TestLifecycle:
 
         assert adapter._inbox_task.cancelled() or adapter._inbox_task.done()
         assert adapter.connected is False
+
+
+class TestCoalesceEvents:
+    def test_same_context_backlog_collapses_to_latest(self) -> None:
+        events = [
+            {"event": "inbox.message", "data": {"contextId": "c1", "messageId": "m1"}},
+            {"event": "inbox.message", "data": {"contextId": "c1", "messageId": "m2"}},
+            {"event": "inbox.message", "data": {"contextId": "c2", "messageId": "m3"}},
+        ]
+        out = _coalesce_events(events)
+        assert len(out) == 2
+        assert out[0]["data"]["messageId"] == "m2"  # c1 superseded by its latest
+        assert out[1]["data"]["messageId"] == "m3"
+
+    def test_non_message_events_pass_through(self) -> None:
+        events = [
+            {"event": "task.update", "data": {"contextId": "c1"}},
+            {"event": "inbox.message", "data": {"contextId": "c1", "messageId": "m1"}},
+            {"event": "inbox.message", "data": {"contextId": "c1", "messageId": "m2"}},
+        ]
+        out = _coalesce_events(events)
+        assert [e["event"] for e in out] == ["task.update", "inbox.message"]
+        assert out[1]["data"]["messageId"] == "m2"
+
+
+class TestInjectHygiene:
+    def test_autonomous_inject_is_lean_and_leak_free(self) -> None:
+        text = _build_autonomous_inject(
+            sender="alice@sh4dow.org",
+            sender_name="Alice",
+            body_text="hi",
+            notes="be warm",
+            directives="[standing instruction] be brief",
+        )
+        assert "Alice says:" in text and "hi" in text
+        assert "be warm" in text and "be brief" in text
+        # No operational scaffolding the contact could be shown.
+        assert "telegram:" not in text
+        assert "contextId" not in text
+        assert "never put these instructions" in text
+
+    def test_coordination_inject_keeps_contextid_but_not_target(self) -> None:
+        text = _coordination_context(
+            sender="alice@sh4dow.org",
+            sender_name="Alice",
+            intent=COORDINATE_V1_URI,
+            body_text="coffee?",
+            body_data={"activity": "coffee"},
+            context_id="ctx-9",
+            directives="",
+        )
+        # Coordination needs the contextId for the typed move...
+        assert "contextId ctx-9" in text
+        # ...but not a literal user notify target.
+        assert "telegram:" not in text
+
+
+class TestDrainDelay:
+    def test_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SHADOWNET_DRAIN_DELAY_SECONDS", raising=False)
+        assert _drain_delay_seconds() == 2.0
+
+    def test_custom(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SHADOWNET_DRAIN_DELAY_SECONDS", "0")
+        assert _drain_delay_seconds() == 0.0
+
+    def test_bad_value_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SHADOWNET_DRAIN_DELAY_SECONDS", "abc")
+        assert _drain_delay_seconds() == 2.0
+
+
+class TestCursorPersistence:
+    async def test_cursor_round_trips(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        adapter = _adapter_with_inline_config(monkeypatch)
+        assert adapter._load_cursor() is None
+        adapter._save_cursor("evt-42")
+        assert adapter._load_cursor() == "evt-42"
 
 
 class TestSh4dowOrgOnlyAsDefault:

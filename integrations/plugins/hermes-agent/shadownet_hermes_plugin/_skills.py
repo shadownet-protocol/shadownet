@@ -36,28 +36,27 @@ SHADOWNET_CATEGORY_DESCRIPTION = (
 
 SKILL_NAMES = (
     "shadownet-setup",
-    "shadownet-reach-out",
-    "shadownet-inbox",
+    "shadownet-messaging",
     "shadownet-coordinate",
     "shadownet-autonomous",
 )
 
 
 def skill_root_candidates() -> tuple[Path, ...]:
-    """Candidate roots containing ``<name>/SKILL.md``, in priority order.
+    """Roots that may hold ``<name>/SKILL.md``, in priority order.
 
-    1. Already materialized in the data dir (deployed at container build /
-       deploy time via ``docker cp`` or similar).  This is the primary
-       path in production — skills are deployed independently of the
-       plugin wheel.
-    2. Sibling to the package — legacy bundled layout (editable installs).
-    3. ``<sys.prefix>/share/hermes-plugins/shadownet/skills/`` — where wheel
-       installs land the shared-data tree per ``pyproject.toml``.
+    1. The plugin's own ``skills/`` tree (editable / source installs).
+    2. ``<sys.prefix>/share/hermes-plugins/shadownet/skills/`` — the wheel's
+       shared-data tree.
+    3. The materialized data dir — a fallback for deployments that ship skills
+       directly into ``<HERMES_HOME>/skills`` without the wheel. It is LAST so a
+       stale copy never shadows the freshly installed bundle (and so materialize
+       never copies the data dir onto itself).
     """
     return (
-        _paths.skills_dir() / SHADOWNET_CATEGORY,
         Path(__file__).resolve().parent.parent / "skills",
         Path(sys.prefix) / "share" / "hermes-plugins" / "shadownet" / "skills",
+        _paths.skills_dir() / SHADOWNET_CATEGORY,
     )
 
 
@@ -136,6 +135,12 @@ def materialize_skills_into_data_dir(paths: dict[str, Path]) -> None:
         )
         return
 
+    # Drop skill dirs from a previous version (renamed/removed skills) so a stale
+    # copy can't linger in <available_skills>.
+    for child in category_root.iterdir():
+        if child.is_dir() and child.name not in SKILL_NAMES:
+            shutil.rmtree(child, ignore_errors=True)
+
     for name, src_skill_md in paths.items():
         if not src_skill_md.is_file():
             continue
@@ -144,8 +149,12 @@ def materialize_skills_into_data_dir(paths: dict[str, Path]) -> None:
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
             for src_file in src_dir.iterdir():
-                if src_file.is_file():
-                    shutil.copy2(src_file, dst_dir / src_file.name)
+                if not src_file.is_file():
+                    continue
+                dst_file = dst_dir / src_file.name
+                if src_file.resolve() == dst_file.resolve():
+                    continue  # source already is the materialized copy
+                shutil.copy2(src_file, dst_file)
         except OSError as e:
             _log.warning(
                 "shadownet plugin: failed to materialize skill `%s` into %s: %s",

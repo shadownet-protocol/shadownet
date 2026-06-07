@@ -94,7 +94,9 @@ def _resolve_endpoint_and_token() -> tuple[str, str, int, bool]:
     is found, the monitor exits with a clear error so the user knows to
     open Claude Code (or to provide an inline URI).
     """
-    connect_url = _env_first("CLAUDE_PLUGIN_OPTION_CONNECT_URL", "SHADOWNET_CONNECT_URL")
+    connect_url = _env_first(
+        "CLAUDE_PLUGIN_OPTION_CONNECT_URL", "SHADOWNET_CONNECT_URL"
+    )
     mcp_endpoint = ""
     token = ""
     if connect_url:
@@ -211,9 +213,13 @@ def _escape_for_powershell(s: str) -> str:
     return s.replace("`", "``").replace('"', '`"')
 
 
-async def _run_monitor(mcp_endpoint: str, token: str, timeout: int, os_notif: bool) -> int:
+async def _run_monitor(
+    mcp_endpoint: str, token: str, timeout: int, os_notif: bool
+) -> int:
     """RFC 0002 §4 long-poll inbox_wait loop. One JSON line per event."""
-    async with ShadownetMCPClient.connect(endpoint=mcp_endpoint, access_token=token) as client:
+    async with ShadownetMCPClient.connect(
+        endpoint=mcp_endpoint, access_token=token
+    ) as client:
         identity = await client.identity()
         _log.info("connected as %s; starting inbox loop", identity.shadowname)
         last_event_id: str | None = None

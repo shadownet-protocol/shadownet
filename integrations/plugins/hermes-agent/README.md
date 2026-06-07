@@ -37,7 +37,7 @@ Five concrete surfaces are wired by `register(ctx)`:
 | Platform adapter | `ctx.register_platform(..., platform_hint=…, env_enablement_fn=…)` | Long-poll inbound from the sidecar; the adapter's `send()` maps outbound replies onto the MCP `send` tool |
 | MCP server | `<HERMES_HOME>/config.yaml` `mcp_servers.shadownet` (config-driven; the only canonical path per the guide) | Agent sees `mcp_shadownet_*` tools |
 | Skills | `ctx.register_skill` (namespaced) + categorized materialization | Four skills are both opt-in via `shadownet:<name>` and surfaced in `<available_skills>` |
-| Slash commands | `ctx.register_command` (status, logout) + native skill commands | `/shadownet-setup`, `/shadownet-inbox`, `/shadownet-reach-out`, `/shadownet-coordinate` (from the skills), `/shadownet-status`, `/shadownet-logout` (plugin-owned) |
+| Slash commands | `ctx.register_command` (status, logout) + native skill commands | `/shadownet-setup`, `/shadownet-messaging`, `/shadownet-coordinate` (from the skills), `/shadownet-status`, `/shadownet-logout` (plugin-owned) |
 | Hooks | `ctx.register_hook` × 3 | `on_session_start` collects pending-inbox count; `pre_llm_call` injects on the first turn; `on_session_end` cleans up |
 | CLI subcommands | `ctx.register_cli_command(name="shadownet", …)` | `hermes shadownet status|doctor|sync|logout` |
 
@@ -75,16 +75,15 @@ start without the shim repo.
 
 ## Slash commands
 
-All six commands work in CLI sessions, the Telegram bot menu, Discord,
-and anywhere else Hermes' gateway runs. The four skill commands are
-provided by the bundled skills (their `SKILL.md` frontmatter); `status`
-and `logout` are plugin-owned.
+These commands work in CLI sessions, the Telegram bot menu, Discord, and
+anywhere else Hermes' gateway runs. `setup` / `messaging` / `coordinate` are
+provided by the bundled skills (their `SKILL.md` frontmatter); `status` and
+`logout` are plugin-owned.
 
 | Command | What it does |
 | --- | --- |
-| `/shadownet-setup` | Load the `shadownet:shadownet-setup` skill — verify identity + check connection |
-| `/shadownet-inbox` | Load the inbox-triage skill |
-| `/shadownet-reach-out` | Load the contact-message skill |
+| `/shadownet-setup` | Load the setup skill — verify the connection + show your Shadow |
+| `/shadownet-messaging` | Load the messaging skill — reach out to a contact + triage replies |
 | `/shadownet-coordinate` | Load the two-sided coordination skill |
 | `/shadownet-status` | Show connection state without leaving the chat (delegates to `hermes shadownet status`) |
 | `/shadownet-logout` | Disconnect this Hermes from shadownet |

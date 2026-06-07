@@ -80,7 +80,9 @@ def _check_drift(canonical: dict[str, Path], target_dir: Path) -> list[str]:
         canonical_bytes = canonical[name].read_bytes()
         plugin_bytes = plugin[name].read_bytes()
         if canonical_bytes != plugin_bytes:
-            messages.append(f"  drift in {target_dir}: {name}/SKILL.md differs from canonical")
+            messages.append(
+                f"  drift in {target_dir}: {name}/SKILL.md differs from canonical"
+            )
     return messages
 
 
@@ -136,7 +138,9 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        print(f"all skill trees in sync ({len(canonical)} skills × {len(PLUGIN_TARGETS)} plugins)")
+        print(
+            f"all skill trees in sync ({len(canonical)} skills × {len(PLUGIN_TARGETS)} plugins)"
+        )
         return 0
 
     total_changes = 0

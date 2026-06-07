@@ -74,7 +74,9 @@ async def test_run_exits_3_when_handoff_cannot_be_redeemed(
     exit 3 instead of crashing on the HTTP 404."""
     from shadownet.onboarding import HandoffError
 
-    async def _fail_redeem(mcp_origin: str, code: str, *, client: object = None) -> object:
+    async def _fail_redeem(
+        mcp_origin: str, code: str, *, client: object = None
+    ) -> object:
         raise HandoffError("handoff code rejected (404)")
 
     monkeypatch.setattr(proxy, "aredeem_handoff", _fail_redeem)

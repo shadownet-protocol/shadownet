@@ -1117,7 +1117,7 @@ dev = [
 
 [[package]]
 name = "shadownet-hermes-plugin"
-version = "0.6.0"
+version = "0.6.10"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

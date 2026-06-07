@@ -17,13 +17,38 @@ __all__ = [
     "on_session_end_callback",
     "on_session_start_callback",
     "pre_llm_call_callback",
+    "pre_tool_call_callback",
 ]
 
 _log = logging.getLogger(__name__)
 
-# session_id → pending count (set by on_session_start, consumed by pre_llm_call).
-# Cleared in on_session_end to avoid unbounded growth.
+# session_id → count of strangers awaiting review (set by on_session_start,
+# consumed once by pre_llm_call). Cleared in on_session_end to avoid growth.
+# Known contacts are handled autonomously, so they are deliberately NOT counted.
 _pending_inbox: dict[str, int] = {}
+
+# Exchange-DRIVING MCP tools the foreground must not call directly: it delegates
+# via shadownet_delegate instead, so the agentic loop lives in the background
+# session, not the user's chat. The background (shadownet platform) keeps them —
+# the coordinate flow uses the typed ones. The inbox SNAPSHOT (mcp_shadownet_inbox)
+# is left available for stranger triage; only the long-poll is blocked.
+_FOREGROUND_BLOCKED_TOOLS = frozenset(
+    {
+        "mcp_shadownet_send",
+        "mcp_shadownet_respond",
+        "mcp_shadownet_inbox_wait",
+        "mcp_shadownet_coordinate",
+        "mcp_shadownet_confirm_plan",
+        "mcp_shadownet_accept_plan",
+    }
+)
+
+_DELEGATE_HINT = (
+    "Don't call Shadownet MCP directly from your chat with the user. To message or "
+    "run a conversation with a contact, use shadownet_delegate(contact, instruction) — "
+    "the background exchange makes the moves and keeps the user posted. To see what's "
+    "happening, use shadownet_exchanges."
+)
 
 # Platform names that should NOT receive shadownet inbox injections. We
 # only nudge user-facing platforms; the shadownet platform itself runs
@@ -59,17 +84,22 @@ def _resolve_mcp_target() -> tuple[str, str] | None:
 
 
 async def _fetch_inbox_count_async(endpoint: str, token: str) -> int:
-    """Open a brief MCP session and call ``inbox`` to get a pending count."""
+    """Open a brief MCP session and count strangers awaiting the user's review.
+
+    Known contacts are handled autonomously, so the only inbox items the human
+    needs nudging about are those held in ``stranger_review`` (which the inbox
+    tool only returns when ``includeReview`` is set).
+    """
     try:
         from shadownet.mcp import InboxInput, ShadownetMCPClient
     except ImportError:
         return 0
     try:
         async with ShadownetMCPClient.connect(endpoint=endpoint, access_token=token) as client:
-            result = await client.inbox(InboxInput(limit=50))
+            result = await client.inbox(InboxInput(includeReview=True, limit=50))
     except Exception:  # noqa: BLE001
         return 0
-    return len(result.items)
+    return sum(1 for item in result.items if getattr(item, "status", "") == "stranger_review")
 
 
 def _fetch_pending_inbox_count() -> int:
@@ -172,8 +202,8 @@ def pre_llm_call_callback(
         if count > 0:
             plural = "message" if count == 1 else "messages"
             parts.append(
-                f"[shadownet] You have {count} pending shadownet {plural}. "
-                "Use mcp_shadownet_inbox_wait to triage when the user has a moment."
+                f"[shadownet] {count} shadownet {plural} from strangers await the user's "
+                "review. Load the shadownet-messaging skill to triage when they have a moment."
             )
 
     if _looks_like_coordination(user_message):
@@ -184,6 +214,37 @@ def pre_llm_call_callback(
         )
 
     return {"context": "\n\n".join(parts)} if parts else None
+
+
+def _current_platform() -> str:
+    """Platform of the in-flight turn, from the session contextvar (propagated to the
+    tool thread); '' when unavailable (CLI/tests) so the block fails open."""
+    try:
+        from gateway.session_context import get_session_env
+
+        return str(get_session_env("HERMES_SESSION_PLATFORM", "") or "")
+    except Exception:  # noqa: BLE001 - no session context; fail open
+        return ""
+
+
+def pre_tool_call_callback(
+    tool_name: str = "",
+    args: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, str] | None:
+    """Block raw exchange MCP tools in a foreground session; steer to delegation.
+
+    Reads the current platform ambiently (the block-hook call site passes no session
+    id). Returns ``{"action": "block", "message": ...}`` for a blocked call; a
+    background shadownet turn keeps the tools (coordinate uses the typed ones), and an
+    unknown platform is left alone (fail-open).
+    """
+    if tool_name not in _FOREGROUND_BLOCKED_TOOLS:
+        return None
+    platform = _current_platform()
+    if platform and platform not in _SUPPRESSED_PLATFORMS:
+        return {"action": "block", "message": _DELEGATE_HINT}
+    return None
 
 
 def on_session_end_callback(

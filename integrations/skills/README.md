@@ -1,31 +1,18 @@
 # integrations/skills/
 
-Procedural skill bundles in the [agentskills.io](https://agentskills.io) standard shape.
+Procedural skill bundles in the [agentskills.io](https://agentskills.io) standard shape:
+each skill is a directory with a `SKILL.md` (YAML frontmatter + procedural markdown body)
+and optional helper scripts. Frontmatter follows the Hermes Agent conventions — a `≤60`-char
+one-sentence `description`, top-level `allowed-tools` naming MCP tools (Hermes uses the
+single-underscore `mcp_<server>_<tool>` form; Claude Code uses `mcp__<server>__<tool>`), and a
+`metadata.hermes` block.
 
-Each skill is a directory containing `SKILL.md` (YAML frontmatter + procedural markdown body)
-plus optional helper scripts. The frontmatter carries dual metadata so the same skill
-markdown serves both Claude Code and Hermes Agent:
+This tree was the single source for the shadownet skills. As the host integrations diverge
+(Hermes drives an autonomous per-`contextId` exchange loop the other hosts have not adopted
+yet), each plugin now **vendors its own copy** of the skills it ships:
 
-```yaml
----
-name: shadownet-inbox
-description: Triage your Shadownet inbox; draft replies via respond.
-version: 0.5.0
-metadata:
-  hermes:
-    tags: [shadownet, inbox, a2a]
-    category: shadownet
-    requires_tools: [inbox, respond, contact_detail]
-  claude:
-    allowed-tools: ["mcp__shadownet__inbox", "mcp__shadownet__respond"]
----
-```
+- Hermes Agent — `integrations/plugins/hermes-agent/skills/`
+- Claude Code — `integrations/plugins/claude-code/` (its own skills/agents)
 
-The Claude Code plugin (`integrations/plugins/claude-code/`) symlinks or copies these
-skills under its `skills/` directory so plugin install ships them. The Hermes Agent bundle
-(`integrations/plugins/hermes-agent/`) does the same, plus emits the
-`.well-known/skills/index.json` manifest the cloud serves at the public domain root.
-
-## Phase
-
-Authoring lands in Phase B. Phase A only commits this README so the destination is visible.
+The shared single-source model is paused until the other hosts migrate to the same skill
+surface; this directory is kept as the reference shape.

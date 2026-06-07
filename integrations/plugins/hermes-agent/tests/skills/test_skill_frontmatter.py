@@ -6,12 +6,16 @@ from pathlib import Path
 import pytest
 import yaml
 
-# Canonical single-source skill tree: integrations/skills/<name>/SKILL.md
-_SKILLS_DIR = Path(__file__).resolve().parents[4] / "skills"
+# Plugin-local skill tree: integrations/plugins/hermes-agent/skills/<name>/SKILL.md
+_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 
-# Skills already brought up to the Hermes HARDLINE bar. The remaining skills
-# (setup / inbox / reach-out) are rewritten in the dedicated skills pass.
-_COMPLIANT = ["shadownet-autonomous", "shadownet-coordinate"]
+# The full skill set, all held to the Hermes HARDLINE bar.
+_COMPLIANT = [
+    "shadownet-setup",
+    "shadownet-messaging",
+    "shadownet-coordinate",
+    "shadownet-autonomous",
+]
 
 
 def _frontmatter(name: str) -> dict:

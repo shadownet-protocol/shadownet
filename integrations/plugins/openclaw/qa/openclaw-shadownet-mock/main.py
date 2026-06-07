@@ -124,9 +124,7 @@ async def mcp(shadowname: str, req: Request) -> JSONResponse:
     else:
         result = {"echo": args}
 
-    return JSONResponse(
-        {"jsonrpc": "2.0", "id": payload.get("id"), "result": result}
-    )
+    return JSONResponse({"jsonrpc": "2.0", "id": payload.get("id"), "result": result})
 
 
 @app.get("/_calls")

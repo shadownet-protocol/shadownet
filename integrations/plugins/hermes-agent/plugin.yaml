@@ -17,7 +17,7 @@
 # manifest is still authoritative if the install path changes.
 
 name: shadownet
-version: "0.6.0"
+version: "0.6.10"
 description: >-
   Shadownet v0.2 protocol integration for Hermes Agent. Adds identity-
   anchored agent-to-agent messaging via Shadownet (RFC 0002 MCP control
@@ -36,26 +36,31 @@ kind: platform
 provides_hooks:
   - on_session_start
   - pre_llm_call
+  - pre_tool_call
   - on_session_end
 
 provides_commands:
   - shadownet-setup
-  - shadownet-inbox
-  - shadownet-reach-out
+  - shadownet-messaging
   - shadownet-coordinate
   - shadownet-status
   - shadownet-logout
 
 provides_skills:
   - shadownet:shadownet-setup
-  - shadownet:shadownet-reach-out
-  - shadownet:shadownet-inbox
+  - shadownet:shadownet-messaging
   - shadownet:shadownet-coordinate
   - shadownet:shadownet-autonomous
 
-# MCP tools intentionally NOT under provides_tools — they come from
-# `~/.hermes/config.yaml` mcp_servers.shadownet, which is a different
-# surface per the Hermes plugin guide.
+# Channel-bridge tools registered via ctx.register_tool — they let the user's
+# chat session steer the background autonomous exchanges. The mcp_shadownet_*
+# protocol tools are NOT listed here; they come from ~/.hermes/config.yaml
+# mcp_servers.shadownet, a different surface per the Hermes plugin guide.
+provides_tools:
+  - shadownet_directive
+  - shadownet_exchanges
+  - shadownet_exchange_control
+  - shadownet_delegate
 
 # Hermes prompts the user for these during `hermes plugins install` and
 # verifies they are set at startup. SHADOWNET_CONNECT_URL is the canonical
