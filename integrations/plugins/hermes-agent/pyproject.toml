@@ -26,6 +26,8 @@ dependencies = [
     "shadownet>=0.6.0,<0.7",
     "httpx>=0.27",
     "pydantic>=2.7",
+    "x402-avm>=2.0",
+    "py-algorand-sdk>=2.6",
 ]
 
 # In-repo dev override: when working inside the monorepo (CI + local dev),
@@ -102,8 +104,9 @@ module = ["hermes_agent.*", "gateway.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# shadownet-x402 (the x402 settlement adapter) is loaded at runtime via a path
-# fallback for the /shadownet-pay command; it is not a hard dependency so the
-# plugin still installs cleanly where shadownet-x402 is not published.
-module = ["shadownet_x402.*"]
+# x402-avm (imported as `x402`) and py-algorand-sdk (`algosdk`) power live
+# Algorand settlement in `_avm`; neither ships type stubs for external use, so
+# skip following them and treat their symbols as Any (avoids no-untyped-call).
+module = ["x402.*", "algosdk.*"]
 ignore_missing_imports = true
+follow_imports = "skip"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from shadownet_x402._version import __version__
+from shadownet_x402.avm import derive_address, settle_usdc
 from shadownet_x402.budget import BudgetStore, InMemoryBudgetStore
 from shadownet_x402.client import ShadowX402Client
 from shadownet_x402.config import Settings
@@ -57,10 +58,12 @@ __all__ = [
     "ShadownetX402Error",
     "__version__",
     "build_payment_requirements",
+    "derive_address",
     "encode_x_payment",
     "enforce_agreed_equals_paid",
     "mint_pop",
     "parse_x_payment",
     "run_identity_gate",
+    "settle_usdc",
     "verify_pop",
 ]

@@ -136,6 +136,7 @@ exclude = ["^tests/"]
 [[tool.mypy.overrides]]
 module = ["x402.*", "algosdk.*", "algokit_utils.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
