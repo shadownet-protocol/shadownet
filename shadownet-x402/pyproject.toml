@@ -1,0 +1,143 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shadownet-x402"
+description = "Identity-gated x402 payments on Algorand for Shadownet."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Shadownet contributors" }]
+keywords = ["shadownet", "x402", "algorand", "agents", "payments"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+dependencies = [
+    "shadownet>=0.6.0,<0.7",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+]
+
+[project.optional-dependencies]
+server = ["fastapi>=0.110"]
+algorand = ["x402-avm>=2.0", "py-algorand-sdk>=2.6"]
+
+[project.urls]
+Repository = "https://github.com/shadownet-protocol/shadownet"
+Specifications = "https://github.com/shadownet-protocol/shadownet-specs"
+
+[tool.uv.sources]
+shadownet = { path = "../python-sdk" }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "respx>=0.21",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "fastapi>=0.110",
+]
+
+[tool.hatch.version]
+path = "src/shadownet_x402/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shadownet_x402"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/shadownet_x402", "README.md", "CLAUDE.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "SIM",
+    "PT",
+    "RET",
+    "PIE",
+    "PERF",
+    "RUF",
+    "ASYNC",
+    "S",
+    "N",
+    "TCH",
+    "TID",
+]
+ignore = [
+    "E501",
+    "S101",
+    "PT011",
+    "N818",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shadownet_x402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["error"]
+markers = [
+    "network: tests that require live network access (deselect with '-m \"not network\"')",
+]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=shadownet_x402",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["src/shadownet_x402"]
+branch = true
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/shadownet_x402"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+exclude = ["^tests/"]
+
+[[tool.mypy.overrides]]
+module = ["x402.*", "algosdk.*", "algokit_utils.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
