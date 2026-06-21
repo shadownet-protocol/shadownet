@@ -192,7 +192,7 @@ def _safe_register_tools(ctx: Any) -> None:
     try:
         register_fn(
             name="shadownet_pay",
-            toolset="shadownet",
+            toolset="shadownet-pay",
             schema=_SHADOWNET_PAY_SCHEMA,
             handler=_shadownet_pay_handler,
             description=(
