@@ -5,7 +5,7 @@ updates:
   - package-ecosystem: gomod
     directory: /core
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -15,17 +15,19 @@ updates:
       prefix: "deps(go)"
     groups:
       go-deps:
+        applies-to: version-updates
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # Go SDK — pgstore submodule (separate go.mod)
   - package-ecosystem: gomod
     directory: /core/pgstore
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -36,17 +38,19 @@ updates:
       prefix: "deps(go-pgstore)"
     groups:
       go-pgstore-deps:
+        applies-to: version-updates
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      go-pgstore-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # Python SDK
   - package-ecosystem: pip
     directory: /python-sdk
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -56,17 +60,19 @@ updates:
       prefix: "deps(py)"
     groups:
       py-deps:
+        applies-to: version-updates
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      py-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # Conformance suite (Python)
   - package-ecosystem: pip
     directory: /conformance
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -76,17 +82,19 @@ updates:
       prefix: "deps(conformance)"
     groups:
       conformance-deps:
+        applies-to: version-updates
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      conformance-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
-  # Conformance: fixture-regen Go emitter (separate go.mod)
+  # Conformance: fixture-regen Go emitter (separate go.mod, dev-only — never shipped)
   - package-ecosystem: gomod
     directory: /conformance/fixtures/_regen/go-emit
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 3
     labels:
@@ -94,12 +102,21 @@ updates:
       - "area: conformance"
     commit-message:
       prefix: "deps(conformance-go-emit)"
+    groups:
+      go-emit-deps:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      go-emit-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # OpenClaw plugin (TypeScript / npm)
   - package-ecosystem: npm
     directory: /integrations/plugins/openclaw
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -109,17 +126,19 @@ updates:
       prefix: "deps(openclaw)"
     groups:
       openclaw-deps:
+        applies-to: version-updates
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
+      openclaw-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # GitHub Actions used by workflows
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
     open-pull-requests-limit: 5
     labels:
@@ -129,5 +148,10 @@ updates:
       prefix: "deps(ci)"
     groups:
       ci-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      ci-actions-security:
+        applies-to: security-updates
         patterns:
           - "*"
